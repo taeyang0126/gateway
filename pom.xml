@@ -12,6 +12,7 @@
 
     <modules>
         <module>gateway-server</module>
+        <module>gateway-client</module>
     </modules>
 
     <properties>
@@ -167,6 +168,13 @@
                 <artifactId>jackson-annotations</artifactId>
                 <version>${jackson.version}</version>
             </dependency>
+
+            <dependency>
+                <groupId>com.lei.java</groupId>
+                <artifactId>gateway-client</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
         </dependencies>
     </dependencyManagement>
 

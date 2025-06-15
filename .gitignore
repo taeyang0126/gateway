@@ -41,4 +41,4 @@ build/
 
 .idea/**
 
-logs/**
+**/logs/**
