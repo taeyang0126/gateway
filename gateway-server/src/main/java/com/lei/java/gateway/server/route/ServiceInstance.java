@@ -5,8 +5,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 服务实例
- * 表示一个后端服务节点
+ * 服务实例 表示一个后端服务节点
  */
 public class ServiceInstance {
     private final String host;
@@ -31,7 +30,8 @@ public class ServiceInstance {
         this(host, port, 1, metadata, true, true);
     }
 
-    public ServiceInstance(String host, int port, double weight, Map<String, String> metadata, boolean healthy, boolean enabled) {
+    public ServiceInstance(String host, int port, double weight, Map<String, String> metadata, boolean healthy,
+                    boolean enabled) {
         this.host = host;
         this.port = port;
         this.weight = weight;
@@ -60,7 +60,6 @@ public class ServiceInstance {
         this.healthy = healthy;
     }
 
-
     public Map<String, String> getMetadata() {
         return new HashMap<>(metadata);
     }
@@ -71,12 +70,14 @@ public class ServiceInstance {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
         ServiceInstance that = (ServiceInstance) o;
-        return port == that.port &&
-                Objects.equals(host, that.host) &&
-                Objects.equals(metadata, that.metadata);
+        return port == that.port && Objects.equals(host, that.host) && Objects.equals(metadata, that.metadata);
     }
 
     @Override
@@ -86,13 +87,7 @@ public class ServiceInstance {
 
     @Override
     public String toString() {
-        return "ServiceInstance{" +
-                "host='" + host + '\'' +
-                ", port=" + port +
-                ", weight=" + weight +
-                ", healthy=" + healthy +
-                ", enable=" + enabled +
-                ", metadata=" + metadata +
-                '}';
+        return "ServiceInstance{" + "host='" + host + '\'' + ", port=" + port + ", weight=" + weight + ", healthy="
+                        + healthy + ", enable=" + enabled + ", metadata=" + metadata + '}';
     }
-} 
+}

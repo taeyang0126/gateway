@@ -58,8 +58,7 @@ public class DefaultConnection implements Connection {
     public CompletableFuture<GatewayMessage> send(GatewayMessage message) {
         CompletableFuture<GatewayMessage> completableFuture = new CompletableFuture<>();
         if (!isActive()) {
-            completableFuture.completeExceptionally(
-                    new IllegalStateException("Connection is not active"));
+            completableFuture.completeExceptionally(new IllegalStateException("Connection is not active"));
             return completableFuture;
         }
 
@@ -113,10 +112,12 @@ public class DefaultConnection implements Connection {
                 // 只有当 isReconnecting 标志位从 false 成功变为 true 时，才执行重连。
                 // 这确保了只有一个线程能够启动重连流程。
                 if (isReconnecting.compareAndSet(false, true)) {
-                    logger.info("[{}]Connection lost. Acquiring reconnect lock and starting reconnection process for {}", this.hashCode(), serviceInstance);
+                    logger.info("[{}]Connection lost. Acquiring reconnect lock and starting reconnection process for {}",
+                                    this.hashCode(), serviceInstance);
                     scheduleReconnect();
                 } else {
-                    logger.info("Connection lost, but another reconnection process is already running for {}", serviceInstance);
+                    logger.info("Connection lost, but another reconnection process is already running for {}",
+                                    serviceInstance);
                 }
             }
         });
@@ -127,7 +128,8 @@ public class DefaultConnection implements Connection {
         int totalRetry = totalRetryCount.get();
         if (currentRetry >= MAX_RETRY_TIMES || totalRetry >= MAX_TOTAL_RETRY_TIMES) {
             // 重连失败，清理资源
-            logger.warn("Max retry times (currentRetry={}, totalRetry={}) reached for {}", currentRetry, totalRetry, serviceInstance);
+            logger.warn("Max retry times (currentRetry={}, totalRetry={}) reached for {}", currentRetry, totalRetry,
+                            serviceInstance);
             clearResource();
             // 放弃重连时，释放锁
             isReconnecting.set(false);
@@ -137,31 +139,30 @@ public class DefaultConnection implements Connection {
         currentRetry = retryCount.incrementAndGet();
         totalRetry = totalRetryCount.incrementAndGet();
 
-        logger.info("Scheduling reconnection for {}, attempt {}/{}, totalAttempt {}/{}",
-                serviceInstance, currentRetry, MAX_RETRY_TIMES, totalRetry, MAX_TOTAL_RETRY_TIMES);
+        logger.info("Scheduling reconnection for {}, attempt {}/{}, totalAttempt {}/{}", serviceInstance, currentRetry,
+                        MAX_RETRY_TIMES, totalRetry, MAX_TOTAL_RETRY_TIMES);
 
         channel.eventLoop().schedule(() -> {
             bootstrap.connect(serviceInstance.getHost(), serviceInstance.getPort())
-                    .addListener((ChannelFutureListener) future -> {
-                        if (future.isSuccess()) {
-                            logger.info("Successfully reconnected to {}", serviceInstance);
-                            channel = future.channel();
-                            setupChannel();
-                            retryCount.set(0);
-                            isReconnecting.set(false);
-                        } else {
-                            logger.warn("Failed to reconnect to {}: {}",
-                                    serviceInstance, future.cause().getMessage());
-                            scheduleReconnect();
-                        }
-                    });
+                            .addListener((ChannelFutureListener) future -> {
+                                if (future.isSuccess()) {
+                                    logger.info("Successfully reconnected to {}", serviceInstance);
+                                    channel = future.channel();
+                                    setupChannel();
+                                    retryCount.set(0);
+                                    isReconnecting.set(false);
+                                } else {
+                                    logger.warn("Failed to reconnect to {}: {}", serviceInstance,
+                                                    future.cause().getMessage());
+                                    scheduleReconnect();
+                                }
+                            });
         }, RETRY_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
-
     private void clearResource() {
-        pendingMessages.forEach((reqId, completeFuture) ->
-                completeFuture.completeExceptionally(new RuntimeException("Connection closed")));
+        pendingMessages.forEach((reqId, completeFuture) -> completeFuture
+                        .completeExceptionally(new RuntimeException("Connection closed")));
         pendingMessages.clear();
     }
 

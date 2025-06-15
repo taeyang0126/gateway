@@ -8,7 +8,7 @@ import com.lei.java.gateway.server.protocol.GatewayMessage;
 import java.util.List;
 
 public class GatewayMessageCodec extends ByteToMessageCodec<GatewayMessage> {
-    
+
     @Override
     protected void encode(ChannelHandlerContext ctx, GatewayMessage msg, ByteBuf out) throws Exception {
         msg.encode(out);
@@ -20,20 +20,20 @@ public class GatewayMessageCodec extends ByteToMessageCodec<GatewayMessage> {
         if (in.readableBytes() < GatewayMessage.HEADER_LENGTH) { // 整体长度(4) + 校验和(4)
             return;
         }
-        
+
         // 标记当前读取位置
         in.markReaderIndex();
-        
+
         // 读取消息总长度
         int totalLength = in.readInt();
         if (in.readableBytes() < totalLength) {
             in.resetReaderIndex();
             return;
         }
-        
+
         // 解码消息
         in.resetReaderIndex();
         GatewayMessage message = GatewayMessage.decode(in);
         out.add(message);
     }
-} 
+}

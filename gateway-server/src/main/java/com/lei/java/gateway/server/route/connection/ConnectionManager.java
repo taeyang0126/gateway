@@ -16,7 +16,8 @@ public interface ConnectionManager {
     /**
      * 获取或创建到指定服务实例的连接
      *
-     * @param instance 服务实例
+     * @param instance
+     *            服务实例
      * @return 连接的Future
      */
     CompletableFuture<Connection> getConnection(ServiceInstance instance);
@@ -24,14 +25,16 @@ public interface ConnectionManager {
     /**
      * 释放连接
      *
-     * @param connection 要释放的连接
+     * @param connection
+     *            要释放的连接
      */
     void releaseConnection(Connection connection);
 
     /**
      * 移除并关闭连接
      *
-     * @param connection 要关闭的连接
+     * @param connection
+     *            要关闭的连接
      */
     void removeConnection(Connection connection);
 
@@ -42,6 +45,7 @@ public interface ConnectionManager {
 
     /**
      * 获取连接超时时间
+     *
      * @return 超时时间（毫秒）
      */
     default int getConnectTimeoutMillis() {

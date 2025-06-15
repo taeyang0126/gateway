@@ -9,8 +9,9 @@ import java.util.zip.CRC32;
 
 /**
  * 网关消息协议定义
- * 
+ *
  * 消息格式（字节序：大端序）：
+ *
  * <pre>
  * +----------------+----------------+----------------+----------------+----------------+----------------+----------------+----------------+----------------+----------------+
  * |   totalLength  |    checksum    |     magic      |    version    |    msgType    |   requestId   |    clientId    |    bizType     |   extensions   |      body      |
@@ -25,35 +26,32 @@ import java.util.zip.CRC32;
  * |                |                |                |               |               |              |                |                | - value(UTF8)   |                |
  * +----------------+----------------+----------------+----------------+----------------+----------------+----------------+----------------+----------------+----------------+
  * </pre>
- * 
- * 注意事项：
- * 1. 所有字符串采用UTF-8编码
- * 2. 校验和通过CRC32计算，计算范围为校验和之后的所有字节
- * 3. 变长字符串和字节数组的长度字段为0时，表示内容为空
- * 4. 扩展字段为可选字段，length为0时表示没有扩展字段
+ *
+ * 注意事项： 1. 所有字符串采用UTF-8编码 2. 校验和通过CRC32计算，计算范围为校验和之后的所有字节 3. 变长字符串和字节数组的长度字段为0时，表示内容为空 4.
+ * 扩展字段为可选字段，length为0时表示没有扩展字段
  */
 public class GatewayMessage {
     // 协议常量
-    public static final int HEADER_LENGTH = 8;             // 总长度(4) + 校验和(4)
+    public static final int HEADER_LENGTH = 8; // 总长度(4) + 校验和(4)
     public static final short MESSAGE_MAGIC = (short) 0xCAFE;
     public static final byte MESSAGE_VERSION = 0x01;
 
     // 消息类型定义
-    public static final byte MESSAGE_TYPE_AUTH = (byte) 0x01;      // 认证消息
+    public static final byte MESSAGE_TYPE_AUTH = (byte) 0x01; // 认证消息
     public static final byte MESSAGE_TYPE_AUTH_SUCCESS_RESP = (byte) 0x02; // 认证成功
     public static final byte MESSAGE_TYPE_AUTH_FAIL_RESP = (byte) 0x03; // 认证失败
     public static final byte MESSAGE_TYPE_HEARTBEAT = (byte) 0x04; // 心跳消息
-    public static final byte MESSAGE_TYPE_BIZ = (byte) 0x05;       // 业务消息
-    public static final byte MESSAGE_TYPE_ERROR = (byte) 0xFF;     // 错误消息
+    public static final byte MESSAGE_TYPE_BIZ = (byte) 0x05; // 业务消息
+    public static final byte MESSAGE_TYPE_ERROR = (byte) 0xFF; // 错误消息
 
     // 消息头
     private short magic = MESSAGE_MAGIC;
     private byte version = MESSAGE_VERSION;
     private byte msgType;
 
-    private long requestId;      // 请求ID
-    private String clientId;     // 客户端标识
-    private String bizType;      // 业务类型标识
+    private long requestId; // 请求ID
+    private String clientId; // 客户端标识
+    private String bizType; // 业务类型标识
 
     // 消息体
     private Map<String, String> extensions = new HashMap<>();
@@ -268,15 +266,8 @@ public class GatewayMessage {
 
     @Override
     public String toString() {
-        return "GatewayMessage{" +
-                "magic=" + magic +
-                ", version=" + version +
-                ", msgType=" + msgType +
-                ", requestId=" + requestId +
-                ", clientId='" + clientId + '\'' +
-                ", bizType='" + bizType + '\'' +
-                ", extensions=" + extensions +
-                ", body=" + (body == null ? "" : new String(body)) +
-                '}';
+        return "GatewayMessage{" + "magic=" + magic + ", version=" + version + ", msgType=" + msgType + ", requestId="
+                        + requestId + ", clientId='" + clientId + '\'' + ", bizType='" + bizType + '\''
+                        + ", extensions=" + extensions + ", body=" + (body == null ? "" : new String(body)) + '}';
     }
 }

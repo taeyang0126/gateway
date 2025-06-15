@@ -13,7 +13,8 @@ public class ConnectionConfig {
     private final int connectTimeoutMillis;
 
     private ConnectionConfig() {
-        this.connectTimeoutMillis = Integer.parseInt(System.getProperty(ROUTE_SERVICE_CONNECT_TIMEOUT, String.valueOf(DEFAULT_CONNECT_TIMEOUT)));
+        this.connectTimeoutMillis = Integer.parseInt(
+                        System.getProperty(ROUTE_SERVICE_CONNECT_TIMEOUT, String.valueOf(DEFAULT_CONNECT_TIMEOUT)));
     }
 
     public static ConnectionConfig getInstance() {
@@ -23,4 +24,4 @@ public class ConnectionConfig {
     public int getConnectTimeoutMillis() {
         return connectTimeoutMillis;
     }
-} 
+}

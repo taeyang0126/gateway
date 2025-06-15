@@ -38,7 +38,8 @@ public class NacosConfigLoader {
     /**
      * 从指定配置文件加载配置
      *
-     * @param configFile 配置文件名（相对于 classpath）
+     * @param configFile
+     *            配置文件名（相对于 classpath）
      */
     public static NacosConfig load(String configFile) {
         Properties props = new Properties();
@@ -68,8 +69,7 @@ public class NacosConfigLoader {
         config.setUsername(get(props, KEY_USERNAME, null));
         config.setPassword(get(props, KEY_PASSWORD, null));
 
-        logger.info("已加载Nacos配置: serverAddr={}, namespace={}, group={}, ephemeral={}",
-                serverAddr, namespace, config.getGroup(), config.isEphemeral());
+        logger.info("已加载Nacos配置: serverAddr={}, namespace={}, group={}", serverAddr, namespace, config.getGroup());
 
         return config;
     }
@@ -85,4 +85,4 @@ public class NacosConfigLoader {
     private static String get(Properties props, String key, String defaultValue) {
         return props.getProperty(PREFIX + key, defaultValue);
     }
-} 
+}

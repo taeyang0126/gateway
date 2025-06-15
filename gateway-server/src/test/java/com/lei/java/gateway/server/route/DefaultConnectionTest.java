@@ -57,32 +57,32 @@ public class DefaultConnectionTest {
         CompletableFuture<Channel> serverSideClientChannelFuture = new CompletableFuture<>();
 
         new Thread(() -> {
-            serverBootstrap.group(BOSS_GROUP, WORKER_GROUP)
-                    .channel(NioServerSocketChannel.class)
-                    .childHandler(new ChannelInitializer<NioSocketChannel>() {
-                        @Override
-                        protected void initChannel(NioSocketChannel ch) throws Exception {
-                            // 保存服务端接受的客户端 Channel
-                            serverSideClientChannelFuture.complete(ch);
-
-                            ChannelPipeline pipeline = ch.pipeline();
-                            pipeline.addLast(new StringDecoder());
-                            pipeline.addLast(new StringEncoder());
-                            pipeline.addLast(new SimpleChannelInboundHandler<String>() {
+            serverBootstrap.group(BOSS_GROUP, WORKER_GROUP).channel(NioServerSocketChannel.class)
+                            .childHandler(new ChannelInitializer<NioSocketChannel>() {
                                 @Override
-                                protected void channelRead0(ChannelHandlerContext ctx, String msg) throws Exception {
-                                    logger.info("server received {}", msg);
-                                    ctx.writeAndFlush(msg);
-                                }
+                                protected void initChannel(NioSocketChannel ch) throws Exception {
+                                    // 保存服务端接受的客户端 Channel
+                                    serverSideClientChannelFuture.complete(ch);
 
-                                @Override
-                                public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-                                    logger.info("Server side client channel inactive");
-                                    super.channelInactive(ctx);
+                                    ChannelPipeline pipeline = ch.pipeline();
+                                    pipeline.addLast(new StringDecoder());
+                                    pipeline.addLast(new StringEncoder());
+                                    pipeline.addLast(new SimpleChannelInboundHandler<String>() {
+                                        @Override
+                                        protected void channelRead0(ChannelHandlerContext ctx, String msg)
+                                                        throws Exception {
+                                            logger.info("server received {}", msg);
+                                            ctx.writeAndFlush(msg);
+                                        }
+
+                                        @Override
+                                        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+                                            logger.info("Server side client channel inactive");
+                                            super.channelInactive(ctx);
+                                        }
+                                    });
                                 }
                             });
-                        }
-                    });
             ChannelFuture channelFuture = serverBootstrap.bind(SERVER_PORT).syncUninterruptibly();
             logger.info("server bind finished: {}", SERVER_PORT);
             Channel serverChannel = channelFuture.channel();
@@ -91,35 +91,36 @@ public class DefaultConnectionTest {
         }).start();
 
         Bootstrap bootstrap = new Bootstrap();
-        bootstrap.group(WORKER_GROUP)
-                .channel(NioSocketChannel.class)
-                .handler(new ChannelInitializer<NioSocketChannel>() {
-                    @Override
-                    protected void initChannel(NioSocketChannel ch) throws Exception {
-                        ChannelPipeline pipeline = ch.pipeline();
-                        pipeline.addLast(new StringDecoder());
-                        pipeline.addLast(new StringEncoder());
-                        pipeline.addLast(new SimpleChannelInboundHandler<String>() {
+        bootstrap.group(WORKER_GROUP).channel(NioSocketChannel.class)
+                        .handler(new ChannelInitializer<NioSocketChannel>() {
                             @Override
-                            protected void channelRead0(ChannelHandlerContext ctx, String msg) throws Exception {
-                                logger.info("client received {}", msg);
-                                ctx.writeAndFlush(msg);
-                            }
+                            protected void initChannel(NioSocketChannel ch) throws Exception {
+                                ChannelPipeline pipeline = ch.pipeline();
+                                pipeline.addLast(new StringDecoder());
+                                pipeline.addLast(new StringEncoder());
+                                pipeline.addLast(new SimpleChannelInboundHandler<String>() {
+                                    @Override
+                                    protected void channelRead0(ChannelHandlerContext ctx, String msg)
+                                                    throws Exception {
+                                        logger.info("client received {}", msg);
+                                        ctx.writeAndFlush(msg);
+                                    }
 
-                            @Override
-                            public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-                                logger.info("Client channel inactive");
-                                super.channelInactive(ctx);
+                                    @Override
+                                    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+                                        logger.info("Client channel inactive");
+                                        super.channelInactive(ctx);
+                                    }
+                                });
                             }
                         });
-                    }
-                });
         ChannelFuture channelFuture = bootstrap.connect("127.0.0.1", SERVER_PORT).syncUninterruptibly();
         Channel clientChannel = channelFuture.channel();
         logger.info("client connected: {}", clientChannel);
 
         // 构建 DefaultConnection
-        DefaultConnection defaultConnection = new DefaultConnection(bootstrap, clientChannel, new ServiceInstance("127.0.0.1", SERVER_PORT));
+        DefaultConnection defaultConnection = new DefaultConnection(bootstrap, clientChannel,
+                        new ServiceInstance("127.0.0.1", SERVER_PORT));
 
         // wait 1s
         try {
@@ -152,23 +153,23 @@ public class DefaultConnectionTest {
         CompletableFuture<Channel> serverSideClientChannelFuture = new CompletableFuture<>();
 
         new Thread(() -> {
-            serverBootstrap.group(BOSS_GROUP, WORKER_GROUP)
-                    .channel(NioServerSocketChannel.class)
-                    .childHandler(new ChannelInitializer<NioSocketChannel>() {
-                        @Override
-                        protected void initChannel(NioSocketChannel ch) throws Exception {
-                            serverSideClientChannelFuture.complete(ch);
-                            ChannelPipeline pipeline = ch.pipeline();
-                            pipeline.addLast(new StringDecoder());
-                            pipeline.addLast(new StringEncoder());
-                            pipeline.addLast(new SimpleChannelInboundHandler<String>() {
+            serverBootstrap.group(BOSS_GROUP, WORKER_GROUP).channel(NioServerSocketChannel.class)
+                            .childHandler(new ChannelInitializer<NioSocketChannel>() {
                                 @Override
-                                protected void channelRead0(ChannelHandlerContext ctx, String msg) throws Exception {
-                                    ctx.writeAndFlush(msg);
+                                protected void initChannel(NioSocketChannel ch) throws Exception {
+                                    serverSideClientChannelFuture.complete(ch);
+                                    ChannelPipeline pipeline = ch.pipeline();
+                                    pipeline.addLast(new StringDecoder());
+                                    pipeline.addLast(new StringEncoder());
+                                    pipeline.addLast(new SimpleChannelInboundHandler<String>() {
+                                        @Override
+                                        protected void channelRead0(ChannelHandlerContext ctx, String msg)
+                                                        throws Exception {
+                                            ctx.writeAndFlush(msg);
+                                        }
+                                    });
                                 }
                             });
-                        }
-                    });
             ChannelFuture channelFuture = serverBootstrap.bind(SERVER_PORT).syncUninterruptibly();
             Channel serverChannel = channelFuture.channel();
             serverChannelFuture.complete(serverChannel);
@@ -180,21 +181,21 @@ public class DefaultConnectionTest {
 
         // 启动客户端
         Bootstrap bootstrap = new Bootstrap();
-        bootstrap.group(WORKER_GROUP)
-                .channel(NioSocketChannel.class)
-                .handler(new ChannelInitializer<NioSocketChannel>() {
-                    @Override
-                    protected void initChannel(NioSocketChannel ch) throws Exception {
-                        ChannelPipeline pipeline = ch.pipeline();
-                        pipeline.addLast(new StringDecoder());
-                        pipeline.addLast(new StringEncoder());
-                    }
-                });
+        bootstrap.group(WORKER_GROUP).channel(NioSocketChannel.class)
+                        .handler(new ChannelInitializer<NioSocketChannel>() {
+                            @Override
+                            protected void initChannel(NioSocketChannel ch) throws Exception {
+                                ChannelPipeline pipeline = ch.pipeline();
+                                pipeline.addLast(new StringDecoder());
+                                pipeline.addLast(new StringEncoder());
+                            }
+                        });
         ChannelFuture channelFuture = bootstrap.connect("127.0.0.1", SERVER_PORT).syncUninterruptibly();
         Channel clientChannel = channelFuture.channel();
 
         // 构建 DefaultConnection
-        DefaultConnection defaultConnection = new DefaultConnection(bootstrap, clientChannel, new ServiceInstance("127.0.0.1", SERVER_PORT));
+        DefaultConnection defaultConnection = new DefaultConnection(bootstrap, clientChannel,
+                        new ServiceInstance("127.0.0.1", SERVER_PORT));
 
         // 关闭
         serverSideClientChannelFuture.get().close().syncUninterruptibly();

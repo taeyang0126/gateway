@@ -14,8 +14,7 @@ import java.util.ArrayDeque;
 import java.util.concurrent.ThreadFactory;
 
 /**
- * HTTP 连接处理器
- * 负责 GatewayMessage 和 HTTP 消息的转换
+ * HTTP 连接处理器 负责 GatewayMessage 和 HTTP 消息的转换
  */
 public class HttpConnectionHandler extends ChannelDuplexHandler {
 
@@ -29,10 +28,8 @@ public class HttpConnectionHandler extends ChannelDuplexHandler {
         this.connection = connection;
         this.requests = new ArrayDeque<>();
         this.httpHandlerFactory = Thread.ofVirtual().name("upstream-http-handler-", 0)
-                .uncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e))
-                .factory();
+                        .uncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e)).factory();
     }
-
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
@@ -47,12 +44,11 @@ public class HttpConnectionHandler extends ChannelDuplexHandler {
             GatewayMessage gatewayMessage = (GatewayMessage) msg;
             FullHttpRequest httpRequest = HttpProtocolConverter.toHttpRequest(gatewayMessage);
             // 转换为 HTTP 请求并发送
-            ctx.writeAndFlush(httpRequest, promise)
-                    .addListener(future -> {
-                        if (future.isSuccess()) {
-                            requests.add(gatewayMessage);
-                        }
-                    });
+            ctx.writeAndFlush(httpRequest, promise).addListener(future -> {
+                if (future.isSuccess()) {
+                    requests.add(gatewayMessage);
+                }
+            });
         }).start();
 
     }
@@ -77,4 +73,4 @@ public class HttpConnectionHandler extends ChannelDuplexHandler {
         }).start();
     }
 
-} 
+}

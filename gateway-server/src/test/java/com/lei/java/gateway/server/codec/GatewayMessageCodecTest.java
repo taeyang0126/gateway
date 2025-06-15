@@ -64,4 +64,4 @@ public class GatewayMessageCodecTest {
         assertNull(channel.readOutbound());
     }
 
-} 
+}

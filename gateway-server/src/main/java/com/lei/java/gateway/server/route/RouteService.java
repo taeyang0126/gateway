@@ -17,7 +17,8 @@ public interface RouteService {
     /**
      * 路由并发送消息
      *
-     * @param message 网关消息
+     * @param message
+     *            网关消息
      * @return 响应消息的Future
      */
     CompletableFuture<GatewayMessage> route(GatewayMessage message);

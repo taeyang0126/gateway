@@ -99,6 +99,99 @@ gateway/
 - Mockito：测试模拟框架
 - TestContainers：集成测试支持
 - JaCoCo：代码覆盖率检查（要求80%以上）
+- Checkstyle：代码风格检查
+
+### 代码风格检查
+
+#### 命令行检查
+```bash
+# 运行代码风格检查
+mvn checkstyle:check
+
+# 自动格式化代码
+mvn formatter:format
+
+# 运行测试并生成覆盖率报告
+mvn test jacoco:report
+```
+
+#### IDEA配置
+
+1. Checkstyle插件配置
+   - 安装 Checkstyle-IDEA 插件
+   - 打开 Settings -> Tools -> Checkstyle
+   - 点击 "+" 添加新配置
+   - 选择 "Use a local Checkstyle file"
+   - 选择项目根目录下的 `checkstyle.xml`
+   - 勾选新添加的配置
+   - 在编辑器中使用 Alt+Shift+L (Windows) 或 Option+Shift+L (Mac) 检查当前文件
+
+2. 代码格式化配置
+   - 打开 Settings -> Editor -> Code Style
+   - 点击齿轮图标 -> Import Scheme -> Eclipse XML Profile
+   - 选择项目根目录下的 `eclipse-java-google-style.xml`
+   - 使用 Ctrl+Alt+L (Windows) 或 Command+Option+L (Mac) 格式化代码
+
+#### 检查规则说明
+
+1. 行长度限制
+   - 普通代码行：最大180字符
+   - 日志语句和注解：不限制长度
+
+2. 命名规范
+   - 类名：PascalCase（如：UserService）
+   - 方法名和变量：camelCase（如：getUserById）
+   - 常量：UPPER_SNAKE_CASE（如：MAX_RETRY_COUNT）
+   - 包名：全小写，用点分隔（如：com.example.project）
+
+3. 缩进和空格
+   - 使用4个空格缩进（不使用Tab）
+   - 运算符前后需要空格
+   - 逗号后需要空格
+   - 左花括号前需要空格
+
+4. 代码组织
+   - 每个源文件只包含一个顶级类
+   - 导入语句不使用通配符(*)
+   - 类的成员顺序：静态变量 -> 实例变量 -> 构造函数 -> 方法
+   - 方法长度不超过200行
+   - 参数数量不超过8个
+
+#### 忽略检查
+如果某些特殊情况需要忽略检查，可以使用以下方式：
+
+1. 忽略单行检查
+```java
+// CHECKSTYLE:OFF
+某行代码
+// CHECKSTYLE:ON
+```
+
+2. 忽略特定规则
+```java
+@SuppressWarnings("checkstyle:LineLength")
+public class SomeClass {
+    // 这个类中的行长度检查会被忽略
+}
+```
+
+### 测试规范
+1. 单元测试要求
+   - 测试类名以Test结尾
+   - 测试方法名清晰表达测试意图
+   - 每个测试方法只测试一个场景
+   - 使用断言清晰表达预期结果
+
+2. 测试覆盖率要求
+   - 整体行覆盖率不低于80%
+   - 核心业务逻辑覆盖率不低于90%
+   - 运行 `mvn test jacoco:report` 查看覆盖率报告
+
+3. 测试最佳实践
+   - 使用 `@BeforeEach` 和 `@AfterEach` 管理测试资源
+   - 使用 Mockito 模拟外部依赖
+   - 使用 TestContainers 进行集成测试
+   - 保持测试代码整洁，遵循与主代码相同的代码规范
 
 ### 提交规范
 提交代码前需要：

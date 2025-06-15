@@ -84,41 +84,36 @@ public class GatewayServer {
 
         try {
             ServerBootstrap b = new ServerBootstrap();
-            b.group(bossGroup, workerGroup)
-                    .channel(NioServerSocketChannel.class)
-                    .option(ChannelOption.SO_BACKLOG, 128)
-                    .option(ChannelOption.SO_REUSEADDR, true)
-                    .childOption(ChannelOption.SO_KEEPALIVE, true)
-                    .childOption(ChannelOption.TCP_NODELAY, true)
-                    .childHandler(new ChannelInitializer<SocketChannel>() {
-                        @Override
-                        protected void initChannel(SocketChannel ch) throws Exception {
-                            logger.debug("New connection from: {}", ch.remoteAddress());
-                            ChannelPipeline p = ch.pipeline();
-                            // 添加空闲检测，60秒没有读取到数据则判定为空闲
-                            p.addLast(new IdleStateHandler(60, 0, 0, TimeUnit.SECONDS));
-                            // 添加消息编解码器
-                            p.addLast(new GatewayMessageCodec());
-                            // auth handler
-                            p.addLast(authHandler);
-                            // 添加网关处理器
-                            p.addLast(new GatewayServerHandler(sessionManager, routeService));
-                        }
-                    });
+            b.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class).option(ChannelOption.SO_BACKLOG, 128)
+                            .option(ChannelOption.SO_REUSEADDR, true).childOption(ChannelOption.SO_KEEPALIVE, true)
+                            .childOption(ChannelOption.TCP_NODELAY, true)
+                            .childHandler(new ChannelInitializer<SocketChannel>() {
+                                @Override
+                                protected void initChannel(SocketChannel ch) throws Exception {
+                                    logger.debug("New connection from: {}", ch.remoteAddress());
+                                    ChannelPipeline p = ch.pipeline();
+                                    // 添加空闲检测，60秒没有读取到数据则判定为空闲
+                                    p.addLast(new IdleStateHandler(60, 0, 0, TimeUnit.SECONDS));
+                                    // 添加消息编解码器
+                                    p.addLast(new GatewayMessageCodec());
+                                    // auth handler
+                                    p.addLast(authHandler);
+                                    // 添加网关处理器
+                                    p.addLast(new GatewayServerHandler(sessionManager, routeService));
+                                }
+                            });
 
             // 绑定端口并启动服务器
-            ChannelFuture f = b.bind(port)
-                    .addListener((ChannelFutureListener) channelFuture -> {
-                        // 如果是 nacos，则将本机注册到 nacos 上
-                        if (registry != null && registry instanceof NacosServiceRegistry) {
-                            InetSocketAddress socketAddress = (InetSocketAddress) channelFuture.channel().localAddress();
-                            String serverHost = socketAddress.getHostString();
-                            int serverPort = socketAddress.getPort();
-                            registry.registerService(GatewayConstant.SERVER_NAME, new ServiceInstance(serverHost, serverPort));
-                            logger.info("Gateway register nacos success: host={}, port={}", serverHost, serverPort);
-                        }
-                    })
-                    .sync();
+            ChannelFuture f = b.bind(port).addListener((ChannelFutureListener) channelFuture -> {
+                // 如果是 nacos，则将本机注册到 nacos 上
+                if (registry != null && registry instanceof NacosServiceRegistry) {
+                    InetSocketAddress socketAddress = (InetSocketAddress) channelFuture.channel().localAddress();
+                    String serverHost = socketAddress.getHostString();
+                    int serverPort = socketAddress.getPort();
+                    registry.registerService(GatewayConstant.SERVER_NAME, new ServiceInstance(serverHost, serverPort));
+                    logger.info("Gateway register nacos success: host={}, port={}", serverHost, serverPort);
+                }
+            }).sync();
 
             logger.info("Gateway Server started successfully on port: {}", port);
             completableFuture.complete(null);
@@ -160,7 +155,6 @@ public class GatewayServer {
 
         NacosConfig config = NacosConfigLoader.load("nacos.properties");
         ServiceRegistry registry = new NacosServiceRegistry(config);
-        new GatewayServer(port, registry, new DefaultConnectionManager())
-                .start();
+        new GatewayServer(port, registry, new DefaultConnectionManager()).start();
     }
-} 
+}

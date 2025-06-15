@@ -20,7 +20,7 @@ public class DefaultSessionManager implements SessionManager {
         if (oldSession != null) {
             removeSession(oldSession.getId());
         }
-        
+
         // 创建新会话
         String sessionId = generateSessionId();
         DefaultSession session = new DefaultSession(sessionId, clientId, channel);
@@ -76,4 +76,4 @@ public class DefaultSessionManager implements SessionManager {
         sessions.clear();
         clientIdIndex.clear();
     }
-} 
+}

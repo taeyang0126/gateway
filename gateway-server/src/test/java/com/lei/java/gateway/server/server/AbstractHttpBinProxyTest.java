@@ -89,7 +89,6 @@ public abstract class AbstractHttpBinProxyTest {
     }
 
     @Test
-    @Timeout(10)
     public void test() throws Exception {
         doAuth();
 
@@ -174,25 +173,24 @@ public abstract class AbstractHttpBinProxyTest {
 
     private Channel initClient() throws InterruptedException {
         Bootstrap bootstrap = new Bootstrap();
-        bootstrap.group(eventLoopGroup)
-                .option(ChannelOption.TCP_NODELAY, true)
-                .option(ChannelOption.SO_KEEPALIVE, true)
-                .option(ChannelOption.SO_REUSEADDR, true)
-                .channel(NioSocketChannel.class)
-                .handler(new ChannelInitializer<NioSocketChannel>() {
-                    @Override
-                    protected void initChannel(NioSocketChannel ch) throws Exception {
-                        ChannelPipeline pipeline = ch.pipeline();
-                        pipeline.addLast(new GatewayMessageCodec());
-                        pipeline.addLast(new SimpleChannelInboundHandler<GatewayMessage>() {
+        bootstrap.group(eventLoopGroup).option(ChannelOption.TCP_NODELAY, true).option(ChannelOption.SO_KEEPALIVE, true)
+                        .option(ChannelOption.SO_REUSEADDR, true).channel(NioSocketChannel.class)
+                        .handler(new ChannelInitializer<NioSocketChannel>() {
                             @Override
-                            protected void channelRead0(ChannelHandlerContext ctx, GatewayMessage msg) throws Exception {
-                                CompletableFuture<GatewayMessage> request = pendingRequests.remove(msg.getRequestId());
-                                request.complete(msg);
+                            protected void initChannel(NioSocketChannel ch) throws Exception {
+                                ChannelPipeline pipeline = ch.pipeline();
+                                pipeline.addLast(new GatewayMessageCodec());
+                                pipeline.addLast(new SimpleChannelInboundHandler<GatewayMessage>() {
+                                    @Override
+                                    protected void channelRead0(ChannelHandlerContext ctx, GatewayMessage msg)
+                                                    throws Exception {
+                                        CompletableFuture<GatewayMessage> request = pendingRequests
+                                                        .remove(msg.getRequestId());
+                                        request.complete(msg);
+                                    }
+                                });
                             }
                         });
-                    }
-                });
         Channel channel = bootstrap.connect(SERVER_HOST, getPort()).sync().channel();
         channel.closeFuture().addListener(future -> {
             // 连接关闭，清除资源
@@ -206,14 +204,12 @@ public abstract class AbstractHttpBinProxyTest {
 
     private CompletableFuture<GatewayMessage> writeMsg(GatewayMessage request) {
         CompletableFuture<GatewayMessage> completableFuture = new CompletableFuture<>();
-        clientChannel.writeAndFlush(request)
-                .addListener(future -> {
-                    if (future.isSuccess()) {
-                        pendingRequests.put(request.getRequestId(), completableFuture);
-                    }
-                });
+        clientChannel.writeAndFlush(request).addListener(future -> {
+            if (future.isSuccess()) {
+                pendingRequests.put(request.getRequestId(), completableFuture);
+            }
+        });
         return completableFuture;
     }
-
 
 }

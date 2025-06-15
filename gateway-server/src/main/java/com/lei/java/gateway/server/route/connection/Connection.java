@@ -28,7 +28,8 @@ public interface Connection {
     /**
      * 发送消息
      *
-     * @param message 网关消息
+     * @param message
+     *            网关消息
      * @return 响应的Future
      */
     CompletableFuture<GatewayMessage> send(GatewayMessage message);
@@ -46,7 +47,8 @@ public interface Connection {
     /**
      * 处理响应消息
      *
-     * @param message message
+     * @param message
+     *            message
      */
     void handleResponse(GatewayMessage message);
 

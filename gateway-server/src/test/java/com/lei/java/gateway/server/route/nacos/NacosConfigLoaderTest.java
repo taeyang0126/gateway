@@ -27,4 +27,4 @@ class NacosConfigLoaderTest {
         assertEquals("public", config.getNamespace());
         assertEquals("TEST_GROUP", config.getGroup());
     }
-} 
+}

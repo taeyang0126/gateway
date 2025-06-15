@@ -26,7 +26,6 @@ public class NacosServiceRegistry implements ServiceRegistry {
 
         // 检查服务连接状态
         String status = namingService.getServerStatus();
-        logger.info("Nacos server status: {}", status);
         if (!"UP".equals(status)) {
             throw new NacosException(500, "Nacos server is not ready, status: " + status);
         }
@@ -36,12 +35,9 @@ public class NacosServiceRegistry implements ServiceRegistry {
     public void registerService(String bizType, ServiceInstance instance) {
         try {
             Instance nacosInstance = convertToNacosInstance(instance);
-            nacosInstance.setEphemeral(nacosConfig.isEphemeral());
-
             // 注册服务实例
             logger.info("Registering service: {} with instance: {}", bizType, nacosInstance);
             namingService.registerInstance(bizType, nacosConfig.getGroup(), nacosInstance);
-
         } catch (NacosException e) {
             logger.error("Failed to register service: " + bizType, e);
             throw new RuntimeException("Failed to register service", e);
@@ -65,9 +61,7 @@ public class NacosServiceRegistry implements ServiceRegistry {
         try {
             List<Instance> instances = namingService.getAllInstances(bizType, nacosConfig.getGroup());
             logger.debug("Found {} instances for bizType={}", instances.size(), bizType);
-            return instances.stream()
-                    .map(this::convertFromNacosInstance)
-                    .collect(Collectors.toList());
+            return instances.stream().map(this::convertFromNacosInstance).collect(Collectors.toList());
         } catch (NacosException e) {
             logger.error("Failed to get services for bizType: " + bizType, e);
             throw new RuntimeException("Failed to get services", e);
@@ -78,7 +72,8 @@ public class NacosServiceRegistry implements ServiceRegistry {
     public Map<String, List<ServiceInstance>> getAllServices() {
         try {
             Map<String, List<ServiceInstance>> result = new HashMap<>();
-            List<String> services = namingService.getServicesOfServer(1, Integer.MAX_VALUE, nacosConfig.getGroup()).getData();
+            List<String> services = namingService.getServicesOfServer(1, Integer.MAX_VALUE, nacosConfig.getGroup())
+                            .getData();
 
             for (String service : services) {
                 result.put(service, getServices(service));
@@ -119,13 +114,7 @@ public class NacosServiceRegistry implements ServiceRegistry {
     }
 
     private ServiceInstance convertFromNacosInstance(Instance nacosInstance) {
-        return new ServiceInstance(
-                nacosInstance.getIp(),
-                nacosInstance.getPort(),
-                nacosInstance.getWeight(),
-                nacosInstance.getMetadata(),
-                nacosInstance.isHealthy(),
-                nacosInstance.isEnabled()
-        );
+        return new ServiceInstance(nacosInstance.getIp(), nacosInstance.getPort(), nacosInstance.getWeight(),
+                        nacosInstance.getMetadata(), nacosInstance.isHealthy(), nacosInstance.isEnabled());
     }
-} 
+}

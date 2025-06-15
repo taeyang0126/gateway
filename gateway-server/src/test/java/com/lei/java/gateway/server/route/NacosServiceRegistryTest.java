@@ -24,8 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Nacos服务注册测试
- * 运行前请确保Nacos服务已启动
+ * Nacos服务注册测试 运行前请确保Nacos服务已启动
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class NacosServiceRegistryTest {
@@ -47,7 +46,6 @@ public class NacosServiceRegistryTest {
         metadata.put("environment", "test");
         testInstance = new ServiceInstance("127.0.0.1", 8080, metadata);
     }
-
 
     @AfterAll
     public static void clear() {

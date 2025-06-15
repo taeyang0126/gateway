@@ -37,5 +37,4 @@ public class HttpBinProxyNacosTest extends AbstractHttpBinProxyTest {
         return new GatewayServer(PORT, registry, connectionManager);
     }
 
-
 }
