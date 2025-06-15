@@ -40,7 +40,7 @@ jobs:
       run: mvn jacoco:report
         
     - name: Upload Coverage Report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: coverage-report
         path: '**/target/site/jacoco'
@@ -49,7 +49,7 @@ jobs:
       run: mvn -B package
         
     - name: Upload Build Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: gateway-artifacts
         path: |
@@ -58,7 +58,7 @@ jobs:
 
     - name: Upload Test Results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: test-results
         path: '**/target/surefire-reports' 
