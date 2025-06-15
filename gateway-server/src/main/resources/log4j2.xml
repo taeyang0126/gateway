@@ -34,13 +34,13 @@
 
     <Loggers>
         <!-- 网关核心日志 -->
-        <Logger name="io.netty.gateway" level="DEBUG" additivity="false">
+        <Logger name="com.lei.java.gateway.server" level="DEBUG" additivity="false">
             <AppenderRef ref="Console"/>
             <AppenderRef ref="FileAppender"/>
         </Logger>
 
         <!-- 错误日志单独收集 -->
-        <Logger name="io.netty.gateway.error" level="ERROR" additivity="false">
+        <Logger name="com.lei.java.gateway" level="ERROR" additivity="false">
             <AppenderRef ref="ErrorFileAppender"/>
         </Logger>
 

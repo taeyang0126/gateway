@@ -1,6 +1,5 @@
 package com.lei.java.gateway.server;
 
-import com.alibaba.nacos.api.exception.NacosException;
 import com.lei.java.gateway.client.constants.GatewayConstant;
 import com.lei.java.gateway.server.auth.DefaultAuthService;
 import com.lei.java.gateway.server.codec.GatewayMessageCodec;

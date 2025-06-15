@@ -1,9 +1,9 @@
 package com.lei.java.gateway.server.route.connection;
 
+import com.lei.java.gateway.server.protocol.GatewayMessage;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
-import com.lei.java.gateway.server.protocol.GatewayMessage;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.util.ReferenceCountUtil;
@@ -11,7 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadFactory;
 
 /**
  * HTTP 连接处理器
@@ -23,12 +23,14 @@ public class HttpConnectionHandler extends ChannelDuplexHandler {
 
     private final Connection connection;
     private final ArrayDeque<GatewayMessage> requests;
-    private final ExecutorService bizExecutor;
+    private final ThreadFactory httpHandlerFactory;
 
-    public HttpConnectionHandler(Connection connection, ExecutorService bizExecutor) {
+    public HttpConnectionHandler(Connection connection) {
         this.connection = connection;
         this.requests = new ArrayDeque<>();
-        this.bizExecutor = bizExecutor;
+        this.httpHandlerFactory = Thread.ofVirtual().name("upstream-http-handler-", 0)
+                .uncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e))
+                .factory();
     }
 
 
@@ -41,7 +43,7 @@ public class HttpConnectionHandler extends ChannelDuplexHandler {
             return;
         }
 
-        bizExecutor.execute(() -> {
+        httpHandlerFactory.newThread(() -> {
             GatewayMessage gatewayMessage = (GatewayMessage) msg;
             FullHttpRequest httpRequest = HttpProtocolConverter.toHttpRequest(gatewayMessage);
             // 转换为 HTTP 请求并发送
@@ -51,13 +53,13 @@ public class HttpConnectionHandler extends ChannelDuplexHandler {
                             requests.add(gatewayMessage);
                         }
                     });
-        });
+        }).start();
 
     }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
-        bizExecutor.execute(() -> {
+        httpHandlerFactory.newThread(() -> {
             try {
                 if (msg instanceof FullHttpResponse) {
                     FullHttpResponse response = (FullHttpResponse) msg;
@@ -72,7 +74,7 @@ public class HttpConnectionHandler extends ChannelDuplexHandler {
             } finally {
                 ReferenceCountUtil.release(msg);
             }
-        });
+        }).start();
     }
 
 } 

@@ -1,24 +1,20 @@
 package com.lei.java.gateway.server.handler;
 
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
 import com.lei.java.gateway.server.protocol.GatewayMessage;
 import com.lei.java.gateway.server.route.RouteService;
 import com.lei.java.gateway.server.session.DefaultSession;
 import com.lei.java.gateway.server.session.Session;
 import com.lei.java.gateway.server.session.SessionManager;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.ReferenceCountUtil;
-import io.netty.util.concurrent.DefaultThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadFactory;
 
 /**
  * 网关服务器消息处理器
@@ -28,20 +24,14 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
 
     private final SessionManager sessionManager;
     private final RouteService routeService;
-    private final ExecutorService businessExecutor;
+    private final ThreadFactory businessFactory;
 
     public GatewayServerHandler(SessionManager sessionManager, RouteService routeService) {
         this.sessionManager = sessionManager;
         this.routeService = routeService;
-        // 创建业务线程池，线程数可配置
-        this.businessExecutor = new ThreadPoolExecutor(
-                Runtime.getRuntime().availableProcessors() * 2,
-                Runtime.getRuntime().availableProcessors() * 4,
-                60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(10000),
-                new DefaultThreadFactory("gateway-business"),
-                new ThreadPoolExecutor.CallerRunsPolicy()
-        );
+        businessFactory = Thread.ofVirtual().name("business-handler-", 0)
+                .uncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e))
+                .factory();
     }
 
     @Override
@@ -66,14 +56,14 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
                     // 业务消息提交到业务线程池处理
                     final GatewayMessage requestMessage = message;
                     final Session currentSession = session;
-                    businessExecutor.execute(() -> {
+                    businessFactory.newThread(() -> {
                         try {
                             handleBizMessage(ctx, requestMessage, currentSession);
                         } catch (Exception e) {
                             logger.error("Handle business message error", e);
                             handleError(ctx, requestMessage, e);
                         }
-                    });
+                    }).start();
                     break;
                 default:
                     logger.warn("Unknown message type: {}", message.getMsgType());
@@ -122,20 +112,6 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
             sessionManager.removeSession(session.getId());
         }
         ctx.close();
-    }
-
-    @Override
-    public void handlerRemoved(ChannelHandlerContext ctx) {
-        // 优雅关闭线程池
-        businessExecutor.shutdown();
-        try {
-            if (!businessExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                businessExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            businessExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
     }
 
     private Session getSession(ChannelHandlerContext ctx, GatewayMessage message) {

@@ -39,8 +39,8 @@
 ## 快速开始
 
 ### 环境要求
-- JDK 8+
-- Maven 3.6+
+- JDK 24+
+- Maven 3.11+
 - Nacos 2.5.1+
 
 ### 构建项目
@@ -51,44 +51,54 @@ mvn clean package
 ### 运行测试
 ```bash
 # 运行单元测试
-mvn test
+mvnd test
 
 # 运行完整检查（包括代码风格、覆盖率等）
-mvn verify
+mvnd verify
 ```
 
 ### 启动服务
 ```bash
-java -jar target/gateway-${version}.jar
+# 启动网关服务端
+cd gateway-server
+java -jar target/gateway-server-${version}.jar
 ```
 
 ## 项目结构
 ```
 gateway/
-├── src/
-│   ├── main/
-│   │   ├── java/
-│   │   │   └── io/netty/gateway/
-│   │   │       ├── codec/      # 消息编解码
-│   │   │       ├── common/     # 公共工具
-│   │   │       ├── config/     # 配置管理
-│   │   │       ├── connection/ # 连接管理
-│   │   │       ├── handler/    # 消息处理
-│   │   │       ├── protocol/   # 协议定义
-│   │   │       ├── route/      # 路由管理
-│   │   │       └── session/    # 会话管理
-│   │   └── resources/
-│   └── test/
-└── pom.xml
+├── gateway-server/        # 网关服务端
+│   ├── src/
+│   │   ├── main/
+│   │   │   ├── java/
+│   │   │   │   └── io/netty/gateway/
+│   │   │   │       ├── codec/      # 消息编解码
+│   │   │   │       ├── common/     # 公共工具
+│   │   │   │       ├── config/     # 配置管理
+│   │   │   │       ├── connection/ # 连接管理
+│   │   │   │       ├── handler/    # 消息处理
+│   │   │   │       ├── protocol/   # 协议定义
+│   │   │   │       ├── route/      # 路由管理
+│   │   │   │       └── session/    # 会话管理
+│   │   │   └── resources/
+│   │   └── test/
+│   └── pom.xml
+├── gateway-client/        # 网关客户端SDK
+│   ├── src/
+│   │   ├── main/
+│   │   └── test/
+│   └── pom.xml
+└── pom.xml               # 父工程POM
 ```
 
 ## 开发规范
 
 ### 代码质量
 项目使用以下工具确保代码质量：
-- Checkstyle：代码风格检查
-- JaCoCo：代码覆盖率检查（要求80%以上）
 - JUnit 5：单元测试框架
+- Mockito：测试模拟框架
+- TestContainers：集成测试支持
+- JaCoCo：代码覆盖率检查（要求80%以上）
 
 ### 提交规范
 提交代码前需要：
@@ -98,12 +108,13 @@ gateway/
 4. 遵循Git commit message规范
 
 ## 技术栈
-- Netty 4.2.3：网络通信框架
+- Netty 4.2.2：网络通信框架
 - Nacos 2.5.1：服务注册与发现
-- JUnit 5：单元测试框架
-- Mockito：测试模拟框架
-- SLF4J & Log4j2：日志框架
-- Jackson：JSON处理
+- JUnit 5.12.1：单元测试框架
+- Mockito 5.18.0：测试模拟框架
+- TestContainers 1.19.3：集成测试支持
+- SLF4J & Log4j2 2.23.1：日志框架
+- Jackson 2.13.5：JSON处理
 
 ## 文档
 - [需求文档](PRD.md)
