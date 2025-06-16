@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author 伍磊
  */
-public class GatewayMessageTest {
+public class GatewayMessageTests {
 
     @Test
     public void testEncodeAndDecodeWithBasicFields() {

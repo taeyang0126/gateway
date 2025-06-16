@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-public class HttpRouteServiceTest {
+public class HttpRouteServiceIT {
 
     private static final int UPSTREAM_PORT = 18080;
     private static final String UPSTREAM_HOST = "127.0.0.1";

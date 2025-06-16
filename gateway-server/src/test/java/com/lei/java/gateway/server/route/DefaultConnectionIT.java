@@ -36,9 +36,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * @author 伍磊
  */
-public class DefaultConnectionTest {
+public class DefaultConnectionIT {
 
-    private static final Logger logger = LoggerFactory.getLogger(DefaultConnectionTest.class);
+    private static final Logger logger = LoggerFactory.getLogger(DefaultConnectionIT.class);
     private static final EventLoopGroup BOSS_GROUP = new MultiThreadIoEventLoopGroup(2, NioIoHandler.newFactory());
     private static final EventLoopGroup WORKER_GROUP = new MultiThreadIoEventLoopGroup(2, NioIoHandler.newFactory());
     private static final int SERVER_PORT = 18000;

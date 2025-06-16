@@ -9,7 +9,7 @@ import com.lei.java.gateway.server.GatewayServer;
  *
  * @author 伍磊
  */
-public class HttpBinProxyTest extends AbstractHttpBinProxyTest {
+public class HttpBinProxyIT extends AbstractHttpBinProxyTest {
     private static final int PORT = 8889;
 
     @Override

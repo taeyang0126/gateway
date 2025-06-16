@@ -31,8 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-public class NacosServiceRegistryTest {
-    private static final Logger logger = LoggerFactory.getLogger(NacosServiceRegistryTest.class);
+public class NacosServiceRegistryIT {
+    private static final Logger logger = LoggerFactory.getLogger(NacosServiceRegistryIT.class);
 
     @Container
     private static final NacosTestContainer nacosContainer = NacosTestContainer.getInstance();

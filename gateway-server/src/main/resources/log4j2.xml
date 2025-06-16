@@ -34,9 +34,8 @@
 
     <Loggers>
         <!-- 网关核心日志 -->
-        <Logger name="com.lei.java.gateway.server" level="DEBUG" additivity="false">
+        <Logger name="com.lei.java.gateway.server" level="INFO" additivity="false">
             <AppenderRef ref="Console"/>
-            <AppenderRef ref="FileAppender"/>
         </Logger>
 
         <!-- 错误日志单独收集 -->

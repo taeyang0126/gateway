@@ -25,9 +25,9 @@ import java.util.concurrent.TimeUnit;
  * @author 伍磊
  */
 @Testcontainers
-public class HttpBinProxyNacosTest extends AbstractHttpBinProxyTest {
+public class HttpBinProxyNacosIT extends AbstractHttpBinProxyTest {
 
-    private static final Logger logger = LoggerFactory.getLogger(HttpBinProxyNacosTest.class);
+    private static final Logger logger = LoggerFactory.getLogger(HttpBinProxyNacosIT.class);
 
     @Container
     private static final NacosTestContainer nacosContainer = NacosTestContainer.getInstance();
