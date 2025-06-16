@@ -59,15 +59,15 @@ public class NacosConfigLoader {
      * 从Properties对象构建NacosConfig
      */
     private static NacosConfig buildConfig(Properties props) {
-        String serverAddr = getRequired(props, KEY_SERVER_ADDR);
-        String namespace = get(props, KEY_NAMESPACE, DEFAULT_NAMESPACE);
+        String serverAddr = resolveValue(getRequired(props, KEY_SERVER_ADDR));
+        String namespace = resolveValue(get(props, KEY_NAMESPACE, DEFAULT_NAMESPACE));
 
         NacosConfig config = new NacosConfig(serverAddr, namespace);
 
         // 设置可选配置
-        config.setGroup(get(props, KEY_GROUP, DEFAULT_GROUP));
-        config.setUsername(get(props, KEY_USERNAME, null));
-        config.setPassword(get(props, KEY_PASSWORD, null));
+        config.setGroup(resolveValue(get(props, KEY_GROUP, DEFAULT_GROUP)));
+        config.setUsername(resolveValue(get(props, KEY_USERNAME, null)));
+        config.setPassword(resolveValue(get(props, KEY_PASSWORD, null)));
 
         logger.info("已加载Nacos配置: serverAddr={}, namespace={}, group={}", serverAddr, namespace, config.getGroup());
 
@@ -84,5 +84,42 @@ public class NacosConfigLoader {
 
     private static String get(Properties props, String key, String defaultValue) {
         return props.getProperty(PREFIX + key, defaultValue);
+    }
+
+    /**
+     * 解析配置值，支持系统属性替换 例如: ${user.home} 将被替换为系统属性 user.home 的值
+     */
+    private static String resolveValue(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        // 检查是否包含 ${} 占位符
+        if (!value.contains("${")) {
+            return value;
+        }
+
+        // 解析所有的占位符
+        String result = value;
+        int startIndex;
+        while ((startIndex = result.indexOf("${")) != -1) {
+            int endIndex = result.indexOf("}", startIndex);
+            if (endIndex == -1) {
+                break;
+            }
+
+            String placeholder = result.substring(startIndex + 2, endIndex);
+            String propValue = System.getProperty(placeholder);
+
+            if (propValue != null) {
+                result = result.substring(0, startIndex) + propValue + result.substring(endIndex + 1);
+            } else {
+                logger.warn("系统属性 {} 未定义", placeholder);
+                // 如果找不到系统属性，保留原值
+                break;
+            }
+        }
+
+        return result;
     }
 }

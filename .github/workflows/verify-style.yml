@@ -1,0 +1,28 @@
+name: Verify Style
+
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+jobs:
+  style-check:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.1
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '24'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Check Code Format
+        run: mvn formatter:validate --no-transfer-progress
+
+      - name: Code Style Check
+        run: mvn checkstyle:check --no-transfer-progress

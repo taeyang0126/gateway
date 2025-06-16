@@ -92,6 +92,8 @@ public abstract class AbstractHttpBinProxyTest {
     public void test() throws Exception {
         doAuth();
 
+        logger.info("register start");
+
         // 1. anything
         gatewayServer.registerService("anything", DIRECT_HOST, DIRECT_PORT);
         TimeUnit.SECONDS.sleep(1);

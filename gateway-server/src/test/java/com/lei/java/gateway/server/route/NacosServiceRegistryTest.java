@@ -4,6 +4,7 @@ import com.alibaba.nacos.api.exception.NacosException;
 import com.lei.java.gateway.server.route.nacos.NacosConfig;
 import com.lei.java.gateway.server.route.nacos.NacosConfigLoader;
 import com.lei.java.gateway.server.route.nacos.NacosServiceRegistry;
+import com.lei.java.gateway.server.test.NacosTestContainer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -12,6 +13,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.HashMap;
 import java.util.List;
@@ -26,9 +29,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Nacos服务注册测试 运行前请确保Nacos服务已启动
  */
+@Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class NacosServiceRegistryTest {
     private static final Logger logger = LoggerFactory.getLogger(NacosServiceRegistryTest.class);
+
+    @Container
+    private static final NacosTestContainer nacosContainer = NacosTestContainer.getInstance();
 
     private static final String TEST_SERVICE_NAME = "test-service";
     private static NacosConfig nacosConfig;
@@ -37,6 +44,7 @@ public class NacosServiceRegistryTest {
 
     @BeforeAll
     public static void init() throws NacosException {
+        nacosContainer.start();
 
         nacosConfig = NacosConfigLoader.load("nacos-test.properties");
         serviceRegistry = new NacosServiceRegistry(nacosConfig);
