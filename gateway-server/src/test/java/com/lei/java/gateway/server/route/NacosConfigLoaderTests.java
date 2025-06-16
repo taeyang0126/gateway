@@ -1,5 +1,7 @@
-package com.lei.java.gateway.server.route.nacos;
+package com.lei.java.gateway.server.route;
 
+import com.lei.java.gateway.server.route.nacos.NacosConfig;
+import com.lei.java.gateway.server.route.nacos.NacosConfigLoader;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

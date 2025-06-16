@@ -19,7 +19,6 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -56,8 +55,6 @@ import static org.mockito.Mockito.when;
  * @author 伍磊
  */
 @ExtendWith(MockitoExtension.class)
-// @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class GatewayServerIT {
 
     private static final Logger logger = LoggerFactory.getLogger(HttpBinProxyIT.class);

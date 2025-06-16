@@ -1,4 +1,4 @@
-package com.lei.java.gateway.server.test;
+package com.lei.java.gateway.server.base;
 
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
@@ -28,7 +28,7 @@ public class CommonMicroServiceTest {
      * httpbin 可以使用 toxiproxy 模拟网络故障等情况 可以用的 port 范围是 8666～8697 也连接到同一个网络 一个 TOXIPROXY_CONTAINER 对应多个不同
      * proxy，通过 TOXIPROXY_CONTAINER.getMappedPort(内部端口) 获取映射到主机的端口
      */
-    private static final ToxiproxyContainer TOXIPROXY_CONTAINER = new ToxiproxyContainer(
+    public static final ToxiproxyContainer TOXIPROXY_CONTAINER = new ToxiproxyContainer(
                     "ghcr.io/shopify/toxiproxy:2.5.0").withNetwork(network);
 
     // 可用的 httpbin 端口

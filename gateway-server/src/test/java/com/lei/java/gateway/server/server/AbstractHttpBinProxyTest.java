@@ -1,5 +1,10 @@
 package com.lei.java.gateway.server.server;
 
+import com.lei.java.gateway.server.GatewayServer;
+import com.lei.java.gateway.server.auth.DefaultAuthService;
+import com.lei.java.gateway.server.base.BaseIntegrationTest;
+import com.lei.java.gateway.server.codec.GatewayMessageCodec;
+import com.lei.java.gateway.server.protocol.GatewayMessage;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -11,14 +16,9 @@ import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import com.lei.java.gateway.server.GatewayServer;
-import com.lei.java.gateway.server.auth.DefaultAuthService;
-import com.lei.java.gateway.server.codec.GatewayMessageCodec;
-import com.lei.java.gateway.server.protocol.GatewayMessage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,8 +33,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
-import static com.lei.java.gateway.server.test.CommonMicroServiceTest.DIRECT_HOST;
-import static com.lei.java.gateway.server.test.CommonMicroServiceTest.DIRECT_PORT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -45,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  *
  * @author 伍磊
  */
-public abstract class AbstractHttpBinProxyTest {
+public abstract class AbstractHttpBinProxyTest extends BaseIntegrationTest {
 
     private static final Logger logger = LoggerFactory.getLogger(AbstractHttpBinProxyTest.class);
 

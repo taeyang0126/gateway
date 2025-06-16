@@ -1,4 +1,4 @@
-package com.lei.java.gateway.server.test;
+package com.lei.java.gateway.server.base;
 
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -14,9 +14,14 @@ public class NacosTestContainer extends GenericContainer<NacosTestContainer> {
     private static final int NACOS_GRPC_PORT = 9848;
     private static final int HOST_GRPC_PORT = 19848;
 
-    private static NacosTestContainer container;
+    private static final NacosTestContainer INSTANCE;
 
-    public NacosTestContainer() {
+    static {
+        INSTANCE = new NacosTestContainer();
+        INSTANCE.start();
+    }
+
+    private NacosTestContainer() {
         super(DockerImageName.parse("nacos/nacos-server:" + NACOS_VERSION));
 
         // ✅ 添加这一行，告诉 Nacos Server 它对外服务的 IP 是宿主机的 IP
@@ -38,10 +43,7 @@ public class NacosTestContainer extends GenericContainer<NacosTestContainer> {
     }
 
     public static NacosTestContainer getInstance() {
-        if (container == null) {
-            container = new NacosTestContainer();
-        }
-        return container;
+        return INSTANCE;
     }
 
     public String getServerAddr() {
@@ -54,15 +56,15 @@ public class NacosTestContainer extends GenericContainer<NacosTestContainer> {
 
     @Override
     public void start() {
-        super.start();
-        System.setProperty("nacos.server.addr", getServerAddr());
-        System.setProperty("nacos.server.grpc.addr", getGrpcServerAddr());
+        if (!isRunning()) {
+            super.start();
+            System.setProperty("nacos.server.addr", getServerAddr());
+            System.setProperty("nacos.server.grpc.addr", getGrpcServerAddr());
+        }
     }
 
     @Override
     public void stop() {
-        super.stop();
-        System.clearProperty("nacos.server.addr");
-        System.clearProperty("nacos.server.grpc.addr");
+        // 不实现 stop 方法，让容器一直运行
     }
 }

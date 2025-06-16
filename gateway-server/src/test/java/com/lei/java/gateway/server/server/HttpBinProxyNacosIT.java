@@ -8,12 +8,9 @@ import com.lei.java.gateway.server.route.connection.DefaultConnectionManager;
 import com.lei.java.gateway.server.route.nacos.NacosConfig;
 import com.lei.java.gateway.server.route.nacos.NacosConfigLoader;
 import com.lei.java.gateway.server.route.nacos.NacosServiceRegistry;
-import com.lei.java.gateway.server.test.NacosTestContainer;
 import org.junit.jupiter.api.BeforeAll;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.concurrent.TimeUnit;
 
@@ -24,19 +21,14 @@ import java.util.concurrent.TimeUnit;
  *
  * @author 伍磊
  */
-@Testcontainers
 public class HttpBinProxyNacosIT extends AbstractHttpBinProxyTest {
 
     private static final Logger logger = LoggerFactory.getLogger(HttpBinProxyNacosIT.class);
 
-    @Container
-    private static final NacosTestContainer nacosContainer = NacosTestContainer.getInstance();
-
     private static final int PORT = 8888;
 
     @BeforeAll
-    static void setUp() throws InterruptedException {
-        nacosContainer.start();
+    static void setUp() {
         logger.info("Nacos container started at: {}", nacosContainer.getServerAddr());
     }
 
