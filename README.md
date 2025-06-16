@@ -42,6 +42,7 @@
 - JDK 24+
 - Maven 3.11+
 - Nacos 2.5.1+
+- docker
 
 ### 构建项目
 ```bash
@@ -50,9 +51,6 @@ mvn clean package
 
 ### 运行测试
 ```bash
-# 运行单元测试
-mvnd test
-
 # 运行完整检查（包括代码风格、覆盖率等）
 mvnd verify
 ```
@@ -107,6 +105,9 @@ gateway/
 ```bash
 # 运行代码风格检查
 mvn checkstyle:check
+
+# 代码格式检测
+mvn formatter:validate
 
 # 自动格式化代码
 mvn formatter:format
