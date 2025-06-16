@@ -19,10 +19,8 @@ public class RandomLoadBalancer implements LoadBalancer {
         }
 
         // 过滤出健康的实例
-        List<ServiceInstance> healthyInstances = instances.stream()
-                .filter(ServiceInstance::isHealthy)
-                .filter(ServiceInstance::isEnabled)
-                .collect(Collectors.toList());
+        List<ServiceInstance> healthyInstances = instances.stream().filter(ServiceInstance::isHealthy)
+                        .filter(ServiceInstance::isEnabled).collect(Collectors.toList());
 
         if (healthyInstances.isEmpty()) {
             return null;

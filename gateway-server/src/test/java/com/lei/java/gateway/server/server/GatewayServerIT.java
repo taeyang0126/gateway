@@ -1,5 +1,10 @@
 package com.lei.java.gateway.server.server;
 
+import com.lei.java.gateway.server.GatewayServer;
+import com.lei.java.gateway.server.auth.DefaultAuthService;
+import com.lei.java.gateway.server.codec.GatewayMessageCodec;
+import com.lei.java.gateway.server.protocol.GatewayMessage;
+import com.lei.java.gateway.server.route.RouteService;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -11,12 +16,6 @@ import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import com.lei.java.gateway.server.GatewayServer;
-import com.lei.java.gateway.server.auth.DefaultAuthService;
-import com.lei.java.gateway.server.codec.GatewayMessageCodec;
-import com.lei.java.gateway.server.protocol.GatewayMessage;
-import com.lei.java.gateway.server.route.RouteService;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,29 +55,30 @@ import static org.mockito.Mockito.when;
  * @author 伍磊
  */
 @ExtendWith(MockitoExtension.class)
-public class GatewayServerTest {
+public class GatewayServerIT {
 
-    private static final Logger logger = LoggerFactory.getLogger(HttpBinProxyTest.class);
+    private static final Logger logger = LoggerFactory.getLogger(HttpBinProxyIT.class);
 
     @Mock
     private RouteService routeService;
 
     public static final String SERVER_HOST = "127.0.0.1";
-    private static final int SERVER_PORT = 18080;
-    private static final EventLoopGroup eventLoopGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
+    private EventLoopGroup eventLoopGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
     private GatewayServer gatewayServer;
     private Map<Long, CompletableFuture<GatewayMessage>> pendingRequests;
     private Channel clientChannel;
-    private final AtomicInteger counter = new AtomicInteger();
+    private static final AtomicInteger counter = new AtomicInteger();
+    private int port;
 
     @BeforeEach
     public void setup() throws Exception {
-        TimeUnit.SECONDS.sleep(1);
+        port = 17000 + counter.incrementAndGet();
+        this.eventLoopGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
         this.pendingRequests = new ConcurrentHashMap<>();
 
         // 1. GatewayServer
         CompletableFuture<Void> future = new CompletableFuture<>();
-        gatewayServer = new GatewayServer(SERVER_PORT, routeService);
+        gatewayServer = new GatewayServer(port, routeService);
         Executors.newSingleThreadExecutor(r -> {
             Thread thread = new Thread(r);
             thread.setName("gateway-server-" + counter.incrementAndGet());
@@ -98,17 +98,24 @@ public class GatewayServerTest {
     }
 
     @AfterEach
-    public void teardown() {
-        gatewayServer.shutdown();
+    public void teardown() throws InterruptedException {
+        if (eventLoopGroup != null) {
+            eventLoopGroup.shutdownGracefully().sync();
+        }
+        if (clientChannel != null && clientChannel.isOpen()) {
+            clientChannel.close().sync();
+        }
+        clientChannel = null;
         pendingRequests.clear();
-    }
-
-    @AfterAll
-    public static void teardownAll() {
-        eventLoopGroup.shutdownGracefully();
+        if (gatewayServer != null) {
+            gatewayServer.shutdown();
+        }
+        // 添加一个短暂的等待，确保资源完全释放
+        TimeUnit.MILLISECONDS.sleep(100);
     }
 
     @Test
+    // @Order(1)
     public void testNoAuth() throws Exception {
 
         // 发送心跳消息
@@ -128,13 +135,14 @@ public class GatewayServerTest {
     }
 
     @Test
+    // @Order(2)
     public void testAuth() throws Exception {
         // 发送认证消息
         doAuth();
     }
 
-
     @Test
+    // @Order(3)
     public void testHeartbeat() throws Exception {
 
         // 1. 先发送认证消息
@@ -155,11 +163,11 @@ public class GatewayServerTest {
     }
 
     @Test
+    // @Order(4)
     public void testBizMsg_errorBizType() throws Exception {
         CompletableFuture<GatewayMessage> mockFuture = new CompletableFuture<>();
         mockFuture.completeExceptionally(new IllegalArgumentException());
-        when(routeService.route(any()))
-                .thenReturn(mockFuture);
+        when(routeService.route(any())).thenReturn(mockFuture);
 
         // 1. 先发送认证消息
         doAuth();
@@ -180,6 +188,7 @@ public class GatewayServerTest {
     }
 
     @Test
+    // @Order(5)
     public void testBizMsg() throws Exception {
 
         String clientId = UUID.randomUUID().toString();
@@ -193,8 +202,7 @@ public class GatewayServerTest {
         mockResponseMsg.setClientId(clientId);
         mockResponseMsg.setBody(responseContent.getBytes(StandardCharsets.UTF_8));
         mockFuture.complete(mockResponseMsg);
-        when(routeService.route(any()))
-                .thenReturn(mockFuture);
+        when(routeService.route(any())).thenReturn(mockFuture);
 
         // 1. 先发送认证消息
         testAuth();
@@ -216,8 +224,24 @@ public class GatewayServerTest {
     }
 
     @Test
+    //@Order(6)
     public void testMessageOrder() throws Exception {
-        doAuth();  // 先认证
+        when(routeService.route(any(GatewayMessage.class))).thenAnswer((Answer<CompletableFuture<GatewayMessage>>) invocation -> {
+            GatewayMessage request = invocation.getArgument(0);
+
+            GatewayMessage mockResponseMsg = new GatewayMessage();
+            mockResponseMsg.setMsgType(GatewayMessage.MESSAGE_TYPE_BIZ);
+            mockResponseMsg.setRequestId(request.getRequestId());
+            mockResponseMsg.setClientId(request.getClientId());
+            mockResponseMsg.setBody(request.getBody());
+
+            // c. 返回修改后的对象
+            CompletableFuture<GatewayMessage> concurrentFuture = new CompletableFuture<>();
+            concurrentFuture.complete(mockResponseMsg);
+            return concurrentFuture;
+        });
+
+        doAuth(); // 先认证
 
         // 发送多条顺序消息
         int messageCount = 5;
@@ -227,7 +251,9 @@ public class GatewayServerTest {
         for (int i = 0; i < messageCount; i++) {
             GatewayMessage msg = new GatewayMessage();
             msg.setMsgType(GatewayMessage.MESSAGE_TYPE_BIZ);
-            msg.setRequestId(System.currentTimeMillis() + i);  // 确保唯一
+            // msg.setRequestId(System.currentTimeMillis() + ThreadLocalRandom.current().nextInt(100) + i); //
+            // 确保唯一
+            msg.setRequestId(System.currentTimeMillis() + i); // 确保唯一
             msg.setClientId(UUID.randomUUID().toString());
             msg.setBody(String.valueOf(i).getBytes(StandardCharsets.UTF_8));
 
@@ -239,10 +265,12 @@ public class GatewayServerTest {
         for (int i = 0; i < messageCount; i++) {
             GatewayMessage response = futures.get(i).get(5, TimeUnit.SECONDS);
             assertEquals(messages.get(i).getRequestId(), response.getRequestId());
+            assertEquals(messages.get(i).getMsgType(), response.getMsgType());
         }
     }
 
     @Test
+    //@Order(7)
     public void testConcurrencyMessage() throws Exception {
         when(routeService.route(any(GatewayMessage.class))).thenAnswer((Answer<CompletableFuture<GatewayMessage>>) invocation -> {
             GatewayMessage request = invocation.getArgument(0);
@@ -269,6 +297,7 @@ public class GatewayServerTest {
         for (int i = 0; i < messageCount; i++) {
             GatewayMessage msg = new GatewayMessage();
             msg.setMsgType(GatewayMessage.MESSAGE_TYPE_BIZ);
+            // msg.setRequestId(System.currentTimeMillis() + ThreadLocalRandom.current().nextInt(100) + i);  // 确保唯一
             msg.setRequestId(System.currentTimeMillis() + i);  // 确保唯一
             msg.setClientId(UUID.randomUUID().toString());
             msg.setBody(String.valueOf(i).getBytes(StandardCharsets.UTF_8));
@@ -286,8 +315,9 @@ public class GatewayServerTest {
     }
 
     @Test
+    // @Order(8)
     public void testReconnect() throws Exception {
-        doAuth();  // 先认证
+        doAuth(); // 先认证
 
         // 断开连接
         clientChannel.close().sync();
@@ -307,6 +337,7 @@ public class GatewayServerTest {
     }
 
     @Test
+    // @Order(9)
     public void testLargeMessage() throws Exception {
         // 构造大消息
         byte[] largeContent = new byte[1024 * 1024]; // 1MB
@@ -322,8 +353,7 @@ public class GatewayServerTest {
         mockResponseMsg.setClientId(clientId);
         mockResponseMsg.setBody(largeContent);
         mockFuture.complete(mockResponseMsg);
-        when(routeService.route(any()))
-                .thenReturn(mockFuture);
+        when(routeService.route(any())).thenReturn(mockFuture);
 
         // 1. 先发送认证消息
         testAuth();
@@ -346,26 +376,25 @@ public class GatewayServerTest {
 
     private Channel initClient() throws InterruptedException {
         Bootstrap bootstrap = new Bootstrap();
-        bootstrap.group(eventLoopGroup)
-                .option(ChannelOption.TCP_NODELAY, true)
-                .option(ChannelOption.SO_KEEPALIVE, true)
-                .option(ChannelOption.SO_REUSEADDR, true)
-                .channel(NioSocketChannel.class)
-                .handler(new ChannelInitializer<NioSocketChannel>() {
-                    @Override
-                    protected void initChannel(NioSocketChannel ch) throws Exception {
-                        ChannelPipeline pipeline = ch.pipeline();
-                        pipeline.addLast(new GatewayMessageCodec());
-                        pipeline.addLast(new SimpleChannelInboundHandler<GatewayMessage>() {
+        bootstrap.group(eventLoopGroup).option(ChannelOption.TCP_NODELAY, true).option(ChannelOption.SO_KEEPALIVE, true)
+                        .option(ChannelOption.SO_REUSEADDR, true).channel(NioSocketChannel.class)
+                        .handler(new ChannelInitializer<NioSocketChannel>() {
                             @Override
-                            protected void channelRead0(ChannelHandlerContext ctx, GatewayMessage msg) throws Exception {
-                                CompletableFuture<GatewayMessage> request = pendingRequests.remove(msg.getRequestId());
-                                request.complete(msg);
+                            protected void initChannel(NioSocketChannel ch) throws Exception {
+                                ChannelPipeline pipeline = ch.pipeline();
+                                pipeline.addLast(new GatewayMessageCodec());
+                                pipeline.addLast(new SimpleChannelInboundHandler<GatewayMessage>() {
+                                    @Override
+                                    protected void channelRead0(ChannelHandlerContext ctx, GatewayMessage msg)
+                                                    throws Exception {
+                                        CompletableFuture<GatewayMessage> request = pendingRequests
+                                                        .remove(msg.getRequestId());
+                                        request.complete(msg);
+                                    }
+                                });
                             }
                         });
-                    }
-                });
-        Channel channel = bootstrap.connect(SERVER_HOST, SERVER_PORT).sync().channel();
+        Channel channel = bootstrap.connect(SERVER_HOST, port).sync().channel();
         channel.closeFuture().addListener(future -> {
             // 连接关闭，清除资源
             pendingRequests.forEach((requestId, f) -> {
@@ -378,12 +407,11 @@ public class GatewayServerTest {
 
     private CompletableFuture<GatewayMessage> writeMsg(GatewayMessage request) {
         CompletableFuture<GatewayMessage> completableFuture = new CompletableFuture<>();
-        clientChannel.writeAndFlush(request)
-                .addListener(future -> {
-                    if (future.isSuccess()) {
-                        pendingRequests.put(request.getRequestId(), completableFuture);
-                    }
-                });
+        clientChannel.writeAndFlush(request).addListener(future -> {
+            if (future.isSuccess()) {
+                pendingRequests.put(request.getRequestId(), completableFuture);
+            }
+        });
         return completableFuture;
     }
 
@@ -403,6 +431,5 @@ public class GatewayServerTest {
         assertEquals(gatewayMessage.getRequestId(), response.getRequestId());
         assertEquals(GatewayMessage.MESSAGE_TYPE_AUTH_SUCCESS_RESP, response.getMsgType());
     }
-
 
 }

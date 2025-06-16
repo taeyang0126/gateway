@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-public class HttpRouteServiceTest {
+public class HttpRouteServiceTests {
 
     private static final int UPSTREAM_PORT = 18080;
     private static final String UPSTREAM_HOST = "127.0.0.1";
@@ -58,20 +58,18 @@ public class HttpRouteServiceTest {
     public void before() {
         // 1. 构建一个上游的 http server
         ServerBootstrap serverBootstrap = new ServerBootstrap();
-        serverBootstrap.group(bossGroup, workerGroup)
-                .channel(NioServerSocketChannel.class)
-                .option(ChannelOption.SO_BACKLOG, 1024)
-                .childOption(ChannelOption.SO_KEEPALIVE, true)
-                .childOption(ChannelOption.TCP_NODELAY, true)
-                .childHandler(new ChannelInitializer<NioSocketChannel>() {
-                    @Override
-                    protected void initChannel(NioSocketChannel ch) throws Exception {
-                        ChannelPipeline pipeline = ch.pipeline();
-                        pipeline.addLast(new HttpServerCodec());
-                        pipeline.addLast(new HttpObjectAggregator(65535));
-                        pipeline.addLast(echoHttpServerHandler);
-                    }
-                });
+        serverBootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
+                        .option(ChannelOption.SO_BACKLOG, 1024).childOption(ChannelOption.SO_KEEPALIVE, true)
+                        .childOption(ChannelOption.TCP_NODELAY, true)
+                        .childHandler(new ChannelInitializer<NioSocketChannel>() {
+                            @Override
+                            protected void initChannel(NioSocketChannel ch) throws Exception {
+                                ChannelPipeline pipeline = ch.pipeline();
+                                pipeline.addLast(new HttpServerCodec());
+                                pipeline.addLast(new HttpObjectAggregator(65535));
+                                pipeline.addLast(echoHttpServerHandler);
+                            }
+                        });
         serverBootstrap.bind(UPSTREAM_PORT).syncUninterruptibly();
 
         // 2. ConnectionManager
@@ -129,7 +127,8 @@ public class HttpRouteServiceTest {
         CompletableFuture<GatewayMessage> future = routeService.route(message);
         ExecutionException executionException = assertThrows(ExecutionException.class, future::get);
         assertEquals(IllegalArgumentException.class, executionException.getCause().getClass());
-        assertEquals(String.format(DefaultRouteService.ERROR_SERVICE_NOT_FOUND, message.getBizType()), executionException.getCause().getMessage());
+        assertEquals(String.format(DefaultRouteService.ERROR_SERVICE_NOT_FOUND, message.getBizType()),
+                        executionException.getCause().getMessage());
     }
 
     @ChannelHandler.Sharable
@@ -140,7 +139,8 @@ public class HttpRouteServiceTest {
 
             String uri = msg.uri();
             if (!uri.endsWith(TEST_URL)) {
-                FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND);
+                FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
+                                HttpResponseStatus.NOT_FOUND);
                 response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
                 ctx.writeAndFlush(response);
                 return;
@@ -148,11 +148,10 @@ public class HttpRouteServiceTest {
 
             ByteBuf buf = msg.content().retainedDuplicate();
             FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, buf);
-            response.headers()
-                    .set(HttpHeaderNames.CONTENT_TYPE, "application/json")
-                    .set(HttpHeaderNames.CONTENT_LENGTH, buf.readableBytes());
+            response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json").set(HttpHeaderNames.CONTENT_LENGTH,
+                            buf.readableBytes());
             ctx.writeAndFlush(response);
         }
     }
 
-} 
+}

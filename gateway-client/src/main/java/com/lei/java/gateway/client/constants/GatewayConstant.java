@@ -11,6 +11,4 @@ public interface GatewayConstant {
 
     String SERVER_NAME = "gateway";
 
-
-
 }

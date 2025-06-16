@@ -2,11 +2,9 @@ package com.lei.java.gateway.server.session;
 
 import io.netty.channel.Channel;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 网关会话接口
- * 定义会话的基本行为和属性
+ * 网关会话接口 定义会话的基本行为和属性
  */
 public interface Session {
     /**
@@ -78,4 +76,4 @@ public interface Session {
      * 判断会话是否有效
      */
     boolean isValid();
-} 
+}

@@ -30,8 +30,7 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         this.sessionManager = sessionManager;
         this.routeService = routeService;
         businessFactory = Thread.ofVirtual().name("business-handler-", 0)
-                .uncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e))
-                .factory();
+                        .uncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e)).factory();
     }
 
     @Override
@@ -48,11 +47,11 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         try {
             // 处理不同类型的消息
             switch (message.getMsgType()) {
-                case GatewayMessage.MESSAGE_TYPE_HEARTBEAT:
+                case GatewayMessage.MESSAGE_TYPE_HEARTBEAT :
                     // 心跳消息直接在 EventLoop 中处理，因为处理逻辑简单
                     handleHeartbeat(ctx, message, session);
                     break;
-                case GatewayMessage.MESSAGE_TYPE_BIZ:
+                case GatewayMessage.MESSAGE_TYPE_BIZ :
                     // 业务消息提交到业务线程池处理
                     final GatewayMessage requestMessage = message;
                     final Session currentSession = session;
@@ -65,7 +64,7 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
                         }
                     }).start();
                     break;
-                default:
+                default :
                     logger.warn("Unknown message type: {}", message.getMsgType());
                     handleError(ctx, message, new IllegalArgumentException("Unknown message type"));
             }
@@ -161,15 +160,14 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         session.updateLastActiveTime();
 
         // 实现业务消息路由转发逻辑
-        routeService.route(message)
-                .whenComplete((response, ex) -> {
-                    if (ex != null) {
-                        logger.error("Failed to route message={}, e: ", message, ex);
-                        handleError(ctx, message, ex);
-                    } else {
-                        ctx.writeAndFlush(response);
-                    }
-                });
+        routeService.route(message).whenComplete((response, ex) -> {
+            if (ex != null) {
+                logger.error("Failed to route message={}, e: ", message, ex);
+                handleError(ctx, message, ex);
+            } else {
+                ctx.writeAndFlush(response);
+            }
+        });
     }
 
     private void handleError(ChannelHandlerContext ctx, GatewayMessage message, Throwable cause) {
@@ -186,4 +184,4 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         }
         ctx.writeAndFlush(response);
     }
-} 
+}

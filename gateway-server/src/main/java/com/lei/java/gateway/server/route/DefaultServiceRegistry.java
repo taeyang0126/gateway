@@ -101,8 +101,7 @@ public class DefaultServiceRegistry implements ServiceRegistry {
     }
 
     private void startHealthCheck() {
-        healthCheckExecutor.scheduleWithFixedDelay(this::checkServiceHealth,
-                30, 30, TimeUnit.SECONDS);
+        healthCheckExecutor.scheduleWithFixedDelay(this::checkServiceHealth, 30, 30, TimeUnit.SECONDS);
     }
 
     private void checkServiceHealth() {
@@ -116,8 +115,7 @@ public class DefaultServiceRegistry implements ServiceRegistry {
                     // 这里可以通过连接测试、心跳等机制来判断服务实例是否健康
                     if (!instance.isHealthy()) {
                         removeService(bizType, instance);
-                        logger.warn("Removed unhealthy service instance [{}] for bizType [{}]",
-                                instance, bizType);
+                        logger.warn("Removed unhealthy service instance [{}] for bizType [{}]", instance, bizType);
                     }
                 }
             }
@@ -125,4 +123,4 @@ public class DefaultServiceRegistry implements ServiceRegistry {
             logger.error("Error during health check", e);
         }
     }
-} 
+}

@@ -28,7 +28,8 @@ public class DefaultRouteService implements RouteService {
     public static final String ERROR_BIZ_TYPE_REQUIRED = "bizType is required";
     public static final String ERROR_SERVICE_NOT_FOUND = "service %s not found";
 
-    public DefaultRouteService(ServiceRegistry registry, LoadBalancer loadBalancer, ConnectionManager connectionManager) {
+    public DefaultRouteService(ServiceRegistry registry, LoadBalancer loadBalancer,
+                    ConnectionManager connectionManager) {
         this.registry = registry;
         this.loadBalancer = loadBalancer;
         this.connectionManager = connectionManager;
@@ -64,26 +65,23 @@ public class DefaultRouteService implements RouteService {
 
         // 2. 发送请求
         CompletableFuture<Connection> connection = connectionManager.getConnection(instance);
-        connection
-                .whenComplete((conn, throwable) -> {
-                    if (throwable != null) {
-                        logger.error("Failed to get connection for instance: " + instance, throwable);
-                        future.completeExceptionally(throwable);
+        connection.whenComplete((conn, throwable) -> {
+            if (throwable != null) {
+                logger.error("Failed to get connection for instance: " + instance, throwable);
+                future.completeExceptionally(throwable);
+            } else {
+                logger.debug("Sending message to instance: {}, requestId: {}", instance, message.getRequestId());
+                conn.send(message).whenComplete((resp, err) -> {
+                    if (err != null) {
+                        logger.error("Failed to send message: " + message.getRequestId(), err);
+                        future.completeExceptionally(err);
                     } else {
-                        logger.debug("Sending message to instance: {}, requestId: {}",
-                                instance, message.getRequestId());
-                        conn.send(message)
-                                .whenComplete((resp, err) -> {
-                                    if (err != null) {
-                                        logger.error("Failed to send message: " + message.getRequestId(), err);
-                                        future.completeExceptionally(err);
-                                    } else {
-                                        logger.debug("Received response for requestId: {}", message.getRequestId());
-                                        future.complete(resp);
-                                    }
-                                });
+                        logger.debug("Received response for requestId: {}", message.getRequestId());
+                        future.complete(resp);
                     }
                 });
+            }
+        });
 
         return future;
     }

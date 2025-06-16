@@ -13,7 +13,9 @@ public interface AuthService {
 
     /**
      * 认证
-     * @param msg 消息
+     *
+     * @param msg
+     *            消息
      * @return
      */
     boolean authenticate(GatewayMessage msg);

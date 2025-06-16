@@ -42,4 +42,4 @@ public interface SessionManager {
      * 判断会话是否存在
      */
     boolean existSession(String sessionId);
-} 
+}

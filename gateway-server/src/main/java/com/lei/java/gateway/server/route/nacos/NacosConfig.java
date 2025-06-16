@@ -10,7 +10,6 @@ public class NacosConfig {
     private String username;
     private String password;
     private String group = "DEFAULT_GROUP";
-    private boolean ephemeral = true; // 默认为临时实例
 
     public NacosConfig(String serverAddr) {
         this.serverAddr = serverAddr;
@@ -33,20 +32,6 @@ public class NacosConfig {
         if (password != null) {
             properties.setProperty(PropertyKeyConst.PASSWORD, password);
         }
-        
-        // Nacos 2.x 配置
-        String grpcPort = "9848";  // 默认 gRPC 端口
-        if (serverAddr.contains(":")) {
-            String httpPort = serverAddr.substring(serverAddr.lastIndexOf(":") + 1);
-            // 如果是默认 HTTP 端口 8848，则使用默认 gRPC 端口 9848
-            if ("8848".equals(httpPort)) {
-                System.setProperty("nacos.server.grpc.port", grpcPort);
-            }
-        }
-        
-        // 设置必要的配置
-        properties.setProperty("namingLoadCacheAtStart", "true");
-        
         return properties;
     }
 
@@ -91,11 +76,4 @@ public class NacosConfig {
         this.group = group;
     }
 
-    public boolean isEphemeral() {
-        return ephemeral;
-    }
-
-    public void setEphemeral(boolean ephemeral) {
-        this.ephemeral = ephemeral;
-    }
-} 
+}

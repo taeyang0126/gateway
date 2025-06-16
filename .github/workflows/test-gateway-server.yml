@@ -1,0 +1,28 @@
+name: Test Gateway Server
+
+on: [ push, pull_request ]
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '24'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Verify Docker Environment
+        run: |
+          echo "Docker version:"
+          docker --version
+          echo "Docker daemon info:"
+          docker info
+
+      - name: Maven Verify
+        run: mvn clean verify -am -B -pl gateway-server --no-transfer-progress

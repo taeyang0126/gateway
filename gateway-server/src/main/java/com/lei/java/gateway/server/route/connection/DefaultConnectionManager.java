@@ -43,29 +43,26 @@ public class DefaultConnectionManager implements ConnectionManager {
         this.connections = new ConcurrentHashMap<>();
         this.pendingConnections = new ConcurrentHashMap<>();
         this.workerGroup = new MultiThreadIoEventLoopGroup(Runtime.getRuntime().availableProcessors() * 2,
-                NioIoHandler.newFactory());
+                        NioIoHandler.newFactory());
         this.bootstrap = new Bootstrap();
         this.closed = false;
 
         createConnectionFactory = Thread.ofVirtual().name("upstream-connection-create-", 0)
-                .uncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e))
-                .factory();
+                        .uncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e)).factory();
 
         // 初始化Bootstrap
-        bootstrap.group(workerGroup)
-                .channel(NioSocketChannel.class)
-                .option(ChannelOption.TCP_NODELAY, true)
-                .option(ChannelOption.SO_KEEPALIVE, true)
-                // 连接超时时间
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, getConnectTimeoutMillis())
-                .handler(new ChannelInitializer<NioSocketChannel>() {
-                    @Override
-                    protected void initChannel(NioSocketChannel ch) {
-                        ChannelPipeline pipeline = ch.pipeline();
-                        pipeline.addLast(new HttpClientCodec());
-                        pipeline.addLast(new HttpObjectAggregator(65536));
-                    }
-                });
+        bootstrap.group(workerGroup).channel(NioSocketChannel.class).option(ChannelOption.TCP_NODELAY, true)
+                        .option(ChannelOption.SO_KEEPALIVE, true)
+                        // 连接超时时间
+                        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, getConnectTimeoutMillis())
+                        .handler(new ChannelInitializer<NioSocketChannel>() {
+                            @Override
+                            protected void initChannel(NioSocketChannel ch) {
+                                ChannelPipeline pipeline = ch.pipeline();
+                                pipeline.addLast(new HttpClientCodec());
+                                pipeline.addLast(new HttpObjectAggregator(65536));
+                            }
+                        });
     }
 
     @Override
@@ -95,22 +92,21 @@ public class DefaultConnectionManager implements ConnectionManager {
             CompletableFuture<Connection> future = new CompletableFuture<>();
 
             createConnectionFactory.newThread(() -> {
-                bootstrap.connect(key.getHost(), key.getPort())
-                        .addListener((ChannelFutureListener) f -> {
-                            if (f.isSuccess()) {
-                                Channel channel = f.channel();
-                                Connection connection = new DefaultConnection(bootstrap, channel, key);
-                                // 添加 HTTP 协议转换处理器
-                                channel.pipeline().addLast(new HttpConnectionHandler(connection));
-                                connections.put(key, connection);
-                                future.complete(connection);
-                            } else {
-                                future.completeExceptionally(f.cause());
-                            }
+                bootstrap.connect(key.getHost(), key.getPort()).addListener((ChannelFutureListener) f -> {
+                    if (f.isSuccess()) {
+                        Channel channel = f.channel();
+                        Connection connection = new DefaultConnection(bootstrap, channel, key);
+                        // 添加 HTTP 协议转换处理器
+                        channel.pipeline().addLast(new HttpConnectionHandler(connection));
+                        connections.put(key, connection);
+                        future.complete(connection);
+                    } else {
+                        future.completeExceptionally(f.cause());
+                    }
 
-                            // 无论成功还是失败，都要从 map 中移除。 这样，下一次调用 createConnection 时就可以发起新的连接尝试。
-                            pendingConnections.remove(key, future);
-                        });
+                    // 无论成功还是失败，都要从 map 中移除。 这样，下一次调用 createConnection 时就可以发起新的连接尝试。
+                    pendingConnections.remove(key, future);
+                });
             }).start();
 
             return future;

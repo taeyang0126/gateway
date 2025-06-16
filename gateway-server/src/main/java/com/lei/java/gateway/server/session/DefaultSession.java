@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class DefaultSession implements Session {
     private static final AttributeKey<Session> SESSION_KEY = AttributeKey.valueOf("session");
-    
+
     private final String id;
     private final String clientId;
     private final Channel channel;
@@ -112,4 +112,4 @@ public class DefaultSession implements Session {
         }
         return channel.attr(SESSION_KEY).get();
     }
-} 
+}

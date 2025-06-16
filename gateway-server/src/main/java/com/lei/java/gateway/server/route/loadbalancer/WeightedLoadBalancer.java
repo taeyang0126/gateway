@@ -19,19 +19,15 @@ public class WeightedLoadBalancer implements LoadBalancer {
         }
 
         // 过滤出健康的实例
-        List<ServiceInstance> healthyInstances = instances.stream()
-                .filter(ServiceInstance::isHealthy)
-                .filter(ServiceInstance::isEnabled)
-                .collect(Collectors.toList());
+        List<ServiceInstance> healthyInstances = instances.stream().filter(ServiceInstance::isHealthy)
+                        .filter(ServiceInstance::isEnabled).collect(Collectors.toList());
 
         if (healthyInstances.isEmpty()) {
             return null;
         }
 
         // 计算总权重
-        double totalWeight = healthyInstances.stream()
-                .mapToDouble(ServiceInstance::getWeight)
-                .sum();
+        double totalWeight = healthyInstances.stream().mapToDouble(ServiceInstance::getWeight).sum();
 
         // 在0到总权重之间随机选择一个值)
         int randomWeight = random.nextInt((int) totalWeight);
@@ -48,4 +44,4 @@ public class WeightedLoadBalancer implements LoadBalancer {
         // 保底返回最后一个实例
         return healthyInstances.get(healthyInstances.size() - 1);
     }
-} 
+}

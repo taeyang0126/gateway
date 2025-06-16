@@ -27,17 +27,11 @@ public class HttpProtocolConverter {
      */
     public static FullHttpRequest toHttpRequest(GatewayMessage message) {
         // 构建请求体
-        ByteBuf content = message.getBody() != null ?
-                Unpooled.wrappedBuffer(message.getBody()) :
-                Unpooled.EMPTY_BUFFER;
+        ByteBuf content = message.getBody() != null ? Unpooled.wrappedBuffer(message.getBody()) : Unpooled.EMPTY_BUFFER;
 
         // 创建 HTTP 请求，直接使用 bizType 作为路径
-        FullHttpRequest request = new DefaultFullHttpRequest(
-                HttpVersion.HTTP_1_1,
-                HttpMethod.POST,
-                convertToPath(message.getBizType()),
-                content
-        );
+        FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST,
+                        convertToPath(message.getBizType()), content);
 
         // 设置 headers
         HttpHeaders headers = request.headers();
@@ -102,4 +96,4 @@ public class HttpProtocolConverter {
         // 2. 在字符串开头添加 '/'
         return "/" + slashSeparated;
     }
-} 
+}
