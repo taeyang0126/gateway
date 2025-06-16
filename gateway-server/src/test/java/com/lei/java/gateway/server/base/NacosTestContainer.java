@@ -38,7 +38,7 @@ public class NacosTestContainer extends GenericContainer<NacosTestContainer> {
         withStartupTimeout(Duration.ofMinutes(5));
 
         // 使用更可靠的健康检查
-        waitingFor(Wait.forLogMessage(".*Nacos started successfully.*", 1).withStartupTimeout(Duration.ofMinutes(2)));
+        waitingFor(Wait.forLogMessage(".*Nacos started successfully.*", 1).withStartupTimeout(Duration.ofMinutes(5)));
     }
 
     public static NacosTestContainer getInstance() {
