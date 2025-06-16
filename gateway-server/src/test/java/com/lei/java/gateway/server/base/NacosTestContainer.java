@@ -25,7 +25,7 @@ public class NacosTestContainer extends GenericContainer<NacosTestContainer> {
         super(DockerImageName.parse("nacos/nacos-server:" + NACOS_VERSION));
 
         // ✅ 添加这一行，告诉 Nacos Server 它对外服务的 IP 是宿主机的 IP
-        withEnv("NACOS_SERVER_IP", "host.testcontainers.internal");
+        // withEnv("NACOS_SERVER_IP", "host.testcontainers.internal");
         addFixedExposedPort(HOST_PORT, NACOS_PORT);
         addFixedExposedPort(HOST_GRPC_PORT, NACOS_GRPC_PORT);
         withEnv("MODE", "standalone");
@@ -34,10 +34,10 @@ public class NacosTestContainer extends GenericContainer<NacosTestContainer> {
         withEnv("JVM_XMX", "256m");
 
         // 设置更长的启动超时时间
-        withStartupTimeout(Duration.ofMinutes(20));
+        withStartupTimeout(Duration.ofMinutes(5));
 
         // 使用更可靠的健康检查
-        waitingFor(Wait.forLogMessage(".*Nacos started successfully.*", 1).withStartupTimeout(Duration.ofMinutes(20)));
+        waitingFor(Wait.forLogMessage(".*Nacos started successfully.*", 1).withStartupTimeout(Duration.ofMinutes(5)));
     }
 
     public static NacosTestContainer getInstance() {
