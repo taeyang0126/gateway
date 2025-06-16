@@ -35,10 +35,10 @@ public class NacosTestContainer extends GenericContainer<NacosTestContainer> {
         withEnv("JVM_XMX", "256m");
 
         // 设置更长的启动超时时间
-        withStartupTimeout(Duration.ofMinutes(5));
+        withStartupTimeout(Duration.ofMinutes(20));
 
         // 使用更可靠的健康检查
-        waitingFor(Wait.forLogMessage(".*Nacos started successfully.*", 1).withStartupTimeout(Duration.ofMinutes(5)));
+        waitingFor(Wait.forLogMessage(".*Nacos started successfully.*", 1).withStartupTimeout(Duration.ofMinutes(20)));
     }
 
     public static NacosTestContainer getInstance() {
