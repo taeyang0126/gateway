@@ -29,7 +29,6 @@ public class NacosTestContainer extends GenericContainer<NacosTestContainer> {
         addFixedExposedPort(HOST_PORT, NACOS_PORT);
         addFixedExposedPort(HOST_GRPC_PORT, NACOS_GRPC_PORT);
         withEnv("MODE", "standalone");
-        withEnv("PREFER_HOST_MODE", "hostname");
         withEnv("NACOS_AUTH_ENABLE", "false");
         withEnv("JVM_XMS", "256m");
         withEnv("JVM_XMX", "256m");
