@@ -37,17 +37,6 @@ public class NacosServiceRegistryIT extends BaseIntegrationTest {
         testInstance = new ServiceInstance("127.0.0.1", 8080, metadata);
     }
 
-    @AfterAll
-    public static void clear() {
-        serviceRegistry.removeService(TEST_SERVICE_NAME, testInstance);
-        List<ServiceInstance> existingServices = serviceRegistry.getServices(TEST_SERVICE_NAME);
-        if (!existingServices.isEmpty()) {
-            for (ServiceInstance instance : existingServices) {
-                serviceRegistry.removeService(TEST_SERVICE_NAME, instance);
-            }
-        }
-    }
-
     @Test
     public void test() throws Exception {
         serviceRegistry.registerService(TEST_SERVICE_NAME, testInstance);

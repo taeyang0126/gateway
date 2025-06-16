@@ -8,7 +8,6 @@ import com.lei.java.gateway.server.route.connection.DefaultConnectionManager;
 import com.lei.java.gateway.server.route.nacos.NacosConfig;
 import com.lei.java.gateway.server.route.nacos.NacosConfigLoader;
 import com.lei.java.gateway.server.route.nacos.NacosServiceRegistry;
-import org.junit.jupiter.api.BeforeAll;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,11 +26,6 @@ public class HttpBinProxyNacosIT extends AbstractHttpBinProxyTest {
 
     private static final int PORT = 8888;
 
-    @BeforeAll
-    static void setUp() {
-        logger.info("Nacos container started at: {}", nacosContainer.getServerAddr());
-    }
-
     @Override
     protected int getPort() {
         return PORT;
@@ -39,6 +33,7 @@ public class HttpBinProxyNacosIT extends AbstractHttpBinProxyTest {
 
     @Override
     protected GatewayServer getGatewayServer() {
+        logger.info("Nacos container started at: {}", nacosContainer.getServerAddr());
         try {
             TimeUnit.SECONDS.sleep(1);
         } catch (InterruptedException e) {
