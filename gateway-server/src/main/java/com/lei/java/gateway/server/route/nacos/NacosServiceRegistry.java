@@ -1,18 +1,34 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server.route.nacos;
-
-import com.alibaba.nacos.api.exception.NacosException;
-import com.alibaba.nacos.api.naming.NamingFactory;
-import com.alibaba.nacos.api.naming.NamingService;
-import com.alibaba.nacos.api.naming.pojo.Instance;
-import com.lei.java.gateway.server.route.ServiceInstance;
-import com.lei.java.gateway.server.route.ServiceRegistry;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import com.alibaba.nacos.api.exception.NacosException;
+import com.alibaba.nacos.api.naming.NamingFactory;
+import com.alibaba.nacos.api.naming.NamingService;
+import com.alibaba.nacos.api.naming.pojo.Instance;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.lei.java.gateway.server.route.ServiceInstance;
+import com.lei.java.gateway.server.route.ServiceRegistry;
 
 public class NacosServiceRegistry implements ServiceRegistry {
     private static final Logger logger = LoggerFactory.getLogger(NacosServiceRegistry.class);
@@ -27,7 +43,10 @@ public class NacosServiceRegistry implements ServiceRegistry {
         // 检查服务连接状态
         String status = namingService.getServerStatus();
         if (!"UP".equals(status)) {
-            throw new NacosException(500, "Nacos server is not ready, status: " + status);
+            throw new NacosException(
+                    500,
+                    "Nacos server is not ready, status: "
+                            + status);
         }
     }
 
@@ -39,7 +58,8 @@ public class NacosServiceRegistry implements ServiceRegistry {
             logger.info("Registering service: {} with instance: {}", bizType, nacosInstance);
             namingService.registerInstance(bizType, nacosConfig.getGroup(), nacosInstance);
         } catch (NacosException e) {
-            logger.error("Failed to register service: " + bizType, e);
+            logger.error("Failed to register service: "
+                    + bizType, e);
             throw new RuntimeException("Failed to register service", e);
         }
     }
@@ -49,9 +69,12 @@ public class NacosServiceRegistry implements ServiceRegistry {
         try {
             Instance nacosInstance = convertToNacosInstance(instance);
             namingService.deregisterInstance(bizType, nacosConfig.getGroup(), nacosInstance);
-            logger.info("Successfully deregistered service: {} with instance: {}", bizType, instance);
+            logger.info("Successfully deregistered service: {} with instance: {}",
+                    bizType,
+                    instance);
         } catch (NacosException e) {
-            logger.error("Failed to deregister service: " + bizType, e);
+            logger.error("Failed to deregister service: "
+                    + bizType, e);
             throw new RuntimeException("Failed to deregister service", e);
         }
     }
@@ -59,11 +82,15 @@ public class NacosServiceRegistry implements ServiceRegistry {
     @Override
     public List<ServiceInstance> getServices(String bizType) {
         try {
-            List<Instance> instances = namingService.getAllInstances(bizType, nacosConfig.getGroup());
+            List<Instance> instances =
+                    namingService.getAllInstances(bizType, nacosConfig.getGroup());
             logger.debug("Found {} instances for bizType={}", instances.size(), bizType);
-            return instances.stream().map(this::convertFromNacosInstance).collect(Collectors.toList());
+            return instances.stream()
+                    .map(this::convertFromNacosInstance)
+                    .collect(Collectors.toList());
         } catch (NacosException e) {
-            logger.error("Failed to get services for bizType: " + bizType, e);
+            logger.error("Failed to get services for bizType: "
+                    + bizType, e);
             throw new RuntimeException("Failed to get services", e);
         }
     }
@@ -72,7 +99,8 @@ public class NacosServiceRegistry implements ServiceRegistry {
     public Map<String, List<ServiceInstance>> getAllServices() {
         try {
             Map<String, List<ServiceInstance>> result = new HashMap<>();
-            List<String> services = namingService.getServicesOfServer(1, Integer.MAX_VALUE, nacosConfig.getGroup())
+            List<String> services =
+                    namingService.getServicesOfServer(1, Integer.MAX_VALUE, nacosConfig.getGroup())
                             .getData();
 
             for (String service : services) {
@@ -114,7 +142,12 @@ public class NacosServiceRegistry implements ServiceRegistry {
     }
 
     private ServiceInstance convertFromNacosInstance(Instance nacosInstance) {
-        return new ServiceInstance(nacosInstance.getIp(), nacosInstance.getPort(), nacosInstance.getWeight(),
-                        nacosInstance.getMetadata(), nacosInstance.isHealthy(), nacosInstance.isEnabled());
+        return new ServiceInstance(
+                nacosInstance.getIp(),
+                nacosInstance.getPort(),
+                nacosInstance.getWeight(),
+                nacosInstance.getMetadata(),
+                nacosInstance.isHealthy(),
+                nacosInstance.isEnabled());
     }
 }

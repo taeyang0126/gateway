@@ -1,4 +1,38 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server;
+
+import java.net.InetSocketAddress;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.ChannelPipeline;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioIoHandler;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.timeout.IdleStateHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.lei.java.gateway.client.constants.GatewayConstant;
 import com.lei.java.gateway.server.auth.DefaultAuthService;
@@ -19,24 +53,6 @@ import com.lei.java.gateway.server.route.nacos.NacosConfigLoader;
 import com.lei.java.gateway.server.route.nacos.NacosServiceRegistry;
 import com.lei.java.gateway.server.session.DefaultSessionManager;
 import com.lei.java.gateway.server.session.SessionManager;
-import io.netty.bootstrap.ServerBootstrap;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.MultiThreadIoEventLoopGroup;
-import io.netty.channel.nio.NioIoHandler;
-import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.timeout.IdleStateHandler;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.net.InetSocketAddress;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 
 public class GatewayServer {
     private static final Logger logger = LoggerFactory.getLogger(GatewayServer.class);
@@ -62,7 +78,8 @@ public class GatewayServer {
     }
 
     public GatewayServer(int port, ServiceRegistry registry, ConnectionManager connectionManager) {
-        this(port, new DefaultRouteService(registry, new RoundRobinLoadBalancer(), connectionManager));
+        this(port,
+                new DefaultRouteService(registry, new RoundRobinLoadBalancer(), connectionManager));
     }
 
     public GatewayServer(int port, RouteService routeService) {
@@ -84,42 +101,54 @@ public class GatewayServer {
 
         try {
             ServerBootstrap b = new ServerBootstrap();
-            b.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class).option(ChannelOption.SO_BACKLOG, 128)
-                            .option(ChannelOption.SO_REUSEADDR, true).childOption(ChannelOption.SO_KEEPALIVE, true)
-                            .childOption(ChannelOption.TCP_NODELAY, true)
-                            .childHandler(new ChannelInitializer<SocketChannel>() {
-                                @Override
-                                protected void initChannel(SocketChannel ch) throws Exception {
-                                    logger.debug("New connection from: {}", ch.remoteAddress());
-                                    ChannelPipeline p = ch.pipeline();
-                                    // 添加空闲检测，60秒没有读取到数据则判定为空闲
-                                    p.addLast(new IdleStateHandler(60, 0, 0, TimeUnit.SECONDS));
-                                    // 添加消息编解码器
-                                    p.addLast(new GatewayMessageCodec());
-                                    // auth handler
-                                    p.addLast(authHandler);
-                                    // 添加网关处理器
-                                    p.addLast(new GatewayServerHandler(sessionManager, routeService));
-                                }
-                            });
+            b.group(bossGroup, workerGroup)
+                    .channel(NioServerSocketChannel.class)
+                    .option(ChannelOption.SO_BACKLOG, 128)
+                    .option(ChannelOption.SO_REUSEADDR, true)
+                    .childOption(ChannelOption.SO_KEEPALIVE, true)
+                    .childOption(ChannelOption.TCP_NODELAY, true)
+                    .childHandler(new ChannelInitializer<SocketChannel>() {
+                        @Override
+                        protected void initChannel(SocketChannel ch) throws Exception {
+                            logger.debug("New connection from: {}", ch.remoteAddress());
+                            ChannelPipeline p = ch.pipeline();
+                            // 添加空闲检测，60秒没有读取到数据则判定为空闲
+                            p.addLast(new IdleStateHandler(60, 0, 0, TimeUnit.SECONDS));
+                            // 添加消息编解码器
+                            p.addLast(new GatewayMessageCodec());
+                            // auth handler
+                            p.addLast(authHandler);
+                            // 添加网关处理器
+                            p.addLast(new GatewayServerHandler(sessionManager, routeService));
+                        }
+                    });
 
             // 绑定端口并启动服务器
-            ChannelFuture f = b.bind(port).addListener((ChannelFutureListener) channelFuture -> {
-                // 如果是 nacos，则将本机注册到 nacos 上
-                if (registry != null && registry instanceof NacosServiceRegistry) {
-                    InetSocketAddress socketAddress = (InetSocketAddress) channelFuture.channel().localAddress();
-                    String serverHost = socketAddress.getHostString();
-                    int serverPort = socketAddress.getPort();
-                    registry.registerService(GatewayConstant.SERVER_NAME, new ServiceInstance(serverHost, serverPort));
-                    logger.info("Gateway register nacos success: host={}, port={}", serverHost, serverPort);
-                }
-            }).sync();
+            ChannelFuture f = b.bind(port)
+                    .addListener((ChannelFutureListener) channelFuture -> {
+                        // 如果是 nacos，则将本机注册到 nacos 上
+                        if (registry != null && registry instanceof NacosServiceRegistry) {
+                            InetSocketAddress socketAddress =
+                                    (InetSocketAddress) channelFuture.channel()
+                                            .localAddress();
+                            String serverHost = socketAddress.getHostString();
+                            int serverPort = socketAddress.getPort();
+                            registry.registerService(GatewayConstant.SERVER_NAME,
+                                    new ServiceInstance(serverHost, serverPort));
+                            logger.info("Gateway register nacos success: host={}, port={}",
+                                    serverHost,
+                                    serverPort);
+                        }
+                    })
+                    .sync();
 
             logger.info("Gateway Server started successfully on port: {}", port);
             completableFuture.complete(null);
 
             // 等待服务器关闭
-            f.channel().closeFuture().sync();
+            f.channel()
+                    .closeFuture()
+                    .sync();
         } catch (Exception e) {
             logger.error("Failed to start Gateway Server", e);
             completableFuture.completeExceptionally(e);

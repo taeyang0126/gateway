@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server.route;
 
 import java.util.HashMap;
@@ -30,8 +45,13 @@ public class ServiceInstance {
         this(host, port, 1, metadata, true, true);
     }
 
-    public ServiceInstance(String host, int port, double weight, Map<String, String> metadata, boolean healthy,
-                    boolean enabled) {
+    public ServiceInstance(
+            String host,
+            int port,
+            double weight,
+            Map<String, String> metadata,
+            boolean healthy,
+            boolean enabled) {
         this.host = host;
         this.port = port;
         this.weight = weight;
@@ -77,7 +97,9 @@ public class ServiceInstance {
             return false;
         }
         ServiceInstance that = (ServiceInstance) o;
-        return port == that.port && Objects.equals(host, that.host) && Objects.equals(metadata, that.metadata);
+        return port == that.port
+                && Objects.equals(host, that.host)
+                && Objects.equals(metadata, that.metadata);
     }
 
     @Override
@@ -87,7 +109,20 @@ public class ServiceInstance {
 
     @Override
     public String toString() {
-        return "ServiceInstance{" + "host='" + host + '\'' + ", port=" + port + ", weight=" + weight + ", healthy="
-                        + healthy + ", enable=" + enabled + ", metadata=" + metadata + '}';
+        return "ServiceInstance{"
+                + "host='"
+                + host
+                + '\''
+                + ", port="
+                + port
+                + ", weight="
+                + weight
+                + ", healthy="
+                + healthy
+                + ", enable="
+                + enabled
+                + ", metadata="
+                + metadata
+                + '}';
     }
 }

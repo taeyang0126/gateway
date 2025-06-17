@@ -1,8 +1,24 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server.route.connection;
+
+import java.util.Map;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import com.lei.java.gateway.server.protocol.GatewayMessage;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -12,7 +28,7 @@ import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 
-import java.util.Map;
+import com.lei.java.gateway.server.protocol.GatewayMessage;
 
 /**
  * HTTP 协议转换器
@@ -27,11 +43,16 @@ public class HttpProtocolConverter {
      */
     public static FullHttpRequest toHttpRequest(GatewayMessage message) {
         // 构建请求体
-        ByteBuf content = message.getBody() != null ? Unpooled.wrappedBuffer(message.getBody()) : Unpooled.EMPTY_BUFFER;
+        ByteBuf content = message.getBody() != null
+                ? Unpooled.wrappedBuffer(message.getBody())
+                : Unpooled.EMPTY_BUFFER;
 
         // 创建 HTTP 请求，直接使用 bizType 作为路径
-        FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST,
-                        convertToPath(message.getBizType()), content);
+        FullHttpRequest request = new DefaultFullHttpRequest(
+                HttpVersion.HTTP_1_1,
+                HttpMethod.POST,
+                convertToPath(message.getBizType()),
+                content);
 
         // 设置 headers
         HttpHeaders headers = request.headers();
@@ -45,7 +66,8 @@ public class HttpProtocolConverter {
 
         // 添加扩展字段到 headers
         if (message.getExtensions() != null) {
-            for (Map.Entry<String, String> entry : message.getExtensions().entrySet()) {
+            for (Map.Entry<String, String> entry : message.getExtensions()
+                    .entrySet()) {
                 headers.set(entry.getKey(), entry.getValue());
             }
         }
@@ -56,7 +78,9 @@ public class HttpProtocolConverter {
     /**
      * 将 HTTP 响应转换为 GatewayMessage
      */
-    public static GatewayMessage toGatewayMessage(FullHttpResponse response, GatewayMessage request) {
+    public static GatewayMessage toGatewayMessage(
+            FullHttpResponse response,
+            GatewayMessage request) {
         GatewayMessage message = new GatewayMessage();
 
         // 复制请求中的关键字段
@@ -78,11 +102,15 @@ public class HttpProtocolConverter {
         // 将 HTTP headers 转换为扩展字段
         HttpHeaders headers = response.headers();
         for (Map.Entry<String, String> header : headers) {
-            message.getExtensions().put(header.getKey(), header.getValue());
+            message.getExtensions()
+                    .put(header.getKey(), header.getValue());
         }
 
         // 添加响应状态码
-        message.getExtensions().put("http_status", String.valueOf(response.status().code()));
+        message.getExtensions()
+                .put("http_status",
+                        String.valueOf(response.status()
+                                .code()));
 
         return message;
     }
@@ -94,6 +122,7 @@ public class HttpProtocolConverter {
         // 1. 将所有的 '.' 替换为 '/'
         String slashSeparated = bizType.replace('.', '/');
         // 2. 在字符串开头添加 '/'
-        return "/" + slashSeparated;
+        return "/"
+                + slashSeparated;
     }
 }

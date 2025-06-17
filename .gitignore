@@ -42,3 +42,5 @@ build/
 .idea/**
 
 **/logs/**
+
+.flattened-pom.xml

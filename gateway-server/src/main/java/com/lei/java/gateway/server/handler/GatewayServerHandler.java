@@ -1,10 +1,23 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server.handler;
 
-import com.lei.java.gateway.server.protocol.GatewayMessage;
-import com.lei.java.gateway.server.route.RouteService;
-import com.lei.java.gateway.server.session.DefaultSession;
-import com.lei.java.gateway.server.session.Session;
-import com.lei.java.gateway.server.session.SessionManager;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ThreadFactory;
+
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.timeout.IdleState;
@@ -13,8 +26,11 @@ import io.netty.util.ReferenceCountUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ThreadFactory;
+import com.lei.java.gateway.server.protocol.GatewayMessage;
+import com.lei.java.gateway.server.route.RouteService;
+import com.lei.java.gateway.server.session.DefaultSession;
+import com.lei.java.gateway.server.session.Session;
+import com.lei.java.gateway.server.session.SessionManager;
 
 /**
  * 网关服务器消息处理器
@@ -29,8 +45,10 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
     public GatewayServerHandler(SessionManager sessionManager, RouteService routeService) {
         this.sessionManager = sessionManager;
         this.routeService = routeService;
-        businessFactory = Thread.ofVirtual().name("business-handler-", 0)
-                        .uncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e)).factory();
+        businessFactory = Thread.ofVirtual()
+                .name("business-handler-", 0)
+                .uncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e))
+                .factory();
     }
 
     @Override
@@ -47,11 +65,11 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         try {
             // 处理不同类型的消息
             switch (message.getMsgType()) {
-                case GatewayMessage.MESSAGE_TYPE_HEARTBEAT :
+                case GatewayMessage.MESSAGE_TYPE_HEARTBEAT:
                     // 心跳消息直接在 EventLoop 中处理，因为处理逻辑简单
                     handleHeartbeat(ctx, message, session);
                     break;
-                case GatewayMessage.MESSAGE_TYPE_BIZ :
+                case GatewayMessage.MESSAGE_TYPE_BIZ:
                     // 业务消息提交到业务线程池处理
                     final GatewayMessage requestMessage = message;
                     final Session currentSession = session;
@@ -62,9 +80,10 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
                             logger.error("Handle business message error", e);
                             handleError(ctx, requestMessage, e);
                         }
-                    }).start();
+                    })
+                            .start();
                     break;
-                default :
+                default:
                     logger.warn("Unknown message type: {}", message.getMsgType());
                     handleError(ctx, message, new IllegalArgumentException("Unknown message type"));
             }
@@ -121,7 +140,10 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         return session;
     }
 
-    private void handleHeartbeat(ChannelHandlerContext ctx, GatewayMessage message, Session session) {
+    private void handleHeartbeat(
+            ChannelHandlerContext ctx,
+            GatewayMessage message,
+            Session session) {
         if (session == null) {
             logger.warn("Unknown heartbeat message received");
             ctx.close();
@@ -144,7 +166,10 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         ctx.writeAndFlush(response);
     }
 
-    private void handleBizMessage(ChannelHandlerContext ctx, GatewayMessage message, Session session) {
+    private void handleBizMessage(
+            ChannelHandlerContext ctx,
+            GatewayMessage message,
+            Session session) {
         if (session == null) {
             logger.warn("UnKnown business message received");
             ctx.close();
@@ -160,14 +185,15 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         session.updateLastActiveTime();
 
         // 实现业务消息路由转发逻辑
-        routeService.route(message).whenComplete((response, ex) -> {
-            if (ex != null) {
-                logger.error("Failed to route message={}, e: ", message, ex);
-                handleError(ctx, message, ex);
-            } else {
-                ctx.writeAndFlush(response);
-            }
-        });
+        routeService.route(message)
+                .whenComplete((response, ex) -> {
+                    if (ex != null) {
+                        logger.error("Failed to route message={}, e: ", message, ex);
+                        handleError(ctx, message, ex);
+                    } else {
+                        ctx.writeAndFlush(response);
+                    }
+                });
     }
 
     private void handleError(ChannelHandlerContext ctx, GatewayMessage message, Throwable cause) {

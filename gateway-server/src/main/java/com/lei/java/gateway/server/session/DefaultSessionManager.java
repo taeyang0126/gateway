@@ -1,10 +1,26 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server.session;
 
-import io.netty.channel.Channel;
 import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+
+import io.netty.channel.Channel;
 
 /**
  * 默认会话管理器实现
@@ -64,7 +80,9 @@ public class DefaultSessionManager implements SessionManager {
     }
 
     private String generateSessionId() {
-        return UUID.randomUUID().toString().replace("-", "");
+        return UUID.randomUUID()
+                .toString()
+                .replace("-", "");
     }
 
     /**
@@ -72,7 +90,8 @@ public class DefaultSessionManager implements SessionManager {
      */
     public void shutdown() {
         // 关闭所有会话
-        sessions.values().forEach(Session::close);
+        sessions.values()
+                .forEach(Session::close);
         sessions.clear();
         clientIdIndex.clear();
     }

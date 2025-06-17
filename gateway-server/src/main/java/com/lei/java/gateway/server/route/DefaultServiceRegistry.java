@@ -1,8 +1,19 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server.route;
-
-import com.lei.java.gateway.server.route.connection.ConnectionManager;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,13 +26,19 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.lei.java.gateway.server.route.connection.ConnectionManager;
+
 /**
  * 默认服务注册中心实现
  */
 public class DefaultServiceRegistry implements ServiceRegistry {
     private static final Logger logger = LoggerFactory.getLogger(DefaultServiceRegistry.class);
 
-    private final ConcurrentMap<String, List<ServiceInstance>> serviceMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, List<ServiceInstance>> serviceMap =
+            new ConcurrentHashMap<>();
     private final ScheduledExecutorService healthCheckExecutor;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final ConnectionManager connectionManager;
@@ -74,7 +91,9 @@ public class DefaultServiceRegistry implements ServiceRegistry {
         serviceMap.computeIfPresent(bizType, (key, instances) -> {
             instances.remove(instance);
             logger.info("Removed service instance [{}] for bizType [{}]", instance, bizType);
-            return instances.isEmpty() ? null : instances;
+            return instances.isEmpty()
+                    ? null
+                    : instances;
         });
     }
 
@@ -101,7 +120,8 @@ public class DefaultServiceRegistry implements ServiceRegistry {
     }
 
     private void startHealthCheck() {
-        healthCheckExecutor.scheduleWithFixedDelay(this::checkServiceHealth, 30, 30, TimeUnit.SECONDS);
+        healthCheckExecutor
+                .scheduleWithFixedDelay(this::checkServiceHealth, 30, 30, TimeUnit.SECONDS);
     }
 
     private void checkServiceHealth() {
@@ -115,7 +135,9 @@ public class DefaultServiceRegistry implements ServiceRegistry {
                     // 这里可以通过连接测试、心跳等机制来判断服务实例是否健康
                     if (!instance.isHealthy()) {
                         removeService(bizType, instance);
-                        logger.warn("Removed unhealthy service instance [{}] for bizType [{}]", instance, bizType);
+                        logger.warn("Removed unhealthy service instance [{}] for bizType [{}]",
+                                instance,
+                                bizType);
                     }
                 }
             }

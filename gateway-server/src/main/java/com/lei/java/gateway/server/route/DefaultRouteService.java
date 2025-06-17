@@ -1,15 +1,31 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server.route;
+
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+
+import io.netty.util.internal.StringUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.lei.java.gateway.server.protocol.GatewayMessage;
 import com.lei.java.gateway.server.route.connection.Connection;
 import com.lei.java.gateway.server.route.connection.ConnectionManager;
 import com.lei.java.gateway.server.route.loadbalancer.LoadBalancer;
-import io.netty.util.internal.StringUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * <p>
@@ -28,8 +44,10 @@ public class DefaultRouteService implements RouteService {
     public static final String ERROR_BIZ_TYPE_REQUIRED = "bizType is required";
     public static final String ERROR_SERVICE_NOT_FOUND = "service %s not found";
 
-    public DefaultRouteService(ServiceRegistry registry, LoadBalancer loadBalancer,
-                    ConnectionManager connectionManager) {
+    public DefaultRouteService(
+            ServiceRegistry registry,
+            LoadBalancer loadBalancer,
+            ConnectionManager connectionManager) {
         this.registry = registry;
         this.loadBalancer = loadBalancer;
         this.connectionManager = connectionManager;
@@ -50,14 +68,16 @@ public class DefaultRouteService implements RouteService {
         List<ServiceInstance> services = registry.getServices(bizType);
         if (null == services || services.isEmpty()) {
             logger.error("No service found for bizType: {}", bizType);
-            future.completeExceptionally(new IllegalArgumentException(String.format(ERROR_SERVICE_NOT_FOUND, bizType)));
+            future.completeExceptionally(
+                    new IllegalArgumentException(String.format(ERROR_SERVICE_NOT_FOUND, bizType)));
             return future;
         }
 
         ServiceInstance instance = loadBalancer.select(services);
         if (instance == null) {
             logger.error("Load balancer returned null instance for bizType: {}", bizType);
-            future.completeExceptionally(new IllegalArgumentException(String.format(ERROR_SERVICE_NOT_FOUND, bizType)));
+            future.completeExceptionally(
+                    new IllegalArgumentException(String.format(ERROR_SERVICE_NOT_FOUND, bizType)));
             return future;
         }
 
@@ -67,19 +87,25 @@ public class DefaultRouteService implements RouteService {
         CompletableFuture<Connection> connection = connectionManager.getConnection(instance);
         connection.whenComplete((conn, throwable) -> {
             if (throwable != null) {
-                logger.error("Failed to get connection for instance: " + instance, throwable);
+                logger.error("Failed to get connection for instance: "
+                        + instance, throwable);
                 future.completeExceptionally(throwable);
             } else {
-                logger.debug("Sending message to instance: {}, requestId: {}", instance, message.getRequestId());
-                conn.send(message).whenComplete((resp, err) -> {
-                    if (err != null) {
-                        logger.error("Failed to send message: " + message.getRequestId(), err);
-                        future.completeExceptionally(err);
-                    } else {
-                        logger.debug("Received response for requestId: {}", message.getRequestId());
-                        future.complete(resp);
-                    }
-                });
+                logger.debug("Sending message to instance: {}, requestId: {}",
+                        instance,
+                        message.getRequestId());
+                conn.send(message)
+                        .whenComplete((resp, err) -> {
+                            if (err != null) {
+                                logger.error("Failed to send message: "
+                                        + message.getRequestId(), err);
+                                future.completeExceptionally(err);
+                            } else {
+                                logger.debug("Received response for requestId: {}",
+                                        message.getRequestId());
+                                future.complete(resp);
+                            }
+                        });
             }
         });
 

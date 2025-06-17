@@ -1,34 +1,76 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server.protocol;
-
-import io.netty.buffer.ByteBuf;
-import io.netty.util.CharsetUtil;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.zip.CRC32;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.util.CharsetUtil;
+
 /**
- * 网关消息协议定义
- *
- * 消息格式（字节序：大端序）：
- *
- * <pre>
- * +----------------+----------------+----------------+----------------+----------------+----------------+----------------+----------------+----------------+----------------+
- * |   totalLength  |    checksum    |     magic      |    version    |    msgType    |   requestId   |    clientId    |    bizType     |   extensions   |      body      |
- * |     (4字节)    |     (4字节)    |     (2字节)    |    (1字节)    |    (1字节)    |    (8字节)    |    (变长)      |     (变长)     |     (变长)     |     (变长)     |
- * |     int32     |     int32      |     int16      |     int8      |     int8      |    int64      |    string      |    string      |      map       |     bytes      |
- * | 消息总长度     |   校验和CRC32   |   0xCAFE      |    0x01       | 0x01-认证请求  |   请求ID      | length(2字节)  | length(2字节)   | length(2字节)   | length(4字节)   |
- * | (不含自身4字节) |                |                |               | 0x02-认证响应  |              | content(UTF8)  | content(UTF8)   | count(2字节)    | content(bytes)  |
- * |                |                |                |               | 0x03-心跳      |              |                |                | entries:        |                |
- * |                |                |                |               | 0x04-业务消息  |              |                |                | - key_len(2)    |                |
- * |                |                |                |               | 0xFF-错误消息  |              |                |                | - key(UTF8)     |                |
- * |                |                |                |               |               |              |                |                | - value_len(2)  |                |
- * |                |                |                |               |               |              |                |                | - value(UTF8)   |                |
- * +----------------+----------------+----------------+----------------+----------------+----------------+----------------+----------------+----------------+----------------+
- * </pre>
- *
- * 注意事项： 1. 所有字符串采用UTF-8编码 2. 校验和通过CRC32计算，计算范围为校验和之后的所有字节 3. 变长字符串和字节数组的长度字段为0时，表示内容为空 4.
- * 扩展字段为可选字段，length为0时表示没有扩展字段
+ * 网关消息协议定义。
+ * <p>
+ * 所有多字节字段均采用 <b>大端序 (Big-Endian)</b> 字节序。 协议各字段定义如下：
+ * <ul>
+ * <li><b>totalLength</b> (int32, 4字节): 消息总长度，从 `checksum` 字段开始计算，不包含 `totalLength` 自身。
+ * <li><b>checksum</b> (int32, 4字节): CRC32 校验和。计算范围为从 `magic` 字段到消息体 `body` 结尾的所有字节。
+ * <li><b>magic</b> (int16, 2字节): 魔数，固定值为 <code>0xCAFE</code>。
+ * <li><b>version</b> (int8, 1字节): 协议版本，当前固定为 <code>0x01</code>。
+ * <li><b>msgType</b> (int8, 1字节): 消息类型，定义如下：
+ * <ul>
+ * <li><code>0x01</code> - 认证请求</li>
+ * <li><code>0x02</code> - 认证响应</li>
+ * <li><code>0x03</code> - 心跳</li>
+ * <li><code>0x04</code> - 业务消息</li>
+ * <li><code>0xFF</code> - 错误消息</li>
+ * </ul>
+ * <li><b>requestId</b> (int64, 8字节): 请求ID，用于关联请求和响应。
+ * <li><b>clientId</b> (String, 变长): 客户端ID。结构为：
+ * <ul>
+ * <li><code>length</code> (int16, 2字节): 字符串内容的字节长度。</li>
+ * <li><code>content</code> (UTF-8): 字符串内容。</li>
+ * </ul>
+ * <li><b>bizType</b> (String, 变长): 业务类型标识。结构同 <code>clientId</code>。
+ * <li><b>extensions</b> (Map, 变长): 扩展字段，用于传输额外的元数据。结构为：
+ * <ul>
+ * <li><code>length</code> (int16, 2字节): 整个扩展字段的总字节长度。</li>
+ * <li><code>count</code> (int16, 2字节): Map中条目(entry)的数量。</li>
+ * <li><code>entries</code>: 具体的键值对列表，每个条目结构如下：
+ * <ul>
+ * <li><code>key_len</code> (int16, 2字节)</li>
+ * <li><code>key</code> (UTF-8)</li>
+ * <li><code>value_len</code> (int16, 2字节)</li>
+ * <li><code>value</code> (UTF-8)</li>
+ * </ul>
+ * </li>
+ * </ul>
+ * <li><b>body</b> (byte[], 变长): 消息体，存放实际的业务数据。结构为：
+ * <ul>
+ * <li><code>length</code> (int32, 4字节): 消息体的字节长度。</li>
+ * <li><code>content</code> (byte[]): 消息体内容。</li>
+ * </ul>
+ * </ul>
+ * <b>注意事项:</b>
+ * <ol>
+ * <li>所有字符串均采用 UTF-8 编码。</li>
+ * <li>变长字段（如 String, Map, byte[]）的长度字段为0时，表示该字段内容为空。</li>
+ * <li>扩展字段为可选字段，其总长度字段为0时，表示没有扩展字段。</li>
+ * </ol>
  */
 public class GatewayMessage {
     // 协议常量
@@ -152,14 +194,18 @@ public class GatewayMessage {
         out.writeLong(requestId);
 
         // 写入clientId
-        byte[] clientIdBytes = clientId != null ? clientId.getBytes(CharsetUtil.UTF_8) : new byte[0];
+        byte[] clientIdBytes = clientId != null
+                ? clientId.getBytes(CharsetUtil.UTF_8)
+                : new byte[0];
         out.writeShort(clientIdBytes.length);
         if (clientIdBytes.length > 0) {
             out.writeBytes(clientIdBytes);
         }
 
         // 写入业务类型
-        byte[] bizTypeBytes = bizType != null ? bizType.getBytes(CharsetUtil.UTF_8) : new byte[0];
+        byte[] bizTypeBytes = bizType != null
+                ? bizType.getBytes(CharsetUtil.UTF_8)
+                : new byte[0];
         out.writeShort(bizTypeBytes.length);
         if (bizTypeBytes.length > 0) {
             out.writeBytes(bizTypeBytes);
@@ -171,8 +217,10 @@ public class GatewayMessage {
         if (extensionsBytes > 0) {
             out.writeShort(extensions.size());
             for (Map.Entry<String, String> entry : extensions.entrySet()) {
-                byte[] keyBytes = entry.getKey().getBytes(CharsetUtil.UTF_8);
-                byte[] valueBytes = entry.getValue().getBytes(CharsetUtil.UTF_8);
+                byte[] keyBytes = entry.getKey()
+                        .getBytes(CharsetUtil.UTF_8);
+                byte[] valueBytes = entry.getValue()
+                        .getBytes(CharsetUtil.UTF_8);
                 out.writeShort(keyBytes.length);
                 out.writeBytes(keyBytes);
                 out.writeShort(valueBytes.length);
@@ -209,8 +257,10 @@ public class GatewayMessage {
         }
         int length = 2; // size of map (short)
         for (Map.Entry<String, String> entry : extensions.entrySet()) {
-            length += 2 + entry.getKey().getBytes(CharsetUtil.UTF_8).length;
-            length += 2 + entry.getValue().getBytes(CharsetUtil.UTF_8).length;
+            length += 2 + entry.getKey()
+                    .getBytes(CharsetUtil.UTF_8).length;
+            length += 2 + entry.getValue()
+                    .getBytes(CharsetUtil.UTF_8).length;
         }
         return length;
     }
@@ -266,8 +316,27 @@ public class GatewayMessage {
 
     @Override
     public String toString() {
-        return "GatewayMessage{" + "magic=" + magic + ", version=" + version + ", msgType=" + msgType + ", requestId="
-                        + requestId + ", clientId='" + clientId + '\'' + ", bizType='" + bizType + '\''
-                        + ", extensions=" + extensions + ", body=" + (body == null ? "" : new String(body)) + '}';
+        return "GatewayMessage{"
+                + "magic="
+                + magic
+                + ", version="
+                + version
+                + ", msgType="
+                + msgType
+                + ", requestId="
+                + requestId
+                + ", clientId='"
+                + clientId
+                + '\''
+                + ", bizType='"
+                + bizType
+                + '\''
+                + ", extensions="
+                + extensions
+                + ", body="
+                + (body == null
+                        ? ""
+                        : new String(body))
+                + '}';
     }
 }

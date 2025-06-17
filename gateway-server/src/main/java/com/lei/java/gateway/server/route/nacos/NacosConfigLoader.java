@@ -1,11 +1,26 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server.route.nacos;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Nacos配置加载工具类
@@ -38,14 +53,16 @@ public class NacosConfigLoader {
     /**
      * 从指定配置文件加载配置
      *
-     * @param configFile
-     *            配置文件名（相对于 classpath）
+     * @param configFile 配置文件名（相对于 classpath）
      */
     public static NacosConfig load(String configFile) {
         Properties props = new Properties();
-        try (InputStream in = NacosConfigLoader.class.getClassLoader().getResourceAsStream(configFile)) {
+        try (InputStream in = NacosConfigLoader.class.getClassLoader()
+                .getResourceAsStream(configFile)) {
             if (in == null) {
-                throw new IllegalArgumentException("配置文件不存在: " + configFile);
+                throw new IllegalArgumentException(
+                        "配置文件不存在: "
+                                + configFile);
             }
             props.load(in);
             return buildConfig(props);
@@ -69,15 +86,23 @@ public class NacosConfigLoader {
         config.setUsername(resolveValue(get(props, KEY_USERNAME, null)));
         config.setPassword(resolveValue(get(props, KEY_PASSWORD, null)));
 
-        logger.info("已加载Nacos配置: serverAddr={}, namespace={}, group={}", serverAddr, namespace, config.getGroup());
+        logger.info("已加载Nacos配置: serverAddr={}, namespace={}, group={}",
+                serverAddr,
+                namespace,
+                config.getGroup());
 
         return config;
     }
 
     private static String getRequired(Properties props, String key) {
         String value = get(props, key, null);
-        if (value == null || value.trim().isEmpty()) {
-            throw new IllegalArgumentException("必需的配置项未设置: " + PREFIX + key);
+        if (value == null
+                || value.trim()
+                        .isEmpty()) {
+            throw new IllegalArgumentException(
+                    "必需的配置项未设置: "
+                            + PREFIX
+                            + key);
         }
         return value;
     }
@@ -112,7 +137,8 @@ public class NacosConfigLoader {
             String propValue = System.getProperty(placeholder);
 
             if (propValue != null) {
-                result = result.substring(0, startIndex) + propValue + result.substring(endIndex + 1);
+                result = result.substring(0, startIndex) + propValue
+                        + result.substring(endIndex + 1);
             } else {
                 logger.warn("系统属性 {} 未定义", placeholder);
                 // 如果找不到系统属性，保留原值

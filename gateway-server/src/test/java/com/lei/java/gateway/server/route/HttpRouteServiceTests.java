@@ -1,4 +1,26 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server.route;
+
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
@@ -13,10 +35,6 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import com.lei.java.gateway.server.protocol.GatewayMessage;
-import com.lei.java.gateway.server.route.connection.ConnectionManager;
-import com.lei.java.gateway.server.route.connection.DefaultConnectionManager;
-import com.lei.java.gateway.server.route.loadbalancer.RoundRobinLoadBalancer;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -29,17 +47,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.nio.charset.StandardCharsets;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import com.lei.java.gateway.server.protocol.GatewayMessage;
+import com.lei.java.gateway.server.route.connection.ConnectionManager;
+import com.lei.java.gateway.server.route.connection.DefaultConnectionManager;
+import com.lei.java.gateway.server.route.loadbalancer.RoundRobinLoadBalancer;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class HttpRouteServiceTests {
 
@@ -47,9 +61,12 @@ public class HttpRouteServiceTests {
     private static final String UPSTREAM_HOST = "127.0.0.1";
     private static final String TEST_BIZ_TYPE = "test.http.service";
     private static final String TEST_URL = "/test/http/service";
-    private static final EventLoopGroup bossGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
-    private static final EventLoopGroup workerGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
-    private static final EchoHttpServerHandler echoHttpServerHandler = new EchoHttpServerHandler();
+    private static final EventLoopGroup BOSS_GROUP =
+            new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
+    private static final EventLoopGroup WORKER_GROUP =
+            new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
+    private static final EchoHttpServerHandler ECHO_HTTP_SERVER_HANDLER =
+            new EchoHttpServerHandler();
     private static ServiceRegistry registry;
     private static ConnectionManager connectionManager;
     private static RouteService routeService;
@@ -58,19 +75,22 @@ public class HttpRouteServiceTests {
     public void before() {
         // 1. 构建一个上游的 http server
         ServerBootstrap serverBootstrap = new ServerBootstrap();
-        serverBootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
-                        .option(ChannelOption.SO_BACKLOG, 1024).childOption(ChannelOption.SO_KEEPALIVE, true)
-                        .childOption(ChannelOption.TCP_NODELAY, true)
-                        .childHandler(new ChannelInitializer<NioSocketChannel>() {
-                            @Override
-                            protected void initChannel(NioSocketChannel ch) throws Exception {
-                                ChannelPipeline pipeline = ch.pipeline();
-                                pipeline.addLast(new HttpServerCodec());
-                                pipeline.addLast(new HttpObjectAggregator(65535));
-                                pipeline.addLast(echoHttpServerHandler);
-                            }
-                        });
-        serverBootstrap.bind(UPSTREAM_PORT).syncUninterruptibly();
+        serverBootstrap.group(BOSS_GROUP, WORKER_GROUP)
+                .channel(NioServerSocketChannel.class)
+                .option(ChannelOption.SO_BACKLOG, 1024)
+                .childOption(ChannelOption.SO_KEEPALIVE, true)
+                .childOption(ChannelOption.TCP_NODELAY, true)
+                .childHandler(new ChannelInitializer<NioSocketChannel>() {
+                    @Override
+                    protected void initChannel(NioSocketChannel ch) throws Exception {
+                        ChannelPipeline pipeline = ch.pipeline();
+                        pipeline.addLast(new HttpServerCodec());
+                        pipeline.addLast(new HttpObjectAggregator(65535));
+                        pipeline.addLast(ECHO_HTTP_SERVER_HANDLER);
+                    }
+                });
+        serverBootstrap.bind(UPSTREAM_PORT)
+                .syncUninterruptibly();
 
         // 2. ConnectionManager
         connectionManager = new DefaultConnectionManager();
@@ -80,23 +100,26 @@ public class HttpRouteServiceTests {
         registry.registerService(TEST_BIZ_TYPE, new ServiceInstance(UPSTREAM_HOST, UPSTREAM_PORT));
 
         // 4. routeService
-        routeService = new DefaultRouteService(registry, new RoundRobinLoadBalancer(), connectionManager);
+        routeService =
+                new DefaultRouteService(registry, new RoundRobinLoadBalancer(), connectionManager);
     }
 
     @AfterEach
     public void after() {
-        bossGroup.shutdownGracefully();
-        workerGroup.shutdownGracefully();
+        BOSS_GROUP.shutdownGracefully();
+        WORKER_GROUP.shutdownGracefully();
         connectionManager.close();
         registry.close();
     }
 
     @Test
-    public void testHttpRouteService() throws ExecutionException, InterruptedException, TimeoutException {
+    public void testHttpRouteService()
+            throws ExecutionException, InterruptedException, TimeoutException {
         GatewayMessage message = new GatewayMessage();
         message.setMsgType(GatewayMessage.MESSAGE_TYPE_BIZ);
         message.setRequestId(System.currentTimeMillis());
-        message.setClientId(UUID.randomUUID().toString());
+        message.setClientId(UUID.randomUUID()
+                .toString());
         message.setBizType(TEST_BIZ_TYPE);
         message.setBody("{\"name\":\"嘻嘻嘻\",\"age\":123}".getBytes(StandardCharsets.UTF_8));
 
@@ -106,50 +129,61 @@ public class HttpRouteServiceTests {
         // 等待响应并验证
         GatewayMessage gatewayMessage = responseFuture.get(5, TimeUnit.SECONDS);
 
-        assertNotNull(gatewayMessage);
-        assertEquals(message.getRequestId(), gatewayMessage.getRequestId());
-        assertEquals(message.getClientId(), gatewayMessage.getClientId());
-        assertEquals(message.getBizType(), gatewayMessage.getBizType());
-        assertEquals("200", gatewayMessage.getExtensions().get("http_status"));
-        assertArrayEquals(message.getBody(), gatewayMessage.getBody());
+        assertThat(gatewayMessage).isNotNull();
+        assertThat(gatewayMessage.getRequestId()).isEqualTo(message.getRequestId());
+        assertThat(gatewayMessage.getClientId()).isEqualTo(message.getClientId());
+        assertThat(gatewayMessage.getBizType()).isEqualTo(message.getBizType());
+        assertThat(gatewayMessage.getExtensions()
+                .get("http_status")).isEqualTo("200");
+        assertThat(gatewayMessage.getBody()).isEqualTo(message.getBody());
     }
 
     @Test
-    public void testHttpRouteServiceWithInvalidBizType() {
+    public void testHttpRouteServiceWithInvalidBizType()
+            throws ExecutionException, InterruptedException {
         GatewayMessage message = new GatewayMessage();
         message.setMsgType(GatewayMessage.MESSAGE_TYPE_BIZ);
         message.setRequestId(System.currentTimeMillis());
-        message.setClientId(UUID.randomUUID().toString());
-        message.setBizType(UUID.randomUUID().toString());
+        message.setClientId(UUID.randomUUID()
+                .toString());
+        message.setBizType(UUID.randomUUID()
+                .toString());
         message.setBody("{\"name\":\"嘻嘻嘻\",\"age\":123}".getBytes(StandardCharsets.UTF_8));
 
         // 发送请求
         CompletableFuture<GatewayMessage> future = routeService.route(message);
-        ExecutionException executionException = assertThrows(ExecutionException.class, future::get);
-        assertEquals(IllegalArgumentException.class, executionException.getCause().getClass());
-        assertEquals(String.format(DefaultRouteService.ERROR_SERVICE_NOT_FOUND, message.getBizType()),
-                        executionException.getCause().getMessage());
+
+        assertThatThrownBy(future::get).isInstanceOf(ExecutionException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(String.format(DefaultRouteService.ERROR_SERVICE_NOT_FOUND,
+                        message.getBizType()));
     }
 
     @ChannelHandler.Sharable
     public static class EchoHttpServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
 
         @Override
-        protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) throws Exception {
+        protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg)
+                throws Exception {
 
             String uri = msg.uri();
             if (!uri.endsWith(TEST_URL)) {
-                FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
-                                HttpResponseStatus.NOT_FOUND);
-                response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+                FullHttpResponse response = new DefaultFullHttpResponse(
+                        HttpVersion.HTTP_1_1,
+                        HttpResponseStatus.NOT_FOUND);
+                response.headers()
+                        .set(HttpHeaderNames.CONTENT_TYPE, "application/json");
                 ctx.writeAndFlush(response);
                 return;
             }
 
-            ByteBuf buf = msg.content().retainedDuplicate();
-            FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, buf);
-            response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json").set(HttpHeaderNames.CONTENT_LENGTH,
-                            buf.readableBytes());
+            ByteBuf buf = msg.content()
+                    .retainedDuplicate();
+            FullHttpResponse response =
+                    new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, buf);
+            response.headers()
+                    .set(HttpHeaderNames.CONTENT_TYPE, "application/json")
+                    .set(HttpHeaderNames.CONTENT_LENGTH, buf.readableBytes());
             ctx.writeAndFlush(response);
         }
     }
