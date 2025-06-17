@@ -17,12 +17,5 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Verify Docker Environment
-        run: |
-          echo "Docker version:"
-          docker --version
-          echo "Docker daemon info:"
-          docker info
-
       - name: Maven Verify
         run: mvn clean verify -am -B -pl gateway-server --no-transfer-progress

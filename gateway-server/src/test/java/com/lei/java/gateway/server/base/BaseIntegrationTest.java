@@ -15,8 +15,6 @@
  */
 package com.lei.java.gateway.server.base;
 
-import org.junit.jupiter.api.AfterAll;
-
 /**
  * <p>
  * 基础的集成测试
@@ -27,20 +25,4 @@ import org.junit.jupiter.api.AfterAll;
 public abstract class BaseIntegrationTest extends CommonMicroServiceTest {
 
     public static final NacosTestContainer NACOS_CONTAINER = NacosTestContainer.getInstance();
-
-    @AfterAll
-    static void tearDownAll() {
-        // ...
-        // 如果容器对象存在但没有在运行，说明它在中途崩溃了
-        if (NACOS_CONTAINER != null && !NACOS_CONTAINER.isRunning()) {
-            System.err.println("!!!!!!!!!! NACOS CONTAINER CRASHED !!!!!!!!!!");
-            System.err.println("=== DUMPING LOGS FROM CRASHED CONTAINER: ===");
-            // 打印容器生命周期内的所有标准输出和错误输出
-            System.err.println(NACOS_CONTAINER.getLogs());
-            System.err.println("============================================");
-        } else if (NACOS_CONTAINER != null) {
-            NACOS_CONTAINER.stop();
-        }
-        // ...
-    }
 }
