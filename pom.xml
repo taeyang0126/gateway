@@ -44,6 +44,7 @@
         <maven-checkstyle-plugin.version>3.3.1</maven-checkstyle-plugin.version>
         <spotless-maven-plugin.version>2.43.0</spotless-maven-plugin.version>
         <spotless-maven-plugin.eclipse.version>4.31</spotless-maven-plugin.eclipse.version>
+        <spotbugs-maven-plugin.version>4.9.3.0</spotbugs-maven-plugin.version>
 
         <!--Config-->
         <skipITs>false</skipITs>
@@ -271,6 +272,13 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>${maven-compiler-plugin.version}</version>
+            </plugin>
+
+            <!--静态 Bug 分析插件-->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>${spotbugs-maven-plugin.version}</version>
             </plugin>
 
             <!--代码规范-->

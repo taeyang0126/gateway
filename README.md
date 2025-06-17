@@ -22,6 +22,7 @@
 - 路由转发
   - 支持基于业务类型的消息路由
   - 支持路由的负载均衡
+  - 支持 Nacos 服务发现
 
 - 会话管理
   - 维护客户端会话状态
@@ -42,17 +43,15 @@
 - JDK 24+
 - Maven 3.11+
 - Nacos 2.5.1+
-- docker
+- Docker
 
 ### 构建项目
 ```bash
-mvn clean package
-```
+# 完整构建（包括代码风格检查、单元测试、集成测试等）
+mvn clean verify
 
-### 运行测试
-```bash
-# 运行完整检查（包括代码风格、覆盖率等）
-mvnd verify
+# 仅构建（跳过测试）
+mvn clean install -DskipTests
 ```
 
 ### 启动服务
@@ -69,7 +68,7 @@ gateway/
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/
-│   │   │   │   └── io/netty/gateway/
+│   │   │   │   └── com/lei/java/gateway/
 │   │   │   │       ├── codec/      # 消息编解码
 │   │   │   │       ├── common/     # 公共工具
 │   │   │   │       ├── config/     # 配置管理
@@ -94,109 +93,48 @@ gateway/
 ### 代码质量
 项目使用以下工具确保代码质量：
 - JUnit 5：单元测试框架
+- AssertJ：流式断言库
 - Mockito：测试模拟框架
 - TestContainers：集成测试支持
-- JaCoCo：代码覆盖率检查（要求80%以上）
-- Checkstyle：代码风格检查
+- spotbugs: 静态代码bug查找工具
+- surefire: 单元测试
+- failsafe 集成测试
 
 ### 代码风格检查
+- Checkstyle：代码风格检查
+- spotless: 代码格式检查
 
 #### 命令行检查
 ```bash
-# 运行代码风格检查
-mvn checkstyle:check
+# 代码格式检查
+mvn spotless:check -P checkstyle
 
-# 代码格式检测
-mvn formatter:validate
-
-# 自动格式化代码
-mvn formatter:format
-
-# 运行测试并生成覆盖率报告
-mvn test jacoco:report
-```
-
-#### IDEA配置
-
-1. Checkstyle插件配置
-   - 安装 Checkstyle-IDEA 插件
-   - 打开 Settings -> Tools -> Checkstyle
-   - 点击 "+" 添加新配置
-   - 选择 "Use a local Checkstyle file"
-   - 选择项目根目录下的 `checkstyle.xml`
-   - 勾选新添加的配置
-   - 在编辑器中使用 Alt+Shift+L (Windows) 或 Option+Shift+L (Mac) 检查当前文件
-
-2. 代码格式化配置
-   - 打开 Settings -> Editor -> Code Style
-   - 点击齿轮图标 -> Import Scheme -> Eclipse XML Profile
-   - 选择项目根目录下的 `eclipse-java-google-style.xml`
-   - 使用 Ctrl+Alt+L (Windows) 或 Command+Option+L (Mac) 格式化代码
-
-#### 检查规则说明
-
-1. 行长度限制
-   - 普通代码行：最大180字符
-   - 日志语句和注解：不限制长度
-
-2. 命名规范
-   - 类名：PascalCase（如：UserService）
-   - 方法名和变量：camelCase（如：getUserById）
-   - 常量：UPPER_SNAKE_CASE（如：MAX_RETRY_COUNT）
-   - 包名：全小写，用点分隔（如：com.example.project）
-
-3. 缩进和空格
-   - 使用4个空格缩进（不使用Tab）
-   - 运算符前后需要空格
-   - 逗号后需要空格
-   - 左花括号前需要空格
-
-4. 代码组织
-   - 每个源文件只包含一个顶级类
-   - 导入语句不使用通配符(*)
-   - 类的成员顺序：静态变量 -> 实例变量 -> 构造函数 -> 方法
-   - 方法长度不超过200行
-   - 参数数量不超过8个
-
-#### 忽略检查
-如果某些特殊情况需要忽略检查，可以使用以下方式：
-
-1. 忽略单行检查
-```java
-// CHECKSTYLE:OFF
-某行代码
-// CHECKSTYLE:ON
-```
-
-2. 忽略特定规则
-```java
-@SuppressWarnings("checkstyle:LineLength")
-public class SomeClass {
-    // 这个类中的行长度检查会被忽略
-}
+# 代码格式化
+mvn spotless:apply
 ```
 
 ### 测试规范
 1. 单元测试要求
-   - 测试类名以Test结尾
+   - 测试类名以 Tests 结尾
+   - 集成测试类名以 IT 结尾
    - 测试方法名清晰表达测试意图
    - 每个测试方法只测试一个场景
-   - 使用断言清晰表达预期结果
+   - 使用 AssertJ 的流式断言提高可读性
 
 2. 测试覆盖率要求
    - 整体行覆盖率不低于80%
    - 核心业务逻辑覆盖率不低于90%
-   - 运行 `mvn test jacoco:report` 查看覆盖率报告
 
 3. 测试最佳实践
    - 使用 `@BeforeEach` 和 `@AfterEach` 管理测试资源
    - 使用 Mockito 模拟外部依赖
    - 使用 TestContainers 进行集成测试
    - 保持测试代码整洁，遵循与主代码相同的代码规范
+   - 优先使用 AssertJ 的断言方式
 
 ### 提交规范
 提交代码前需要：
-1. 通过所有单元测试
+1. 通过所有单元测试和集成测试
 2. 通过代码风格检查
 3. 确保测试覆盖率达标
 4. 遵循Git commit message规范
@@ -205,6 +143,7 @@ public class SomeClass {
 - Netty 4.2.2：网络通信框架
 - Nacos 2.5.1：服务注册与发现
 - JUnit 5.12.1：单元测试框架
+- AssertJ：流式断言库
 - Mockito 5.18.0：测试模拟框架
 - TestContainers 1.19.3：集成测试支持
 - SLF4J & Log4j2 2.23.1：日志框架
@@ -212,15 +151,6 @@ public class SomeClass {
 
 ## 文档
 - [需求文档](PRD.md)
-- [设计文档](docs/design.md)
-- [API文档](docs/api.md)
-
-## 贡献指南
-1. Fork 项目
-2. 创建特性分支
-3. 提交变更
-4. 推送到分支
-5. 创建Pull Request
 
 ## 开源协议
-[Apache License 2.0](LICENSE) 
+[MIT License](LICENSE) 
