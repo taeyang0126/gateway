@@ -1,11 +1,26 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server.route;
+
+import org.junit.jupiter.api.Test;
 
 import com.lei.java.gateway.server.route.nacos.NacosConfig;
 import com.lei.java.gateway.server.route.nacos.NacosConfigLoader;
-import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class NacosConfigLoaderTests {
 
@@ -13,19 +28,19 @@ class NacosConfigLoaderTests {
     void testLoadDefaultConfig() {
         NacosConfig config = NacosConfigLoader.load("nacos.properties");
 
-        assertNotNull(config, "配置不应为空");
-        assertNotNull(config.getServerAddr(), "配置不应为空");
-        assertEquals("public", config.getNamespace(), "命名空间不匹配");
-        assertEquals("DEFAULT_GROUP", config.getGroup(), "分组不匹配");
+        assertThat(config).isNotNull();
+        assertThat(config.getServerAddr()).isNotNull();
+        assertThat(config.getNamespace()).isEqualTo("public");
+        assertThat(config.getGroup()).isEqualTo("DEFAULT_GROUP");
     }
 
     @Test
     void testLoadCustomConfig() {
         NacosConfig config = NacosConfigLoader.load("nacos-test.properties");
 
-        assertNotNull(config, "配置不应为空");
-        assertNotNull(config.getServerAddr(), "配置不应为空");
-        assertEquals("public", config.getNamespace());
-        assertEquals("TEST_GROUP", config.getGroup());
+        assertThat(config).isNotNull();
+        assertThat(config.getServerAddr()).isNotNull();
+        assertThat(config.getNamespace()).isEqualTo("public");
+        assertThat(config.getGroup()).isEqualTo("TEST_GROUP");
     }
 }

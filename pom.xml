@@ -6,7 +6,7 @@
 
     <groupId>com.lei.java</groupId>
     <artifactId>gateway</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>${revision}</version>
     <packaging>pom</packaging>
     <name>Gateway Parent</name>
 
@@ -16,24 +16,35 @@
     </modules>
 
     <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <mockito.version>5.18.0</mockito.version>
-        <testcontainers.version>1.19.3</testcontainers.version>
-        <toxiproxy.version>1.18.3</toxiproxy.version>
-        <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
+        <!-- Project -->
         <java.version>24</java.version>
+        <revision>0.1.0-SNAPSHOT</revision>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Runtime Deps -->
         <nacos.version>2.5.1</nacos.version>
         <jackson.version>2.13.5</jackson.version>
         <netty.version>4.2.2.Final</netty.version>
-        <junit.version>5.12.1</junit.version>
         <log4j2.version>2.23.1</log4j2.version>
-        <jacoco.version>0.8.13</jacoco.version>
-        <sonar.java.coveragePlugin>jacoco</sonar.java.coveragePlugin>
-        <sonar.dynamicAnalysis>reuseReports</sonar.dynamicAnalysis>
-        <sonar.jacoco.reportPath>${project.basedir}/../target/jacoco.exec</sonar.jacoco.reportPath>
-        <sonar.language>java</sonar.language>
+
+        <!-- Runtime Deps for Testing -->
+        <mockito.version>5.18.0</mockito.version>
+        <testcontainers.version>1.19.3</testcontainers.version>
+        <toxiproxy.version>1.18.3</toxiproxy.version>
+        <junit.version>5.12.1</junit.version>
+
+        <!-- Maven plugins -->
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <flatten-maven-plugin.version>1.6.0</flatten-maven-plugin.version>
+        <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.3.0</maven-surefire-plugin.version>
         <maven-failsafe-plugin.version>3.3.0</maven-failsafe-plugin.version>
+        <checkstyle.version>10.12.7</checkstyle.version>
+        <maven-checkstyle-plugin.version>3.3.1</maven-checkstyle-plugin.version>
+        <spotless-maven-plugin.version>2.43.0</spotless-maven-plugin.version>
+        <spotless-maven-plugin.eclipse.version>4.31</spotless-maven-plugin.eclipse.version>
+        <spotbugs-maven-plugin.version>4.9.3.0</spotbugs-maven-plugin.version>
 
         <!--Config-->
         <skipITs>false</skipITs>
@@ -189,149 +200,155 @@
         </dependencies>
     </dependencyManagement>
 
+    <profiles>
+        <profile>
+            <id>checkstyle</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-checkstyle-plugin</artifactId>
+                        <version>${maven-checkstyle-plugin.version}</version>
+                        <configuration>
+                            <configLocation>codequality/checkstyle.xml</configLocation>
+                            <headerLocation>codequality/checkstyle-header.txt</headerLocation>
+                            <consoleOutput>true</consoleOutput>
+                            <failOnViolation>true</failOnViolation>
+                            <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                        </configuration>
+                        <dependencies>
+                            <dependency>
+                                <groupId>com.puppycrawl.tools</groupId>
+                                <artifactId>checkstyle</artifactId>
+                                <version>${checkstyle.version}</version>
+                            </dependency>
+                        </dependencies>
+                        <executions>
+                            <execution>
+                                <id>checkstyle-validation</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
     <build>
-        <pluginManagement>
-            <plugins>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-compiler-plugin</artifactId>
-                    <version>${maven-compiler-plugin.version}</version>
-                    <configuration>
-                        <source>${java.version}</source>
-                        <target>${java.version}</target>
-                    </configuration>
-                </plugin>
-
-                <!-- Checkstyle -->
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-checkstyle-plugin</artifactId>
-                    <version>3.3.1</version>
-                    <configuration>
-                        <configLocation>${maven.multiModuleProjectDirectory}/checkstyle.xml</configLocation>
-                        <consoleOutput>true</consoleOutput>
-                        <failsOnError>true</failsOnError>
-                        <linkXRef>false</linkXRef>
-                    </configuration>
-                    <executions>
-                        <execution>
-                            <id>validate</id>
-                            <phase>validate</phase>
-                            <goals>
-                                <goal>check</goal>
-                            </goals>
-                        </execution>
-                    </executions>
-                </plugin>
-
-                <!-- Formatter -->
-                <plugin>
-                    <groupId>net.revelc.code.formatter</groupId>
-                    <artifactId>formatter-maven-plugin</artifactId>
-                    <version>2.23.0</version>
-                    <configuration>
-                        <configFile>${maven.multiModuleProjectDirectory}/eclipse-java-google-style.xml</configFile>
-                        <lineEnding>LF</lineEnding>
-                        <skipJavaFormatting>false</skipJavaFormatting>
-                        <skipHtmlFormatting>true</skipHtmlFormatting>
-                        <skipXmlFormatting>true</skipXmlFormatting>
-                        <skipJsonFormatting>true</skipJsonFormatting>
-                        <skipCssFormatting>true</skipCssFormatting>
-                        <skipJsFormatting>true</skipJsFormatting>
-                    </configuration>
-                    <executions>
-                        <execution>
-                            <goals>
-                                <goal>format</goal>
-                            </goals>
-                        </execution>
-                    </executions>
-                </plugin>
-
-                <!-- JaCoCo -->
-                <plugin>
-                    <groupId>org.jacoco</groupId>
-                    <artifactId>jacoco-maven-plugin</artifactId>
-                    <version>${jacoco.version}</version>
-                    <executions>
-                        <execution>
-                            <id>prepare-agent</id>
-                            <goals>
-                                <goal>prepare-agent</goal>
-                            </goals>
-                        </execution>
-                        <execution>
-                            <id>report</id>
-                            <phase>test</phase>
-                            <goals>
-                                <goal>report</goal>
-                            </goals>
-                        </execution>
-                    </executions>
-                </plugin>
-
-                <!--集成测试-->
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-failsafe-plugin</artifactId>
-                    <version>${maven-failsafe-plugin.version}</version>
-                    <configuration>
-                        <!-- Activate the use of TCP to transmit events to the plugin -->
-                        <forkNode implementation="org.apache.maven.plugin.surefire.extensions.SurefireForkNodeFactory"/>
-                        <includes>
-                            <include>**/*IT.java</include>
-                            <include>**/*ST.java</include>
-                        </includes>
-                        <skipITs>${skipITs}</skipITs>
-                    </configuration>
-                    <executions>
-                        <execution>
-                            <goals>
-                                <goal>integration-test</goal>
-                                <goal>verify</goal>
-                            </goals>
-                        </execution>
-                    </executions>
-                </plugin>
-
-                <!--单元测试-->
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-surefire-plugin</artifactId>
-                    <version>${maven-surefire-plugin.version}</version>
-                    <configuration>
-                        <!-- Activate the use of TCP to transmit events to the plugin -->
-                        <forkNode implementation="org.apache.maven.plugin.surefire.extensions.SurefireForkNodeFactory"/>
-                        <includes>
-                            <include>**/*Tests.java</include>
-                        </includes>
-                        <skipTests>${skipUTs}</skipTests>
-                    </configuration>
-                </plugin>
-
-            </plugins>
-        </pluginManagement>
         <plugins>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>${flatten-maven-plugin.version}</version>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--编译-->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-checkstyle-plugin</artifactId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven-compiler-plugin.version}</version>
             </plugin>
+
+            <!--静态 Bug 分析插件-->
             <plugin>
-                <groupId>net.revelc.code.formatter</groupId>
-                <artifactId>formatter-maven-plugin</artifactId>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>${spotbugs-maven-plugin.version}</version>
             </plugin>
+
+            <!--代码规范-->
             <plugin>
-                <groupId>org.jacoco</groupId>
-                <artifactId>jacoco-maven-plugin</artifactId>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${spotless-maven-plugin.version}</version>
+                <configuration>
+                    <java>
+                        <includes>
+                            <include>src/main/java/**/*.java</include>
+                            <include>src/test/java/**/*.java</include>
+                        </includes>
+                        <eclipse>
+                            <version>${spotless-maven-plugin.eclipse.version}</version>
+                            <file>./codequality/eclipse.xml</file>
+                        </eclipse>
+                        <trimTrailingWhitespace/>
+                        <importOrder>
+                            <!-- 1. An empty string for all the imports that didn't specify explicitly,
+                            2. '|' for joining a group without blank line,
+                            3. '\#' prefix for static imports. -->
+                            <order>java|javax|jakarta,,com.lei,\#java|\#javax|\#jakarta,\#</order>
+                        </importOrder>
+                        <licenseHeader>
+                            <file>./codequality/java-license-header.txt</file>
+                        </licenseHeader>
+                    </java>
+                </configuration>
             </plugin>
+
+            <!--集成测试-->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${maven-failsafe-plugin.version}</version>
+                <configuration>
+                    <!-- Activate the use of TCP to transmit events to the plugin -->
+                    <forkNode implementation="org.apache.maven.plugin.surefire.extensions.SurefireForkNodeFactory"/>
+                    <includes>
+                        <include>**/*IT.java</include>
+                        <include>**/*ST.java</include>
+                    </includes>
+                    <skipITs>${skipITs}</skipITs>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
+
+            <!--单元测试-->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
+                <configuration>
+                    <!-- Activate the use of TCP to transmit events to the plugin -->
+                    <forkNode implementation="org.apache.maven.plugin.surefire.extensions.SurefireForkNodeFactory"/>
+                    <includes>
+                        <include>**/*Tests.java</include>
+                    </includes>
+                    <skipTests>${skipUTs}</skipTests>
+                </configuration>
             </plugin>
+
         </plugins>
     </build>
 </project> 

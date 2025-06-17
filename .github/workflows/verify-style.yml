@@ -3,7 +3,7 @@ name: Verify Style
 on:
   push:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [ opened, synchronize, reopened ]
   workflow_dispatch:
 
 jobs:
@@ -21,8 +21,5 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Check Code Format
-        run: mvn formatter:validate --no-transfer-progress
-
-      - name: Code Style Check
-        run: mvn checkstyle:check --no-transfer-progress
+      - name: Verify Style
+        run: mvn spotless:check --no-transfer-progress

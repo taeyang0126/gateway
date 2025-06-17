@@ -1,9 +1,26 @@
+/*
+ * Copyright (c) 2025 The gateway Project
+ * https://github.com/taeyang0126/gateway
+ *
+ * Licensed under the MIT License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/MIT
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.lei.java.gateway.server.protocol;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * <p>
@@ -29,12 +46,12 @@ public class GatewayMessageTests {
         GatewayMessage decoded = GatewayMessage.decode(buf);
 
         // 验证基本字段
-        assertEquals(GatewayMessage.MESSAGE_TYPE_AUTH, decoded.getMsgType());
-        assertEquals(12345L, decoded.getRequestId());
-        assertNull(decoded.getClientId());
-        assertNull(decoded.getBizType());
-        assertTrue(decoded.getExtensions().isEmpty());
-        assertNull(decoded.getBody());
+        assertThat(decoded.getMsgType()).isEqualTo(GatewayMessage.MESSAGE_TYPE_AUTH);
+        assertThat(decoded.getRequestId()).isEqualTo(12345L);
+        assertThat(decoded.getClientId()).isNull();
+        assertThat(decoded.getBizType()).isNull();
+        assertThat(decoded.getExtensions()).isEmpty();
+        assertThat(decoded.getBody()).isNull();
 
         buf.release();
     }
@@ -47,8 +64,10 @@ public class GatewayMessageTests {
         message.setRequestId(12345L);
         message.setClientId("testClient");
         message.setBizType("testBizType");
-        message.getExtensions().put("key1", "value1");
-        message.getExtensions().put("key2", "value2");
+        message.getExtensions()
+                .put("key1", "value1");
+        message.getExtensions()
+                .put("key2", "value2");
         message.setBody("Hello, World!".getBytes());
 
         // 编码
@@ -59,14 +78,14 @@ public class GatewayMessageTests {
         GatewayMessage decoded = GatewayMessage.decode(buf);
 
         // 验证所有字段
-        assertEquals(GatewayMessage.MESSAGE_TYPE_BIZ, decoded.getMsgType());
-        assertEquals(12345L, decoded.getRequestId());
-        assertEquals("testClient", decoded.getClientId());
-        assertEquals("testBizType", decoded.getBizType());
-        assertEquals(2, decoded.getExtensions().size());
-        assertEquals("value1", decoded.getExtensions().get("key1"));
-        assertEquals("value2", decoded.getExtensions().get("key2"));
-        assertArrayEquals("Hello, World!".getBytes(), decoded.getBody());
+        assertThat(decoded.getMsgType()).isEqualTo(GatewayMessage.MESSAGE_TYPE_BIZ);
+        assertThat(decoded.getRequestId()).isEqualTo(12345L);
+        assertThat(decoded.getClientId()).isEqualTo("testClient");
+        assertThat(decoded.getBizType()).isEqualTo("testBizType");
+        assertThat(decoded.getExtensions()).hasSize(2)
+                .containsEntry("key1", "value1")
+                .containsEntry("key2", "value2");
+        assertThat(decoded.getBody()).isEqualTo("Hello, World!".getBytes());
 
         buf.release();
     }
@@ -90,10 +109,9 @@ public class GatewayMessageTests {
         buf.setInt(4, GatewayMessage.calculateChecksum(data));
 
         // 验证解码时抛出异常
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> {
-            GatewayMessage.decode(buf);
-        });
-        assertEquals("Invalid magic number", e.getMessage());
+        assertThatThrownBy(() -> GatewayMessage.decode(buf))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Invalid magic number");
 
         buf.release();
     }
@@ -104,10 +122,9 @@ public class GatewayMessageTests {
         ByteBuf buf = Unpooled.buffer();
         buf.writeInt(100); // 只写入长度
 
-        IllegalArgumentException e1 = assertThrows(IllegalArgumentException.class, () -> {
-            GatewayMessage.decode(buf);
-        });
-        assertEquals("Insufficient bytes for message header", e1.getMessage());
+        assertThatThrownBy(() -> GatewayMessage.decode(buf))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Insufficient bytes for message header");
 
         // 测试消息体不足的情况
         buf.clear();
@@ -116,10 +133,9 @@ public class GatewayMessageTests {
         buf.writeShort(GatewayMessage.MESSAGE_MAGIC); // 写入魔数
         buf.writeByte(GatewayMessage.MESSAGE_VERSION); // 写入版本
 
-        IllegalArgumentException e2 = assertThrows(IllegalArgumentException.class, () -> {
-            GatewayMessage.decode(buf);
-        });
-        assertEquals("Insufficient bytes for message body", e2.getMessage());
+        assertThatThrownBy(() -> GatewayMessage.decode(buf))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Insufficient bytes for message body");
 
         buf.release();
     }
@@ -140,12 +156,10 @@ public class GatewayMessageTests {
         buf.setByte(contentIndex + 5, 0xFF); // 修改某个内容字节
 
         // 验证解码时抛出异常
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> {
-            GatewayMessage.decode(buf);
-        });
-        assertEquals("Invalid checksum", e.getMessage());
+        assertThatThrownBy(() -> GatewayMessage.decode(buf))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Invalid checksum");
 
         buf.release();
     }
-
 }
