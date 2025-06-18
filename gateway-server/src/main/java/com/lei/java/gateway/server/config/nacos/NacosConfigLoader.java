@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.lei.java.gateway.server.route.nacos;
+package com.lei.java.gateway.server.config.nacos;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -38,6 +38,7 @@ public class NacosConfigLoader {
     private static final String KEY_GROUP = "group";
     private static final String KEY_USERNAME = "username";
     private static final String KEY_PASSWORD = "password";
+    private static final String KEY_DATA_ID = "data-id";
 
     // 默认值
     private static final String DEFAULT_NAMESPACE = "public";
@@ -85,11 +86,13 @@ public class NacosConfigLoader {
         config.setGroup(resolveValue(get(props, KEY_GROUP, DEFAULT_GROUP)));
         config.setUsername(resolveValue(get(props, KEY_USERNAME, null)));
         config.setPassword(resolveValue(get(props, KEY_PASSWORD, null)));
+        config.setDataId(resolveValue(get(props, KEY_DATA_ID, null)));
 
-        logger.info("已加载Nacos配置: serverAddr={}, namespace={}, group={}",
+        logger.info("已加载Nacos配置: serverAddr={}, namespace={}, group={}, dataId={}",
                 serverAddr,
                 namespace,
-                config.getGroup());
+                config.getGroup(),
+                config.getDataId());
 
         return config;
     }

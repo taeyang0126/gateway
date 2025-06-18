@@ -22,10 +22,14 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Runtime Deps -->
+        <spring.version>6.2.8</spring.version>
+        <redisson.version>3.27.1</redisson.version>
         <nacos.version>2.5.1</nacos.version>
         <jackson.version>2.13.5</jackson.version>
         <netty.version>4.2.2.Final</netty.version>
         <log4j2.version>2.23.1</log4j2.version>
+        <snakeyaml.version>2.2</snakeyaml.version>
+        <lombok.version>1.18.38</lombok.version>
 
         <!-- Runtime Deps for Testing -->
         <mockito.version>5.18.0</mockito.version>
@@ -53,6 +57,13 @@
 
     <dependencyManagement>
         <dependencies>
+
+            <dependency>
+                <groupId>com.lei.java</groupId>
+                <artifactId>gateway-client</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
             <!-- Netty Dependencies -->
             <dependency>
                 <groupId>io.netty</groupId>
@@ -191,10 +202,32 @@
                 <version>${jackson.version}</version>
             </dependency>
 
+            <!-- Redisson Dependencies -->
             <dependency>
-                <groupId>com.lei.java</groupId>
-                <artifactId>gateway-client</artifactId>
-                <version>${project.version}</version>
+                <groupId>org.redisson</groupId>
+                <artifactId>redisson</artifactId>
+                <version>${redisson.version}</version>
+            </dependency>
+
+            <!-- Spring Dependencies -->
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-context</artifactId>
+                <version>${spring.version}</version>
+            </dependency>
+
+            <!--yaml-->
+            <dependency>
+                <groupId>org.yaml</groupId>
+                <artifactId>snakeyaml</artifactId>
+                <version>${snakeyaml.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <scope>provided</scope>
+                <version>${lombok.version}</version>
             </dependency>
 
         </dependencies>
@@ -236,6 +269,28 @@
                 </plugins>
             </build>
         </profile>
+
+        <profile>
+            <id>skip-all-tests</id>
+            <properties>
+                <skipUTs>true</skipUTs>
+                <skipITs>true</skipITs>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>skip-its</id>
+            <properties>
+                <skipITs>true</skipITs>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>fast</id>
+            <properties>
+                <maven.test.skip>true</maven.test.skip>
+            </properties>
+        </profile>
     </profiles>
 
     <build>
@@ -272,6 +327,12 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>${maven-compiler-plugin.version}</version>
+                <configuration>
+                    <annotationProcessors>
+                        <annotationProcessor>lombok.launch.AnnotationProcessorHider$AnnotationProcessor
+                        </annotationProcessor>
+                    </annotationProcessors>
+                </configuration>
             </plugin>
 
             <!--静态 Bug 分析插件-->

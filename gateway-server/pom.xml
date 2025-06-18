@@ -19,6 +19,12 @@
     </properties>
 
     <dependencies>
+        <!-- Spring Dependencies -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+        </dependency>
+
         <!-- Netty Dependencies -->
         <dependency>
             <groupId>io.netty</groupId>
@@ -138,6 +144,25 @@
             <groupId>com.lei.java</groupId>
             <artifactId>gateway-client</artifactId>
         </dependency>
+
+        <!-- Redisson Dependencies -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+        </dependency>
+
+        <!--yaml-->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+        </dependency>
+
+        <!-- Processor -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+
     </dependencies>
 
     <profiles>

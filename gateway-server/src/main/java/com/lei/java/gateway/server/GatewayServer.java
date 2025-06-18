@@ -33,10 +33,13 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.timeout.IdleStateHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 import com.lei.java.gateway.client.constants.GatewayConstant;
 import com.lei.java.gateway.server.auth.DefaultAuthService;
 import com.lei.java.gateway.server.codec.GatewayMessageCodec;
+import com.lei.java.gateway.server.config.GatewayConfiguration;
 import com.lei.java.gateway.server.handler.AuthHandler;
 import com.lei.java.gateway.server.handler.GatewayServerHandler;
 import com.lei.java.gateway.server.route.DefaultRouteService;
@@ -48,18 +51,16 @@ import com.lei.java.gateway.server.route.connection.ConnectionManager;
 import com.lei.java.gateway.server.route.connection.DefaultConnectionManager;
 import com.lei.java.gateway.server.route.loadbalancer.LoadBalancer;
 import com.lei.java.gateway.server.route.loadbalancer.RoundRobinLoadBalancer;
-import com.lei.java.gateway.server.route.nacos.NacosConfig;
-import com.lei.java.gateway.server.route.nacos.NacosConfigLoader;
 import com.lei.java.gateway.server.route.nacos.NacosServiceRegistry;
 import com.lei.java.gateway.server.session.DefaultSessionManager;
 import com.lei.java.gateway.server.session.SessionManager;
 
-public class GatewayServer {
+public class GatewayServer implements DisposableBean {
     private static final Logger logger = LoggerFactory.getLogger(GatewayServer.class);
 
     private final int port;
-    private final EventLoopGroup bossGroup;
-    private final EventLoopGroup workerGroup;
+    private EventLoopGroup bossGroup;
+    private EventLoopGroup workerGroup;
     private final SessionManager sessionManager;
     private final RouteService routeService;
     private final AuthHandler authHandler;
@@ -67,29 +68,29 @@ public class GatewayServer {
 
     public GatewayServer(int port) {
         this.port = port;
-        this.bossGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
-        this.workerGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
-        this.sessionManager = new DefaultSessionManager();
         ConnectionManager connectionManager = new DefaultConnectionManager();
-        registry = new DefaultServiceRegistry(connectionManager);
         LoadBalancer loadBalancer = new RoundRobinLoadBalancer();
+        this.registry = new DefaultServiceRegistry(connectionManager);
+        this.sessionManager = new DefaultSessionManager();
         this.routeService = new DefaultRouteService(registry, loadBalancer, connectionManager);
         this.authHandler = new AuthHandler(new DefaultAuthService(), sessionManager);
     }
 
-    public GatewayServer(int port, ServiceRegistry registry, ConnectionManager connectionManager) {
-        this(port,
-                new DefaultRouteService(registry, new RoundRobinLoadBalancer(), connectionManager));
-    }
-
     public GatewayServer(int port, RouteService routeService) {
         this.port = port;
-        this.bossGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
-        this.workerGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
         this.sessionManager = new DefaultSessionManager();
         this.routeService = routeService;
         this.authHandler = new AuthHandler(new DefaultAuthService(), sessionManager);
         this.registry = routeService.getServiceRegistry();
+    }
+
+    public GatewayServer(int port, ServiceRegistry registry, ConnectionManager connectionManager) {
+        this.port = port;
+        LoadBalancer loadBalancer = new RoundRobinLoadBalancer();
+        this.sessionManager = new DefaultSessionManager();
+        this.routeService = new DefaultRouteService(registry, loadBalancer, connectionManager);
+        this.authHandler = new AuthHandler(new DefaultAuthService(), sessionManager);
+        this.registry = registry;
     }
 
     public void start() throws Exception {
@@ -98,6 +99,9 @@ public class GatewayServer {
 
     public void start(CompletableFuture<Void> completableFuture) throws Exception {
         logger.info("Starting Gateway Server on port: {}", port);
+
+        this.bossGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
+        this.workerGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
 
         try {
             ServerBootstrap b = new ServerBootstrap();
@@ -153,9 +157,6 @@ public class GatewayServer {
             logger.error("Failed to start Gateway Server", e);
             completableFuture.completeExceptionally(e);
             throw e;
-        } finally {
-            // 优雅关闭
-            shutdown();
         }
     }
 
@@ -166,8 +167,12 @@ public class GatewayServer {
             ((DefaultSessionManager) sessionManager).shutdown();
         }
         // 关闭线程组
-        bossGroup.shutdownGracefully();
-        workerGroup.shutdownGracefully();
+        if (bossGroup != null) {
+            bossGroup.shutdownGracefully();
+        }
+        if (workerGroup != null) {
+            workerGroup.shutdownGracefully();
+        }
         logger.info("Gateway Server shutdown completed");
     }
 
@@ -176,14 +181,32 @@ public class GatewayServer {
         serviceRegistry.registerService(bizType, new ServiceInstance(host, port));
     }
 
-    public static void main(String[] args) throws Exception {
-        int port = 8888;
-        if (args.length > 0) {
-            port = Integer.parseInt(args[0]);
-        }
+    @Override
+    public void destroy() throws Exception {
+        shutdown();
+    }
 
-        NacosConfig config = NacosConfigLoader.load("nacos.properties");
-        ServiceRegistry registry = new NacosServiceRegistry(config);
-        new GatewayServer(port, registry, new DefaultConnectionManager()).start();
+    public static void main(String[] args) throws Exception {
+        // 创建Spring容器
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+        // 设置扫描包路径
+        context.register(GatewayConfiguration.class);
+        // 刷新容器
+        context.refresh();
+
+        // 获取GatewayServer实例并启动
+        GatewayServer server = context.getBean(GatewayServer.class);
+
+        // 添加JVM关闭钩子，确保应用优雅关闭
+        Runtime.getRuntime()
+                .addShutdownHook(new Thread(() -> {
+                    try {
+                        context.close();
+                    } catch (Exception e) {
+                        logger.error("Error closing Spring context", e);
+                    }
+                }));
+
+        server.start();
     }
 }
