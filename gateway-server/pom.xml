@@ -157,12 +157,6 @@
             <artifactId>snakeyaml</artifactId>
         </dependency>
 
-        <!-- Processor -->
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-        </dependency>
-
     </dependencies>
 
     <profiles>
