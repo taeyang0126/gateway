@@ -39,6 +39,7 @@ import com.lei.java.gateway.server.config.nacos.NacosConfig;
 public class GatewayConfigFactoryBean
         implements FactoryBean<GatewayConfig>, InitializingBean, DisposableBean {
     private static final Logger logger = LoggerFactory.getLogger(GatewayConfigFactoryBean.class);
+
     private final NacosConfig nacosConfig;
     private ConfigService configService;
     private GatewayConfig gatewayConfig;

@@ -27,6 +27,7 @@ import com.alibaba.nacos.api.naming.pojo.Instance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.lei.java.gateway.client.constants.GatewayConstant;
 import com.lei.java.gateway.server.config.nacos.NacosConfig;
 import com.lei.java.gateway.server.route.ServiceInstance;
 import com.lei.java.gateway.server.route.ServiceRegistry;
@@ -135,8 +136,7 @@ public class NacosServiceRegistry implements ServiceRegistry {
         // 设置元数据
         Map<String, String> metadata = new HashMap<>(serviceInstance.getMetadata());
         // 添加一些默认元数据
-        metadata.putIfAbsent("preserved.register.source", "NETTY_GATEWAY");
-        metadata.putIfAbsent("timestamp", String.valueOf(System.currentTimeMillis()));
+        metadata.putIfAbsent(GatewayConstant.TIMESTAMP, String.valueOf(System.currentTimeMillis()));
         instance.setMetadata(metadata);
 
         return instance;

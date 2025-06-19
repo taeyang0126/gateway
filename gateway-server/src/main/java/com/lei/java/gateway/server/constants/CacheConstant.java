@@ -13,25 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.lei.java.gateway.client.constants;
+package com.lei.java.gateway.server.constants;
 
 /**
  * <p>
- * GatewayConstant
+ * 缓存常量
  * </p>
  *
  * @author 伍磊
  */
-public interface GatewayConstant {
-
-    String SERVER_NAME = "gateway";
-
-    String HOST = "host";
-
-    String PORT = "port";
-
-    String NODE = "node";
-
-    String TIMESTAMP = "timestamp";
-
+public interface CacheConstant {
+    /**
+     * 网关结点缓存
+     */
+    String GATEWAY_NODE_KEY = "gateway:node:%s";
 }

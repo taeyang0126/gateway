@@ -33,6 +33,9 @@
     </Appenders>
 
     <Loggers>
+
+        <logger name="com.alibaba.nacos.client.config.impl.ClientWorker" level="WARN"/>
+
         <!-- 网关核心日志 -->
         <Logger name="com.lei.java.gateway.server" level="INFO" additivity="false">
             <AppenderRef ref="Console"/>

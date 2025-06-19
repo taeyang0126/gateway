@@ -13,25 +13,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.lei.java.gateway.client.constants;
+package com.lei.java.gateway.server.protocol;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * <p>
- * GatewayConstant
+ * 网关心跳消息
  * </p>
  *
  * @author 伍磊
  */
-public interface GatewayConstant {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class GatewayHeartbeat {
+    private String node;
 
-    String SERVER_NAME = "gateway";
-
-    String HOST = "host";
-
-    String PORT = "port";
-
-    String NODE = "node";
-
-    String TIMESTAMP = "timestamp";
-
+    private long lastHeartbeatTime;
 }
