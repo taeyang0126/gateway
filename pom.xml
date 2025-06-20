@@ -53,6 +53,8 @@
         <!--Config-->
         <skipITs>false</skipITs>
         <skipUTs>false</skipUTs>
+        <!--M1/M2..-->
+        <os.arch>osx-aarch_64</os.arch>
     </properties>
 
     <dependencyManagement>
@@ -94,6 +96,12 @@
                 <groupId>io.netty</groupId>
                 <artifactId>netty-codec-http</artifactId>
                 <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-resolver-dns-native-macos</artifactId>
+                <version>${netty.version}</version>
+                <classifier>${os.arch}</classifier>
             </dependency>
 
             <!-- Testing Dependencies -->

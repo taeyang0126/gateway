@@ -38,7 +38,7 @@ import com.lei.java.gateway.server.route.connection.DefaultConnectionManager;
 import com.lei.java.gateway.server.route.loadbalancer.LoadBalancer;
 import com.lei.java.gateway.server.route.loadbalancer.RandomLoadBalancer;
 import com.lei.java.gateway.server.route.nacos.NacosServiceRegistry;
-import com.lei.java.gateway.server.session.DefaultSessionManager;
+import com.lei.java.gateway.server.session.DistributedSessionManager;
 import com.lei.java.gateway.server.session.SessionManager;
 
 @Configuration
@@ -65,8 +65,8 @@ public class GatewayConfiguration {
     }
 
     @Bean
-    public SessionManager sessionManager() {
-        return new DefaultSessionManager();
+    public SessionManager sessionManager(RedissonClient redissonClient) {
+        return new DistributedSessionManager(redissonClient);
     }
 
     @Bean

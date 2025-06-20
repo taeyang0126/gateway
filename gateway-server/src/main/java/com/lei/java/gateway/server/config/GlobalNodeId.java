@@ -13,34 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.lei.java.gateway.client.constants;
+package com.lei.java.gateway.server.config;
+
+import java.util.UUID;
 
 /**
  * <p>
- * GatewayConstant
+ * GlobalNodeIdInstance
  * </p>
  *
  * @author 伍磊
  */
-public interface GatewayConstant {
+public final class GlobalNodeId {
 
-    String SERVER_NAME = "gateway";
+    private static final String NODE_ID = UUID.randomUUID()
+            .toString();
 
-    String HOST = "host";
+    private GlobalNodeId() {
+    }
 
-    String PORT = "port";
-
-    String NODE = "node";
-
-    String TIMESTAMP = "timestamp";
-
-    String SESSION_ID = "sessionId";
-
-    String LAST_ACTIVE_TIME = "lastActiveTime";
-
-    int GATEWAY_HEARTBEAT_INTERVAL_SECONDS = 30;
-    int GATEWAY_HEARTBEAT_TIMEOUT_SECOND = 45;
-    int GATEWAY_READ_IDLE_TIMEOUT_SECONDS = 60;
-    int SESSION_EXPIRE_SECONDS = 75;
+    public static String getNodeId() {
+        return NODE_ID;
+    }
 
 }

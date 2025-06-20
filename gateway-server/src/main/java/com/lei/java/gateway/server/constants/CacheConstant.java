@@ -27,4 +27,9 @@ public interface CacheConstant {
      * 网关结点缓存
      */
     String GATEWAY_NODE_KEY = "gateway:node:%s";
+
+    /**
+     * session:{clientId}
+     */
+    String SESSION_KEY = "gateway:session:%s";
 }

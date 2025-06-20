@@ -50,6 +50,11 @@
             <groupId>io.netty</groupId>
             <artifactId>netty-codec-http</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-resolver-dns-native-macos</artifactId>
+            <classifier>${os.arch}</classifier>
+        </dependency>
 
         <!-- Testing Dependencies -->
         <dependency>

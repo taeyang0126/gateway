@@ -19,7 +19,6 @@ import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -46,6 +45,7 @@ import com.lei.java.gateway.client.constants.GatewayConstant;
 import com.lei.java.gateway.server.auth.DefaultAuthService;
 import com.lei.java.gateway.server.codec.GatewayMessageCodec;
 import com.lei.java.gateway.server.config.GatewayConfiguration;
+import com.lei.java.gateway.server.config.GlobalNodeId;
 import com.lei.java.gateway.server.constants.CacheConstant;
 import com.lei.java.gateway.server.handler.AuthHandler;
 import com.lei.java.gateway.server.handler.GatewayServerHandler;
@@ -61,14 +61,16 @@ import com.lei.java.gateway.server.route.loadbalancer.LoadBalancer;
 import com.lei.java.gateway.server.route.loadbalancer.RandomLoadBalancer;
 import com.lei.java.gateway.server.route.loadbalancer.RoundRobinLoadBalancer;
 import com.lei.java.gateway.server.route.nacos.NacosServiceRegistry;
-import com.lei.java.gateway.server.session.DefaultSessionManager;
+import com.lei.java.gateway.server.session.LocalSessionManager;
 import com.lei.java.gateway.server.session.SessionManager;
+
+import static com.lei.java.gateway.client.constants.GatewayConstant.GATEWAY_HEARTBEAT_INTERVAL_SECONDS;
+import static com.lei.java.gateway.client.constants.GatewayConstant.GATEWAY_HEARTBEAT_TIMEOUT_SECOND;
+import static com.lei.java.gateway.client.constants.GatewayConstant.GATEWAY_READ_IDLE_TIMEOUT_SECONDS;
 
 public class GatewayServer implements DisposableBean {
     private static final Logger logger = LoggerFactory.getLogger(GatewayServer.class);
 
-    private static final int HEARTBEAT_INTERVAL_SECONDS = 30;
-    private static final int HEARTBEAT_TIMEOUT_SECOND = 45;
     private final int port;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -82,7 +84,7 @@ public class GatewayServer implements DisposableBean {
         this.port = port;
         ConnectionManager connectionManager = new DefaultConnectionManager();
         this.registry = new DefaultServiceRegistry(connectionManager);
-        this.sessionManager = new DefaultSessionManager();
+        this.sessionManager = new LocalSessionManager();
         this.routeService =
                 new DefaultRouteService(registry, new RoundRobinLoadBalancer(), connectionManager);
         this.authHandler = new AuthHandler(new DefaultAuthService(), sessionManager);
@@ -90,7 +92,7 @@ public class GatewayServer implements DisposableBean {
 
     public GatewayServer(int port, RouteService routeService) {
         this.port = port;
-        this.sessionManager = new DefaultSessionManager();
+        this.sessionManager = new LocalSessionManager();
         this.routeService = routeService;
         this.authHandler = new AuthHandler(new DefaultAuthService(), sessionManager);
         this.registry = routeService.getServiceRegistry();
@@ -106,7 +108,7 @@ public class GatewayServer implements DisposableBean {
             ConnectionManager connectionManager,
             LoadBalancer loadBalancer) {
         this.port = port;
-        this.sessionManager = new DefaultSessionManager();
+        this.sessionManager = new LocalSessionManager();
         this.routeService = new DefaultRouteService(registry, loadBalancer, connectionManager);
         this.authHandler = new AuthHandler(new DefaultAuthService(), sessionManager);
         this.registry = registry;
@@ -151,7 +153,11 @@ public class GatewayServer implements DisposableBean {
                             logger.debug("New connection from: {}", ch.remoteAddress());
                             ChannelPipeline p = ch.pipeline();
                             // 添加空闲检测，60秒没有读取到数据则判定为空闲
-                            p.addLast(new IdleStateHandler(60, 0, 0, TimeUnit.SECONDS));
+                            p.addLast(new IdleStateHandler(
+                                    GATEWAY_READ_IDLE_TIMEOUT_SECONDS,
+                                    0,
+                                    0,
+                                    TimeUnit.SECONDS));
                             // 添加消息编解码器
                             p.addLast(new GatewayMessageCodec());
                             // auth handler
@@ -163,9 +169,7 @@ public class GatewayServer implements DisposableBean {
 
             // 构建元数据
             final Map<String, String> metadata = new HashMap<>();
-            final String nodeId = UUID.randomUUID()
-                    .toString();
-            metadata.put(GatewayConstant.NODE, nodeId);
+            metadata.put(GatewayConstant.NODE, GlobalNodeId.getNodeId());
 
             // 绑定端口并启动服务器
             ChannelFuture f = b.bind(port)
@@ -193,16 +197,18 @@ public class GatewayServer implements DisposableBean {
                                     .eventLoop()
                                     .scheduleAtFixedRate(() -> {
                                         GatewayHeartbeat heartbeat = GatewayHeartbeat.builder()
-                                                .node(nodeId)
+                                                .node(GlobalNodeId.getNodeId())
                                                 .lastHeartbeatTime(System.currentTimeMillis())
                                                 .build();
                                         RBucket<GatewayHeartbeat> bucket = redissonClient.getBucket(
                                                 String.format(CacheConstant.GATEWAY_NODE_KEY,
-                                                        nodeId));
+                                                        GlobalNodeId.getNodeId()));
                                         bucket.set(heartbeat,
-                                                Duration.ofSeconds(HEARTBEAT_TIMEOUT_SECOND));
-                                        logger.info("Gateway heartbeat success: nodeId={}", nodeId);
-                                    }, 0, HEARTBEAT_INTERVAL_SECONDS, TimeUnit.SECONDS);
+                                                Duration.ofSeconds(
+                                                        GATEWAY_HEARTBEAT_TIMEOUT_SECOND));
+                                        logger.info("Gateway heartbeat success: nodeId={}",
+                                                GlobalNodeId.getNodeId());
+                                    }, 0, GATEWAY_HEARTBEAT_INTERVAL_SECONDS, TimeUnit.SECONDS);
                         }
                     })
                     .sync();
@@ -224,8 +230,8 @@ public class GatewayServer implements DisposableBean {
     public void shutdown() {
         logger.info("Shutting down Gateway Server...");
         // 关闭会话管理器
-        if (sessionManager instanceof DefaultSessionManager) {
-            ((DefaultSessionManager) sessionManager).shutdown();
+        if (sessionManager instanceof LocalSessionManager) {
+            ((LocalSessionManager) sessionManager).shutdown();
         }
         // 关闭线程组
         if (bossGroup != null) {
@@ -233,6 +239,13 @@ public class GatewayServer implements DisposableBean {
         }
         if (workerGroup != null) {
             workerGroup.shutdownGracefully();
+        }
+        // 删除心跳消息
+        if (redissonClient != null) {
+            redissonClient
+                    .getBucket(
+                            String.format(CacheConstant.GATEWAY_NODE_KEY, GlobalNodeId.getNodeId()))
+                    .delete();
         }
         logger.info("Gateway Server shutdown completed");
     }

@@ -23,11 +23,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import io.netty.channel.Channel;
 
 /**
- * 默认会话管理器实现
+ * 本地会话管理器实现
  */
-public class DefaultSessionManager implements SessionManager {
-    private final Map<String, Session> sessions = new ConcurrentHashMap<>();
-    private final Map<String, Session> clientIdIndex = new ConcurrentHashMap<>();
+public class LocalSessionManager implements SessionManager {
+    // sessionId -> session
+    protected final Map<String, Session> sessions = new ConcurrentHashMap<>();
+    // clientId -> session
+    protected final Map<String, Session> clientIdIndex = new ConcurrentHashMap<>();
 
     @Override
     public Session createSession(String clientId, Channel channel) {
@@ -77,6 +79,14 @@ public class DefaultSessionManager implements SessionManager {
     @Override
     public boolean existSession(String sessionId) {
         return sessions.containsKey(sessionId);
+    }
+
+    @Override
+    public void updateLastActiveTime(String sessionId) {
+        Session session = getSession(sessionId);
+        if (session != null) {
+            session.updateLastActiveTime();
+        }
     }
 
     private String generateSessionId() {

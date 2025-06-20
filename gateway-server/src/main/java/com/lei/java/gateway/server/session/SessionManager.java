@@ -57,4 +57,9 @@ public interface SessionManager {
      * 判断会话是否存在
      */
     boolean existSession(String sessionId);
+
+    /**
+     * 更新最后活跃时间
+     */
+    void updateLastActiveTime(String sessionId);
 }
