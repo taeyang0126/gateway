@@ -27,7 +27,7 @@ import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.yaml.snakeyaml.Yaml;
 
-import com.lei.java.gateway.server.config.nacos.NacosConfig;
+import com.lei.java.gateway.common.config.nacos.NacosConfig;
 
 /**
  * <p>

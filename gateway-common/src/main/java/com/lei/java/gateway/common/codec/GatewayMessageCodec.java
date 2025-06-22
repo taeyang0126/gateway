@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.lei.java.gateway.server.codec;
+package com.lei.java.gateway.common.codec;
 
 import java.util.List;
 
@@ -21,7 +21,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageCodec;
 
-import com.lei.java.gateway.server.protocol.GatewayMessage;
+import com.lei.java.gateway.common.protocol.GatewayMessage;
 
 public class GatewayMessageCodec extends ByteToMessageCodec<GatewayMessage> {
 

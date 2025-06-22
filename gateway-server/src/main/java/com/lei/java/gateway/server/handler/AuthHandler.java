@@ -21,8 +21,8 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.lei.java.gateway.common.protocol.GatewayMessage;
 import com.lei.java.gateway.server.auth.AuthService;
-import com.lei.java.gateway.server.protocol.GatewayMessage;
 import com.lei.java.gateway.server.session.Session;
 import com.lei.java.gateway.server.session.SessionManager;
 

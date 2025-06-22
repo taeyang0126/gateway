@@ -41,15 +41,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
+import com.lei.java.gateway.common.codec.GatewayMessageCodec;
 import com.lei.java.gateway.common.constants.GatewayConstant;
+import com.lei.java.gateway.common.protocol.GatewayHeartbeat;
 import com.lei.java.gateway.server.auth.DefaultAuthService;
-import com.lei.java.gateway.server.codec.GatewayMessageCodec;
 import com.lei.java.gateway.server.config.GatewayConfiguration;
 import com.lei.java.gateway.server.config.GlobalNodeId;
 import com.lei.java.gateway.server.constants.CacheConstant;
 import com.lei.java.gateway.server.handler.AuthHandler;
 import com.lei.java.gateway.server.handler.GatewayServerHandler;
-import com.lei.java.gateway.server.protocol.GatewayHeartbeat;
 import com.lei.java.gateway.server.route.DefaultRouteService;
 import com.lei.java.gateway.server.route.DefaultServiceRegistry;
 import com.lei.java.gateway.server.route.RouteService;

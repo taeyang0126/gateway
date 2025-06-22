@@ -43,11 +43,11 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.lei.java.gateway.common.codec.GatewayMessageCodec;
+import com.lei.java.gateway.common.protocol.GatewayMessage;
 import com.lei.java.gateway.server.GatewayServer;
 import com.lei.java.gateway.server.auth.DefaultAuthService;
 import com.lei.java.gateway.server.base.BaseIntegrationTest;
-import com.lei.java.gateway.server.codec.GatewayMessageCodec;
-import com.lei.java.gateway.server.protocol.GatewayMessage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

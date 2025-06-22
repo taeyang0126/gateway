@@ -17,7 +17,7 @@ package com.lei.java.gateway.server.route;
 
 import java.util.concurrent.CompletableFuture;
 
-import com.lei.java.gateway.server.protocol.GatewayMessage;
+import com.lei.java.gateway.common.protocol.GatewayMessage;
 import com.lei.java.gateway.server.route.connection.ConnectionManager;
 
 /**

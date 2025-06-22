@@ -15,7 +15,7 @@
  */
 package com.lei.java.gateway.server.auth;
 
-import com.lei.java.gateway.server.protocol.GatewayMessage;
+import com.lei.java.gateway.common.protocol.GatewayMessage;
 
 /**
  * <p>

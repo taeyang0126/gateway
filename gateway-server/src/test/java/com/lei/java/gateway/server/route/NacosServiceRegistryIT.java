@@ -24,9 +24,9 @@ import com.alibaba.nacos.api.exception.NacosException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import com.lei.java.gateway.common.config.nacos.NacosConfig;
+import com.lei.java.gateway.common.config.nacos.NacosConfigLoader;
 import com.lei.java.gateway.server.base.BaseIntegrationTest;
-import com.lei.java.gateway.server.config.nacos.NacosConfig;
-import com.lei.java.gateway.server.config.nacos.NacosConfigLoader;
 import com.lei.java.gateway.server.route.nacos.NacosServiceRegistry;
 
 import static org.assertj.core.api.Assertions.assertThat;

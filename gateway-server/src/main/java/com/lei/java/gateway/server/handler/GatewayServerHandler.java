@@ -26,7 +26,7 @@ import io.netty.util.ReferenceCountUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.lei.java.gateway.server.protocol.GatewayMessage;
+import com.lei.java.gateway.common.protocol.GatewayMessage;
 import com.lei.java.gateway.server.route.RouteService;
 import com.lei.java.gateway.server.session.DefaultSession;
 import com.lei.java.gateway.server.session.Session;
@@ -53,13 +53,12 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
-        if (!(msg instanceof GatewayMessage)) {
+        if (!(msg instanceof GatewayMessage message)) {
             ReferenceCountUtil.release(msg);
             logger.error("Received message is not GatewayMessage: {}", msg);
             return;
         }
 
-        GatewayMessage message = (GatewayMessage) msg;
         Session session = getSession(ctx, message);
 
         try {

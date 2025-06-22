@@ -24,11 +24,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 
+import com.lei.java.gateway.common.config.nacos.NacosConfig;
+import com.lei.java.gateway.common.config.nacos.NacosConfigLoader;
 import com.lei.java.gateway.server.GatewayServer;
 import com.lei.java.gateway.server.auth.AuthService;
 import com.lei.java.gateway.server.auth.DefaultAuthService;
-import com.lei.java.gateway.server.config.nacos.NacosConfig;
-import com.lei.java.gateway.server.config.nacos.NacosConfigLoader;
 import com.lei.java.gateway.server.handler.AuthHandler;
 import com.lei.java.gateway.server.route.DefaultRouteService;
 import com.lei.java.gateway.server.route.RouteService;
