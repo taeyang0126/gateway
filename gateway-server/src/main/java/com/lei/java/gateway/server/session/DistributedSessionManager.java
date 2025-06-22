@@ -58,7 +58,7 @@ public class DistributedSessionManager extends LocalSessionManager {
         if (session != null) {
             String cacheKey = String.format(CacheConstant.SESSION_KEY, session.getClientId());
             redissonClient.getMap(cacheKey)
-                    .remove(cacheKey);
+                    .delete();
         }
         super.removeSession(sessionId);
     }

@@ -25,4 +25,5 @@ package com.lei.java.gateway.server.base;
 public abstract class BaseIntegrationTest extends CommonMicroServiceTest {
 
     public static final NacosTestContainer NACOS_CONTAINER = NacosTestContainer.getInstance();
+    public static final RedisTestContainer REDIS_CONTAINER = RedisTestContainer.getInstance();
 }
