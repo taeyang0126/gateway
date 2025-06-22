@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-import com.lei.java.gateway.server.route.ServiceInstance;
+import com.lei.java.gateway.common.route.ServiceInstance;
 
 /**
  * 轮询负载均衡器实现

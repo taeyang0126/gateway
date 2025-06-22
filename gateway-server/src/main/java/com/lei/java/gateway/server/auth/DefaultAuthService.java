@@ -16,6 +16,11 @@
 package com.lei.java.gateway.server.auth;
 
 import com.lei.java.gateway.common.protocol.GatewayMessage;
+import com.lei.java.gateway.server.domain.AuthResult;
+
+import static com.lei.java.gateway.common.config.security.SecurityConfig.INNER_TOKEN_VALUE;
+import static com.lei.java.gateway.common.config.security.SecurityConfig.TOKEN_NAME;
+import static com.lei.java.gateway.common.config.security.SecurityConfig.TOKEN_VALUE;
 
 /**
  * <p>
@@ -26,24 +31,24 @@ import com.lei.java.gateway.common.protocol.GatewayMessage;
  */
 public class DefaultAuthService implements AuthService {
 
-    public static final String TOKEN_NAME = "x-token";
-    public static final String TOKEN_VALUE = "013dc334-9e05-43ee-b05a-c3e1c7d59407";
-
     @Override
-    public boolean authenticate(GatewayMessage msg) {
+    public AuthResult authenticate(GatewayMessage msg) {
         byte msgType = msg.getMsgType();
         if (GatewayMessage.MESSAGE_TYPE_AUTH != msgType) {
-            return false;
+            return new AuthResult(false, false);
         }
         // TODO 固定从 extensions 中拿到 token
         String token = msg.getExtensions()
                 .get(TOKEN_NAME);
         if (token == null) {
-            return false;
+            return new AuthResult(false, false);
         }
-        if (!TOKEN_VALUE.equals(token)) {
-            return false;
+        if (TOKEN_VALUE.equals(token)) {
+            return new AuthResult(true, true);
         }
-        return true;
+        if (INNER_TOKEN_VALUE.equals(token)) {
+            return new AuthResult(true, false);
+        }
+        return new AuthResult(false, false);
     }
 }

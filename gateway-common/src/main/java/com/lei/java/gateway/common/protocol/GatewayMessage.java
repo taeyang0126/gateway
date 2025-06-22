@@ -37,6 +37,7 @@ import io.netty.util.CharsetUtil;
  * <li><code>0x02</code> - 认证响应</li>
  * <li><code>0x03</code> - 心跳</li>
  * <li><code>0x04</code> - 业务消息</li>
+ * <li><code>0x05</code> - 推送消息</li>
  * <li><code>0xFF</code> - 错误消息</li>
  * </ul>
  * <li><b>requestId</b> (int64, 8字节): 请求ID，用于关联请求和响应。
@@ -84,6 +85,10 @@ public class GatewayMessage {
     public static final byte MESSAGE_TYPE_AUTH_FAIL_RESP = (byte) 0x03; // 认证失败
     public static final byte MESSAGE_TYPE_HEARTBEAT = (byte) 0x04; // 心跳消息
     public static final byte MESSAGE_TYPE_BIZ = (byte) 0x05; // 业务消息
+    public static final byte MESSAGE_TYPE_PUSH = (byte) 0x06; // 推送消息
+    public static final byte MESSAGE_TYPE_PUSH_SUCCESS = (byte) 0x07; // 推送成功
+    public static final byte MESSAGE_TYPE_PUSH_FAIL = (byte) 0x08; // 推送失败
+    public static final byte MESSAGE_TYPE_PUSH_HEARTBEAT = (byte) 0x09; // 推送心跳消息
     public static final byte MESSAGE_TYPE_ERROR = (byte) 0xFF; // 错误消息
 
     // 消息头

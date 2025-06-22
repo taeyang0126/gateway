@@ -48,6 +48,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.lei.java.gateway.common.protocol.GatewayMessage;
+import com.lei.java.gateway.common.route.ServiceInstance;
 import com.lei.java.gateway.server.route.connection.ConnectionManager;
 import com.lei.java.gateway.server.route.connection.DefaultConnectionManager;
 import com.lei.java.gateway.server.route.loadbalancer.RoundRobinLoadBalancer;

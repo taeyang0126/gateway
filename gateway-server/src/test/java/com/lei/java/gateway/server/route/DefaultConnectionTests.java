@@ -40,6 +40,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.lei.java.gateway.common.route.ServiceInstance;
 import com.lei.java.gateway.server.route.connection.DefaultConnection;
 
 import static org.assertj.core.api.Assertions.assertThat;

@@ -22,8 +22,8 @@ import org.redisson.api.RBatch;
 import org.redisson.api.RMapAsync;
 import org.redisson.api.RedissonClient;
 
+import com.lei.java.gateway.common.constants.CacheConstant;
 import com.lei.java.gateway.server.config.GlobalNodeId;
-import com.lei.java.gateway.server.constants.CacheConstant;
 
 import static com.lei.java.gateway.common.constants.GatewayConstant.LAST_ACTIVE_TIME;
 import static com.lei.java.gateway.common.constants.GatewayConstant.NODE;

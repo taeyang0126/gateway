@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 
 import com.lei.java.gateway.common.config.nacos.NacosConfig;
 import com.lei.java.gateway.common.config.nacos.NacosConfigLoader;
+import com.lei.java.gateway.common.route.ServiceInstance;
 import com.lei.java.gateway.server.base.BaseIntegrationTest;
 import com.lei.java.gateway.server.route.nacos.NacosServiceRegistry;
 

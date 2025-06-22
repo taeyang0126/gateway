@@ -13,23 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.lei.java.gateway.server.constants;
+package com.lei.java.gateway.server.domain;
 
-/**
- * <p>
- * 缓存常量
- * </p>
- *
- * @author 伍磊
- */
-public interface CacheConstant {
-    /**
-     * 网关结点缓存
-     */
-    String GATEWAY_NODE_KEY = "gateway:node:%s";
-
-    /**
-     * session:{clientId}
-     */
-    String SESSION_KEY = "gateway:session:%s";
+public record AuthResult(
+        boolean result,
+        boolean createSession
+) {
 }

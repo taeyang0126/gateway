@@ -18,6 +18,8 @@ package com.lei.java.gateway.server.handler;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ThreadFactory;
 
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.timeout.IdleState;
@@ -41,14 +43,26 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
     private final SessionManager sessionManager;
     private final RouteService routeService;
     private final ThreadFactory businessFactory;
+    private final ThreadFactory pushFactory;
+    private ChannelHandlerContext ctx;
 
     public GatewayServerHandler(SessionManager sessionManager, RouteService routeService) {
         this.sessionManager = sessionManager;
         this.routeService = routeService;
-        businessFactory = Thread.ofVirtual()
+        this.businessFactory = Thread.ofVirtual()
                 .name("business-handler-", 0)
                 .uncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e))
                 .factory();
+        this.pushFactory = Thread.ofVirtual()
+                .name("push-handler-", 0)
+                .uncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e))
+                .factory();
+    }
+
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        this.ctx = ctx;
+        super.channelActive(ctx);
     }
 
     @Override
@@ -59,14 +73,14 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        Session session = getSession(ctx, message);
+        Session session = getSession(message);
 
         try {
             // 处理不同类型的消息
             switch (message.getMsgType()) {
                 case GatewayMessage.MESSAGE_TYPE_HEARTBEAT:
                     // 心跳消息直接在 EventLoop 中处理，因为处理逻辑简单
-                    handleHeartbeat(ctx, message, session);
+                    handleHeartbeat(message, session);
                     break;
                 case GatewayMessage.MESSAGE_TYPE_BIZ:
                     // 业务消息提交到业务线程池处理
@@ -74,21 +88,29 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
                     final Session currentSession = session;
                     businessFactory.newThread(() -> {
                         try {
-                            handleBizMessage(ctx, requestMessage, currentSession);
+                            handleBizMessage(requestMessage, currentSession);
                         } catch (Exception e) {
                             logger.error("Handle business message error", e);
-                            handleError(ctx, requestMessage, e);
+                            handleError(requestMessage, e);
                         }
                     })
                             .start();
                     break;
+                case GatewayMessage.MESSAGE_TYPE_PUSH:
+                    // 推送消息
+                    pushFactory.newThread(() -> handlerPushMsg(message))
+                            .start();
+                    break;
+                case GatewayMessage.MESSAGE_TYPE_PUSH_HEARTBEAT:
+                    // 推送心跳消息，不做任何事情
+                    break;
                 default:
                     logger.warn("Unknown message type: {}", message.getMsgType());
-                    handleError(ctx, message, new IllegalArgumentException("Unknown message type"));
+                    handleError(message, new IllegalArgumentException("Unknown message type"));
             }
         } catch (Exception e) {
             logger.error("Handle message error", e);
-            handleError(ctx, message, e);
+            handleError(message, e);
             ReferenceCountUtil.release(msg);
         }
     }
@@ -131,7 +153,11 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         ctx.close();
     }
 
-    private Session getSession(ChannelHandlerContext ctx, GatewayMessage message) {
+    private Session getSession(GatewayMessage message) {
+        // 推送消息不需要建立 session
+        if (message.getMsgType() == GatewayMessage.MESSAGE_TYPE_PUSH) {
+            return null;
+        }
         Session session = DefaultSession.getSession(ctx.channel());
         if (session == null) {
             ctx.close();
@@ -139,10 +165,7 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         return session;
     }
 
-    private void handleHeartbeat(
-            ChannelHandlerContext ctx,
-            GatewayMessage message,
-            Session session) {
+    private void handleHeartbeat(GatewayMessage message, Session session) {
         if (session == null) {
             logger.warn("Unknown heartbeat message received");
             ctx.close();
@@ -165,10 +188,7 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         ctx.writeAndFlush(response);
     }
 
-    private void handleBizMessage(
-            ChannelHandlerContext ctx,
-            GatewayMessage message,
-            Session session) {
+    private void handleBizMessage(GatewayMessage message, Session session) {
         if (session == null) {
             logger.warn("UnKnown business message received");
             ctx.close();
@@ -188,14 +208,51 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
                 .whenComplete((response, ex) -> {
                     if (ex != null) {
                         logger.error("Failed to route message={}, e: ", message, ex);
-                        handleError(ctx, message, ex);
+                        handleError(message, ex);
                     } else {
                         ctx.writeAndFlush(response);
                     }
                 });
     }
 
-    private void handleError(ChannelHandlerContext ctx, GatewayMessage message, Throwable cause) {
+    private void handlerPushMsg(GatewayMessage message) {
+        long requestId = message.getRequestId();
+        String clientId = message.getClientId();
+        Session session = sessionManager.getSessionByClientId(clientId);
+        GatewayMessage response = new GatewayMessage();
+        response.setClientId(clientId);
+        response.setRequestId(requestId);
+        if (session == null) {
+            response.setMsgType(GatewayMessage.MESSAGE_TYPE_PUSH_FAIL);
+            response.setBody("client not found or offline".getBytes(StandardCharsets.UTF_8));
+            ctx.writeAndFlush(response);
+            return;
+        }
+
+        // 推送给客户
+        // todo-wl 当前只是发送出去就算推送成功，没有做确认
+        session.getChannel()
+                .writeAndFlush(message)
+                .addListener(new ChannelFutureListener() {
+                    @Override
+                    public void operationComplete(ChannelFuture future) throws Exception {
+                        if (future.isSuccess()) {
+                            response.setMsgType(GatewayMessage.MESSAGE_TYPE_PUSH_SUCCESS);
+                            logger.info("Push message success: {}", clientId);
+                            ctx.writeAndFlush(response);
+                        } else {
+                            response.setMsgType(GatewayMessage.MESSAGE_TYPE_PUSH_FAIL);
+                            response.setBody(("client message push failed: "
+                                    + future.cause()
+                                            .getMessage())
+                                    .getBytes(StandardCharsets.UTF_8));
+                            ctx.writeAndFlush(response);
+                        }
+                    }
+                });
+    }
+
+    private void handleError(GatewayMessage message, Throwable cause) {
         GatewayMessage response = new GatewayMessage();
         response.setMsgType(GatewayMessage.MESSAGE_TYPE_ERROR);
         response.setRequestId(message.getRequestId());

@@ -16,6 +16,7 @@
 package com.lei.java.gateway.server.auth;
 
 import com.lei.java.gateway.common.protocol.GatewayMessage;
+import com.lei.java.gateway.server.domain.AuthResult;
 
 /**
  * <p>
@@ -32,6 +33,6 @@ public interface AuthService {
      * @param msg 消息
      * @return
      */
-    boolean authenticate(GatewayMessage msg);
+    AuthResult authenticate(GatewayMessage msg);
 
 }

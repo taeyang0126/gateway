@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.lei.java.gateway.common.protocol.GatewayMessage;
+import com.lei.java.gateway.common.route.ServiceInstance;
 import com.lei.java.gateway.server.route.connection.Connection;
 import com.lei.java.gateway.server.route.connection.ConnectionManager;
 import com.lei.java.gateway.server.route.loadbalancer.LoadBalancer;

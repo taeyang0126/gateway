@@ -17,6 +17,8 @@ package com.lei.java.gateway.server.config;
 
 import lombok.Data;
 
+import com.lei.java.gateway.common.config.redis.RedisConfig;
+
 /**
  * <p>
  * GatewayConfig
@@ -35,19 +37,5 @@ public class GatewayConfig {
     @Data
     public static class ServerConfig {
         private int port = 8888;
-    }
-
-    /**
-     * Redis配置
-     */
-    @Data
-    public static class RedisConfig {
-        private String host = "localhost";
-        private int port = 6379;
-        private String password;
-        private int database;
-        private int connectionPoolSize = 6;
-        private int connectionMinimumIdleSize = 1;
-        private int connectTimeout = 3000;
     }
 }

@@ -26,6 +26,7 @@ import org.springframework.context.annotation.Configuration;
 
 import com.lei.java.gateway.common.config.nacos.NacosConfig;
 import com.lei.java.gateway.common.config.nacos.NacosConfigLoader;
+import com.lei.java.gateway.common.config.redis.RedisConfig;
 import com.lei.java.gateway.server.GatewayServer;
 import com.lei.java.gateway.server.auth.AuthService;
 import com.lei.java.gateway.server.auth.DefaultAuthService;
@@ -95,7 +96,7 @@ public class GatewayConfiguration {
     @Bean(destroyMethod = "shutdown")
     public RedissonClient redissonClient(GatewayConfig gatewayConfig) {
         Config config = new Config();
-        GatewayConfig.RedisConfig redisConfig = gatewayConfig.getRedis();
+        RedisConfig redisConfig = gatewayConfig.getRedis();
 
         config.useSingleServer()
                 .setAddress("redis://"

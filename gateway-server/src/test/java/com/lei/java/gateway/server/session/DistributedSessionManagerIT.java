@@ -33,10 +33,10 @@ import org.redisson.api.RedissonClient;
 import org.redisson.codec.JsonJacksonCodec;
 import org.redisson.config.Config;
 
+import com.lei.java.gateway.common.constants.CacheConstant;
 import com.lei.java.gateway.common.constants.GatewayConstant;
 import com.lei.java.gateway.server.base.BaseIntegrationTest;
 import com.lei.java.gateway.server.config.GlobalNodeId;
-import com.lei.java.gateway.server.constants.CacheConstant;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.mockito.Mockito.doReturn;

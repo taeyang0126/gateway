@@ -52,9 +52,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.lei.java.gateway.common.codec.GatewayMessageCodec;
+import com.lei.java.gateway.common.config.security.SecurityConfig;
 import com.lei.java.gateway.common.protocol.GatewayMessage;
 import com.lei.java.gateway.server.GatewayServer;
-import com.lei.java.gateway.server.auth.DefaultAuthService;
 import com.lei.java.gateway.server.route.RouteService;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -462,7 +462,7 @@ public class GatewayServerIT {
         gatewayMessage.setClientId(UUID.randomUUID()
                 .toString());
         gatewayMessage.getExtensions()
-                .put(DefaultAuthService.TOKEN_NAME, DefaultAuthService.TOKEN_VALUE);
+                .put(SecurityConfig.TOKEN_NAME, SecurityConfig.TOKEN_VALUE);
         CompletableFuture<GatewayMessage> responseFuture = writeMsg(gatewayMessage);
 
         // 等待消息回来

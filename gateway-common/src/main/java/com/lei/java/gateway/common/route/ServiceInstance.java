@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.lei.java.gateway.server.route;
+package com.lei.java.gateway.common.route;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -66,6 +66,12 @@ public class ServiceInstance {
 
     public int getPort() {
         return port;
+    }
+
+    public String getServerAddress() {
+        return host
+                + ":"
+                + port;
     }
 
     public double getWeight() {

@@ -14,6 +14,9 @@
         <module>gateway-server</module>
         <module>gateway-common</module>
         <module>gateway-client-example</module>
+        <module>gateway-sdk-core</module>
+        <module>gateway-sdk-spring</module>
+        <module>gateway-upstream-server-spring-example</module>
     </modules>
 
     <properties>
@@ -65,6 +68,18 @@
             <dependency>
                 <groupId>com.lei.java</groupId>
                 <artifactId>gateway-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.lei.java</groupId>
+                <artifactId>gateway-sdk-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.lei.java</groupId>
+                <artifactId>gateway-sdk-spring</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
