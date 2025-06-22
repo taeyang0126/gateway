@@ -12,7 +12,8 @@
 
     <modules>
         <module>gateway-server</module>
-        <module>gateway-client</module>
+        <module>gateway-client-example</module>
+        <module>gateway-common</module>
     </modules>
 
     <properties>
@@ -62,7 +63,7 @@
 
             <dependency>
                 <groupId>com.lei.java</groupId>
-                <artifactId>gateway-client</artifactId>
+                <artifactId>gateway-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

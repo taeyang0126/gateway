@@ -27,7 +27,7 @@ import com.alibaba.nacos.api.naming.pojo.Instance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.lei.java.gateway.client.constants.GatewayConstant;
+import com.lei.java.gateway.common.constants.GatewayConstant;
 import com.lei.java.gateway.server.config.nacos.NacosConfig;
 import com.lei.java.gateway.server.route.ServiceInstance;
 import com.lei.java.gateway.server.route.ServiceRegistry;

@@ -62,4 +62,9 @@ public interface SessionManager {
      * 更新最后活跃时间
      */
     void updateLastActiveTime(String sessionId);
+
+    /**
+     * 关闭会话管理器
+     */
+    void shutdown();
 }

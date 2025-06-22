@@ -25,10 +25,10 @@ import org.redisson.api.RedissonClient;
 import com.lei.java.gateway.server.config.GlobalNodeId;
 import com.lei.java.gateway.server.constants.CacheConstant;
 
-import static com.lei.java.gateway.client.constants.GatewayConstant.LAST_ACTIVE_TIME;
-import static com.lei.java.gateway.client.constants.GatewayConstant.NODE;
-import static com.lei.java.gateway.client.constants.GatewayConstant.SESSION_EXPIRE_SECONDS;
-import static com.lei.java.gateway.client.constants.GatewayConstant.SESSION_ID;
+import static com.lei.java.gateway.common.constants.GatewayConstant.LAST_ACTIVE_TIME;
+import static com.lei.java.gateway.common.constants.GatewayConstant.NODE;
+import static com.lei.java.gateway.common.constants.GatewayConstant.SESSION_EXPIRE_SECONDS;
+import static com.lei.java.gateway.common.constants.GatewayConstant.SESSION_ID;
 
 /**
  * <p>

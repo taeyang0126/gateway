@@ -156,7 +156,7 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         }
 
         // 更新最后活跃时间
-        session.updateLastActiveTime();
+        sessionManager.updateLastActiveTime(session.getId());
 
         // 响应心跳
         GatewayMessage response = new GatewayMessage();

@@ -89,20 +89,18 @@ public class LocalSessionManager implements SessionManager {
         }
     }
 
-    private String generateSessionId() {
-        return UUID.randomUUID()
-                .toString()
-                .replace("-", "");
-    }
-
-    /**
-     * 关闭会话管理器
-     */
+    @Override
     public void shutdown() {
         // 关闭所有会话
         sessions.values()
                 .forEach(Session::close);
         sessions.clear();
         clientIdIndex.clear();
+    }
+
+    private String generateSessionId() {
+        return UUID.randomUUID()
+                .toString()
+                .replace("-", "");
     }
 }

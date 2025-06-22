@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
-import com.lei.java.gateway.client.constants.GatewayConstant;
+import com.lei.java.gateway.common.constants.GatewayConstant;
 import com.lei.java.gateway.server.auth.DefaultAuthService;
 import com.lei.java.gateway.server.codec.GatewayMessageCodec;
 import com.lei.java.gateway.server.config.GatewayConfiguration;
@@ -64,9 +64,9 @@ import com.lei.java.gateway.server.route.nacos.NacosServiceRegistry;
 import com.lei.java.gateway.server.session.LocalSessionManager;
 import com.lei.java.gateway.server.session.SessionManager;
 
-import static com.lei.java.gateway.client.constants.GatewayConstant.GATEWAY_HEARTBEAT_INTERVAL_SECONDS;
-import static com.lei.java.gateway.client.constants.GatewayConstant.GATEWAY_HEARTBEAT_TIMEOUT_SECOND;
-import static com.lei.java.gateway.client.constants.GatewayConstant.GATEWAY_READ_IDLE_TIMEOUT_SECONDS;
+import static com.lei.java.gateway.common.constants.GatewayConstant.GATEWAY_HEARTBEAT_INTERVAL_SECONDS;
+import static com.lei.java.gateway.common.constants.GatewayConstant.GATEWAY_HEARTBEAT_TIMEOUT_SECOND;
+import static com.lei.java.gateway.common.constants.GatewayConstant.GATEWAY_READ_IDLE_TIMEOUT_SECONDS;
 
 public class GatewayServer implements DisposableBean {
     private static final Logger logger = LoggerFactory.getLogger(GatewayServer.class);
@@ -196,10 +196,9 @@ public class GatewayServer implements DisposableBean {
                             channelFuture.channel()
                                     .eventLoop()
                                     .scheduleAtFixedRate(() -> {
-                                        GatewayHeartbeat heartbeat = GatewayHeartbeat.builder()
-                                                .node(GlobalNodeId.getNodeId())
-                                                .lastHeartbeatTime(System.currentTimeMillis())
-                                                .build();
+                                        GatewayHeartbeat heartbeat = new GatewayHeartbeat(
+                                                GlobalNodeId.getNodeId(),
+                                                System.currentTimeMillis());
                                         RBucket<GatewayHeartbeat> bucket = redissonClient.getBucket(
                                                 String.format(CacheConstant.GATEWAY_NODE_KEY,
                                                         GlobalNodeId.getNodeId()));

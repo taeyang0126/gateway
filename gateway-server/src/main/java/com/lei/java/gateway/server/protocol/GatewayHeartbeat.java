@@ -15,11 +15,6 @@
  */
 package com.lei.java.gateway.server.protocol;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 /**
  * <p>
  * 网关心跳消息
@@ -27,12 +22,8 @@ import lombok.NoArgsConstructor;
  *
  * @author 伍磊
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class GatewayHeartbeat {
-    private String node;
-
-    private long lastHeartbeatTime;
+public record GatewayHeartbeat(
+        String node,
+        long lastHeartbeatTime
+) {
 }
