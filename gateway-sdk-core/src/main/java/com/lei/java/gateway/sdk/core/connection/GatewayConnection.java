@@ -81,4 +81,17 @@ public class GatewayConnection {
             future.completeExceptionally(new MessagingException(errorMsg));
         }
     }
+
+    public void close() {
+        if (channel != null) {
+            channel.close();
+            clearResource();
+        }
+    }
+
+    private void clearResource() {
+        requests.forEach((reqId, completeFuture) -> completeFuture
+                .completeExceptionally(new RuntimeException("Connection closed")));
+        requests.clear();
+    }
 }

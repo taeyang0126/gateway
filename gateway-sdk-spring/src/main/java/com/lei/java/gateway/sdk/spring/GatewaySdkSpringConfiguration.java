@@ -82,7 +82,7 @@ public class GatewaySdkSpringConfiguration {
         return new GenericClientGatewayLocator(redissonClient, nacosConfig);
     }
 
-    @Bean
+    @Bean(destroyMethod = "shutdown")
     public MessageDispatcher messageDispatcher(ClientGatewayLocator clientGatewayLocator) {
         return new GenericMessageDispatcher(clientGatewayLocator);
     }

@@ -15,6 +15,10 @@
  */
 package com.lei.java.gateway.upstream.server.spring.example;
 
+import java.util.concurrent.CountDownLatch;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 import com.lei.java.gateway.sdk.core.message.MessageDispatcher;
@@ -27,6 +31,7 @@ import com.lei.java.gateway.sdk.core.message.MessageDispatcher;
  * @author 伍磊
  */
 public class UpstreamServer {
+    private static Logger logger = LoggerFactory.getLogger(UpstreamServer.class);
     private static final String CLIENT_ID = "gateway-client-example";
 
     public static void main(String[] args) throws Exception {
@@ -39,8 +44,27 @@ public class UpstreamServer {
 
         // 推送消息
         MessageDispatcher messageDispatcher = context.getBean(MessageDispatcher.class);
-        messageDispatcher.dispatch(CLIENT_ID, "Hello World".getBytes());
+        int count = 1000;
+        CountDownLatch countDownLatch = new CountDownLatch(count);
+        long start = System.currentTimeMillis();
+        for (int i = 0; i < count; i++) {
+            String msg = "Hello World -> "
+                    + i;
+            messageDispatcher.dispatch(CLIENT_ID, msg.getBytes())
+                    .whenComplete((result, ex) -> {
+                        if (ex != null) {
+                            logger.error("msg push error: ", ex);
+                        } else {
+                            logger.info("{} msg push success", msg);
+                        }
+                        countDownLatch.countDown();
+                    });
+        }
 
-        System.in.read();
+        countDownLatch.await();
+        logger.info("Upstream Server push {} msg in {} ms",
+                count,
+                System.currentTimeMillis() - start);
+        context.close();
     }
 }

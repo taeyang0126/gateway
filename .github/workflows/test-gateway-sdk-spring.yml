@@ -1,4 +1,4 @@
-name: Test Gateway Common
+name: Test Gateway Sdk Spring
 
 on: [ push, pull_request ]
 

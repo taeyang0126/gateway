@@ -28,4 +28,6 @@ public interface MessageDispatcher {
 
     CompletableFuture<Void> dispatch(String clientId, byte[] content);
 
+    void shutdown();
+
 }

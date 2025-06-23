@@ -114,7 +114,6 @@ public class CommonMicroServiceTest {
                     .bandwidth("DOWN_DISABLE", ToxicDirection.DOWNSTREAM, 0);
 
             // 3. 创建连接重置代理
-            // todo reset peer 不生效，抓包发现没有发送 rst 包，具体原因需要再看
             proxy = toxiproxyClient.createProxy("reset_peer",
                     "0.0.0.0:"
                             + RESET_PEER_HTTPBIN_PROXY_PORT,

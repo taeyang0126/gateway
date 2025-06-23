@@ -1,4 +1,4 @@
-name: Test Gateway Common
+name: Test Gateway Sdk Core
 
 on: [ push, pull_request ]
 

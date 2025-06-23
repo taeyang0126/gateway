@@ -64,8 +64,10 @@ public class GenericMessageDispatcher implements MessageDispatcher {
     private final ThreadFactory createConnectionFactory;
     private final EventLoopGroup workerGroup;
     private final Bootstrap bootstrap;
+    private volatile boolean closed;
 
     public GenericMessageDispatcher(ClientGatewayLocator clientGatewayLocator) {
+        this.closed = false;
         this.clientGatewayLocator = clientGatewayLocator;
         this.connections = new ConcurrentHashMap<>();
         this.pendingConnections = new ConcurrentHashMap<>();
@@ -113,6 +115,13 @@ public class GenericMessageDispatcher implements MessageDispatcher {
         }
 
         ServiceInstance gatewayNode = gatewayNodeOptional.get();
+        GatewayConnection gatewayConnection = connections.get(gatewayNode);
+        if (gatewayConnection != null) {
+            gatewayConnection.send(clientId, content, completableFuture);
+            return completableFuture;
+        }
+
+        // create new connection
         pendingConnections.computeIfAbsent(gatewayNode, k -> {
             LOGGER.info("Creating new connection for {}", gatewayNode);
             CompletableFuture<GatewayConnection> future = new CompletableFuture<>();
@@ -165,6 +174,18 @@ public class GenericMessageDispatcher implements MessageDispatcher {
                     connection.send(clientId, content, completableFuture);
                 });
         return completableFuture;
+    }
+
+    @Override
+    public void shutdown() {
+        if (!closed) {
+            closed = true;
+            connections.values()
+                    .forEach(GatewayConnection::close);
+            connections.clear();
+            workerGroup.shutdownGracefully();
+            LOGGER.info("MessageDispatcher shutdown");
+        }
     }
 
     private static GatewayMessage getAuthMessage() {
