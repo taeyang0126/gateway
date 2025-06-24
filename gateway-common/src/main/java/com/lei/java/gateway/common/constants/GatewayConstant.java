@@ -43,4 +43,7 @@ public interface GatewayConstant {
     int GATEWAY_READ_IDLE_TIMEOUT_SECONDS = 60;
     int SESSION_EXPIRE_SECONDS = 75;
 
+    // 最大重连尝试次数
+    int MAX_RECONNECT_ATTEMPTS = 5;
+    int CONNECT_TIMEOUT_MILLIS = 5000;
 }
