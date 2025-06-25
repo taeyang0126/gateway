@@ -21,8 +21,9 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.lei.java.gateway.common.protocol.GatewayMessage;
 import com.lei.java.gateway.server.auth.AuthService;
-import com.lei.java.gateway.server.protocol.GatewayMessage;
+import com.lei.java.gateway.server.domain.AuthResult;
 import com.lei.java.gateway.server.session.Session;
 import com.lei.java.gateway.server.session.SessionManager;
 
@@ -48,8 +49,8 @@ public class AuthHandler extends SimpleChannelInboundHandler<GatewayMessage> {
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, GatewayMessage msg) {
-        boolean authenticate = authService.authenticate(msg);
-        if (!authenticate) {
+        AuthResult authResult = authService.authenticate(msg);
+        if (!authResult.result()) {
             logger.info("channel authenticate failed, clientId={}", msg.getClientId());
             GatewayMessage response = new GatewayMessage();
             response.setMsgType(GatewayMessage.MESSAGE_TYPE_AUTH_FAIL_RESP);
@@ -61,12 +62,14 @@ public class AuthHandler extends SimpleChannelInboundHandler<GatewayMessage> {
             ctx.pipeline()
                     .remove(this);
 
-            // 构建 session
-            Session session = sessionManager.createSession(msg.getClientId(), ctx.channel());
-            session.setAuthenticated(true);
-            logger.info("New session created: sessionId={}, clientId={}",
-                    session.getId(),
-                    msg.getClientId());
+            if (authResult.createSession()) {
+                // 构建 session
+                Session session = sessionManager.createSession(msg.getClientId(), ctx.channel());
+                session.setAuthenticated(true);
+                logger.info("New session created: sessionId={}, clientId={}",
+                        session.getId(),
+                        msg.getClientId());
+            }
 
             // response
             GatewayMessage response = new GatewayMessage();

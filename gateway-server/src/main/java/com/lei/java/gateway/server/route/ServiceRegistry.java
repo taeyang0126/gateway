@@ -18,6 +18,8 @@ package com.lei.java.gateway.server.route;
 import java.util.List;
 import java.util.Map;
 
+import com.lei.java.gateway.common.route.ServiceInstance;
+
 /**
  * 服务注册中心接口
  */

@@ -19,8 +19,8 @@ import java.util.concurrent.CompletableFuture;
 
 import io.netty.channel.Channel;
 
-import com.lei.java.gateway.server.protocol.GatewayMessage;
-import com.lei.java.gateway.server.route.ServiceInstance;
+import com.lei.java.gateway.common.protocol.GatewayMessage;
+import com.lei.java.gateway.common.route.ServiceInstance;
 
 /**
  * <p>

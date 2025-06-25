@@ -27,7 +27,7 @@ import io.netty.util.ReferenceCountUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.lei.java.gateway.server.protocol.GatewayMessage;
+import com.lei.java.gateway.common.protocol.GatewayMessage;
 
 /**
  * HTTP 连接处理器 负责 GatewayMessage 和 HTTP 消息的转换

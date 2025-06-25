@@ -35,7 +35,7 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.lei.java.gateway.server.route.ServiceInstance;
+import com.lei.java.gateway.common.route.ServiceInstance;
 
 /**
  * <p>

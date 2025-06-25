@@ -12,7 +12,11 @@
 
     <modules>
         <module>gateway-server</module>
-        <module>gateway-client</module>
+        <module>gateway-common</module>
+        <module>gateway-client-example</module>
+        <module>gateway-sdk-core</module>
+        <module>gateway-sdk-spring</module>
+        <module>gateway-upstream-server-spring-example</module>
     </modules>
 
     <properties>
@@ -22,16 +26,21 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Runtime Deps -->
+        <spring.version>6.2.8</spring.version>
+        <redisson.version>3.27.1</redisson.version>
         <nacos.version>2.5.1</nacos.version>
-        <jackson.version>2.13.5</jackson.version>
         <netty.version>4.2.2.Final</netty.version>
+        <slf4j.version>2.0.13</slf4j.version>
         <log4j2.version>2.23.1</log4j2.version>
+        <snakeyaml.version>2.2</snakeyaml.version>
+        <lombok.version>1.18.38</lombok.version>
 
         <!-- Runtime Deps for Testing -->
         <mockito.version>5.18.0</mockito.version>
         <testcontainers.version>1.19.3</testcontainers.version>
         <toxiproxy.version>1.18.3</toxiproxy.version>
         <junit.version>5.12.1</junit.version>
+        <assertj.version>3.18.0</assertj.version>
 
         <!-- Maven plugins -->
         <maven.compiler.source>${java.version}</maven.compiler.source>
@@ -49,10 +58,31 @@
         <!--Config-->
         <skipITs>false</skipITs>
         <skipUTs>false</skipUTs>
+        <!--M1/M2..-->
+        <os.arch>osx-aarch_64</os.arch>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+
+            <dependency>
+                <groupId>com.lei.java</groupId>
+                <artifactId>gateway-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.lei.java</groupId>
+                <artifactId>gateway-sdk-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.lei.java</groupId>
+                <artifactId>gateway-sdk-spring</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
             <!-- Netty Dependencies -->
             <dependency>
                 <groupId>io.netty</groupId>
@@ -84,30 +114,25 @@
                 <artifactId>netty-codec-http</artifactId>
                 <version>${netty.version}</version>
             </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-resolver-dns-native-macos</artifactId>
+                <version>${netty.version}</version>
+                <classifier>${os.arch}</classifier>
+            </dependency>
 
             <!-- Testing Dependencies -->
             <dependency>
-                <groupId>org.junit.jupiter</groupId>
-                <artifactId>junit-jupiter-api</artifactId>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
                 <version>${junit.version}</version>
-                <scope>test</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.junit.jupiter</groupId>
-                <artifactId>junit-jupiter-engine</artifactId>
-                <version>${junit.version}</version>
-                <scope>test</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.junit.jupiter</groupId>
-                <artifactId>junit-jupiter-params</artifactId>
-                <version>${junit.version}</version>
-                <scope>test</scope>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
             <dependency>
                 <groupId>org.assertj</groupId>
                 <artifactId>assertj-core</artifactId>
-                <version>3.18.0</version>
+                <version>${assertj.version}</version>
                 <scope>test</scope>
             </dependency>
 
@@ -115,7 +140,7 @@
             <dependency>
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-api</artifactId>
-                <version>2.0.13</version>
+                <version>${slf4j.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.logging.log4j</groupId>
@@ -174,31 +199,44 @@
                 <version>${nacos.version}</version>
             </dependency>
 
-            <!-- Jackson Dependencies -->
+            <!-- Redisson Dependencies -->
             <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-databind</artifactId>
-                <version>${jackson.version}</version>
+                <groupId>org.redisson</groupId>
+                <artifactId>redisson</artifactId>
+                <version>${redisson.version}</version>
             </dependency>
+
+            <!-- Spring Dependencies -->
             <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-core</artifactId>
-                <version>${jackson.version}</version>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-context</artifactId>
+                <version>${spring.version}</version>
             </dependency>
+
+            <!--yaml-->
             <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-annotations</artifactId>
-                <version>${jackson.version}</version>
+                <groupId>org.yaml</groupId>
+                <artifactId>snakeyaml</artifactId>
+                <version>${snakeyaml.version}</version>
             </dependency>
 
             <dependency>
-                <groupId>com.lei.java</groupId>
-                <artifactId>gateway-client</artifactId>
-                <version>${project.version}</version>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <scope>provided</scope>
+                <version>${lombok.version}</version>
             </dependency>
 
         </dependencies>
     </dependencyManagement>
+
+    <dependencies>
+        <!-- lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+    </dependencies>
 
     <profiles>
         <profile>
@@ -236,6 +274,28 @@
                 </plugins>
             </build>
         </profile>
+
+        <profile>
+            <id>skip-all-tests</id>
+            <properties>
+                <skipUTs>true</skipUTs>
+                <skipITs>true</skipITs>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>skip-its</id>
+            <properties>
+                <skipITs>true</skipITs>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>fast</id>
+            <properties>
+                <maven.test.skip>true</maven.test.skip>
+            </properties>
+        </profile>
     </profiles>
 
     <build>
@@ -272,6 +332,12 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>${maven-compiler-plugin.version}</version>
+                <configuration>
+                    <annotationProcessors>
+                        <annotationProcessor>lombok.launch.AnnotationProcessorHider$AnnotationProcessor
+                        </annotationProcessor>
+                    </annotationProcessors>
+                </configuration>
             </plugin>
 
             <!--静态 Bug 分析插件-->

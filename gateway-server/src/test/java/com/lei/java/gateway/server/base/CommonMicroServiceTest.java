@@ -31,7 +31,7 @@ public class CommonMicroServiceTest {
 
     // 创建一个私有的 Docker 网络，使得不同的容器可以在这个网络内相互通信。
     private static final Network NETWORK = Network.newNetwork();
-    private static final String HTTPBIN = "httpbin";
+    public static final String HTTPBIN = "httpbin";
     public static final int HTTPBIN_PORT = 80;
     /*
      * 设置一个 httpbin 容器（它提供各种 HTTP 测试端点） 暴露 80 端口 将容器连接到之前创建的网络 给容器一个网络别名 "httpbin"，使其在网络内可通过该名称访问
@@ -77,12 +77,14 @@ public class CommonMicroServiceTest {
      */
     public static final int CONNECT_TIMEOUT_PORT = 1;
 
+    public static ToxiproxyClient toxiproxyClient;
+
     static {
         // 不使用 @Container 注解管理容器声明周期，因为我们需要在静态块生成代理，必须在这之前启动容器
         // 不用担心容器不会被关闭，因为 testcontainers 会启动一个 ryuk 容器，用于监控并关闭所有容器
         HTTPBIN_CONTAINER.start();
         TOXIPROXY_CONTAINER.start();
-        final ToxiproxyClient toxiproxyClient = new ToxiproxyClient(
+        toxiproxyClient = new ToxiproxyClient(
                 TOXIPROXY_CONTAINER.getHost(),
                 TOXIPROXY_CONTAINER.getControlPort());
         try {
@@ -114,7 +116,6 @@ public class CommonMicroServiceTest {
                     .bandwidth("DOWN_DISABLE", ToxicDirection.DOWNSTREAM, 0);
 
             // 3. 创建连接重置代理
-            // todo reset peer 不生效，抓包发现没有发送 rst 包，具体原因需要再看
             proxy = toxiproxyClient.createProxy("reset_peer",
                     "0.0.0.0:"
                             + RESET_PEER_HTTPBIN_PROXY_PORT,

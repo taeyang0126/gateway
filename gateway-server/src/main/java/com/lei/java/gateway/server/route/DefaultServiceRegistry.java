@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.lei.java.gateway.common.route.ServiceInstance;
 import com.lei.java.gateway.server.route.connection.ConnectionManager;
 
 /**
@@ -131,7 +132,6 @@ public class DefaultServiceRegistry implements ServiceRegistry {
                 List<ServiceInstance> instances = entry.getValue();
 
                 for (ServiceInstance instance : instances) {
-                    // TODO: 实现实际的健康检查逻辑
                     // 这里可以通过连接测试、心跳等机制来判断服务实例是否健康
                     if (!instance.isHealthy()) {
                         removeService(bizType, instance);

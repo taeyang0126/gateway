@@ -21,12 +21,12 @@ import com.alibaba.nacos.api.exception.NacosException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.lei.java.gateway.common.config.nacos.NacosConfig;
+import com.lei.java.gateway.common.config.nacos.NacosConfigLoader;
 import com.lei.java.gateway.server.GatewayServer;
 import com.lei.java.gateway.server.route.ServiceRegistry;
 import com.lei.java.gateway.server.route.connection.ConnectionManager;
 import com.lei.java.gateway.server.route.connection.DefaultConnectionManager;
-import com.lei.java.gateway.server.route.nacos.NacosConfig;
-import com.lei.java.gateway.server.route.nacos.NacosConfigLoader;
 import com.lei.java.gateway.server.route.nacos.NacosServiceRegistry;
 
 /**

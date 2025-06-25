@@ -28,7 +28,7 @@ import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 
-import com.lei.java.gateway.server.protocol.GatewayMessage;
+import com.lei.java.gateway.common.protocol.GatewayMessage;
 
 /**
  * HTTP 协议转换器

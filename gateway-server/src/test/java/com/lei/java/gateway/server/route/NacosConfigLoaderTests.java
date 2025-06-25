@@ -17,8 +17,8 @@ package com.lei.java.gateway.server.route;
 
 import org.junit.jupiter.api.Test;
 
-import com.lei.java.gateway.server.route.nacos.NacosConfig;
-import com.lei.java.gateway.server.route.nacos.NacosConfigLoader;
+import com.lei.java.gateway.common.config.nacos.NacosConfig;
+import com.lei.java.gateway.common.config.nacos.NacosConfigLoader;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

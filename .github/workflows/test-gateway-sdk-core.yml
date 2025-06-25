@@ -1,0 +1,21 @@
+name: Test Gateway Sdk Core
+
+on: [ push, pull_request ]
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '24'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Maven Verify
+        run: mvn clean verify -am -B -pl gateway-sdk-core --no-transfer-progress

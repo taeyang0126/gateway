@@ -17,7 +17,7 @@ package com.lei.java.gateway.server.route.loadbalancer;
 
 import java.util.List;
 
-import com.lei.java.gateway.server.route.ServiceInstance;
+import com.lei.java.gateway.common.route.ServiceInstance;
 
 /**
  * 负载均衡器接口
