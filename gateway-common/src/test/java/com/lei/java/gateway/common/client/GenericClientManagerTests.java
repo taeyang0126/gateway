@@ -15,8 +15,11 @@
  */
 package com.lei.java.gateway.common.client;
 
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
@@ -157,7 +160,7 @@ public class GenericClientManagerTests {
         CyclicBarrier cyclicBarrier = new CyclicBarrier(threadCount);
         CountDownLatch countDownLatch = new CountDownLatch(threadCount);
         ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
-        HashSet<Integer> clientIds = new HashSet<>();
+        Set<Integer> clientIds = Collections.newSetFromMap(new ConcurrentHashMap<>());
         for (int i = 0; i < threadCount; i++) {
             executorService.submit(() -> {
                 try {
