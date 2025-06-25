@@ -32,5 +32,5 @@ public interface ClientManager<T extends Client<T>> {
 
     void removeClient(T client);
 
-    void close();
+    void shutdown();
 }

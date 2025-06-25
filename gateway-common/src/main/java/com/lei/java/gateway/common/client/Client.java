@@ -39,4 +39,6 @@ public interface Client<T extends Client<T>> {
     void shutdown();
 
     boolean isActive();
+
+    void postProcessInActive();
 }

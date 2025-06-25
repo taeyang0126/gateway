@@ -50,7 +50,7 @@ public class UpstreamServer {
         for (int i = 0; i < count; i++) {
             String msg = "Hello World -> "
                     + i;
-            messageDispatcher.dispatch(CLIENT_ID, msg.getBytes())
+            messageDispatcher.dispatch(start + i, CLIENT_ID, msg.getBytes())
                     .whenComplete((result, ex) -> {
                         if (ex != null) {
                             logger.error("msg push error: ", ex);

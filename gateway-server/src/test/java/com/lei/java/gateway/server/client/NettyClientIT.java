@@ -95,7 +95,7 @@ public class NettyClientIT extends BaseIntegrationTest {
         assertThat(clientExample).isNotNull()
                 .matches(AbstractClient::isActive);
 
-        clientManager.close();
+        clientManager.shutdown();
         BLOCKING_QUEUE.clear();
     }
 

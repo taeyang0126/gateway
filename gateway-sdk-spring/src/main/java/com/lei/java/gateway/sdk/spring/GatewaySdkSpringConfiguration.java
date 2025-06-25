@@ -24,9 +24,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 
+import com.lei.java.gateway.common.client.ClientManager;
+import com.lei.java.gateway.common.client.GenericClientManager;
 import com.lei.java.gateway.common.config.nacos.NacosConfig;
 import com.lei.java.gateway.common.config.nacos.NacosConfigLoader;
 import com.lei.java.gateway.common.config.redis.RedisConfig;
+import com.lei.java.gateway.sdk.core.client.GatewayPushClient;
 import com.lei.java.gateway.sdk.core.message.GenericMessageDispatcher;
 import com.lei.java.gateway.sdk.core.message.MessageDispatcher;
 import com.lei.java.gateway.sdk.core.route.ClientGatewayLocator;
@@ -82,8 +85,15 @@ public class GatewaySdkSpringConfiguration {
         return new GenericClientGatewayLocator(redissonClient, nacosConfig);
     }
 
+    @Bean
+    public ClientManager<GatewayPushClient> clientManager() {
+        return new GenericClientManager<>(GatewayPushClient::new);
+    }
+
     @Bean(destroyMethod = "shutdown")
-    public MessageDispatcher messageDispatcher(ClientGatewayLocator clientGatewayLocator) {
-        return new GenericMessageDispatcher(clientGatewayLocator);
+    public MessageDispatcher messageDispatcher(
+            ClientGatewayLocator clientGatewayLocator,
+            ClientManager<GatewayPushClient> clientManager) {
+        return new GenericMessageDispatcher(clientGatewayLocator, clientManager);
     }
 }

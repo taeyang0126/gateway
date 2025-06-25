@@ -95,7 +95,7 @@ public class GenericClientManager<T extends Client<T>> implements ClientManager<
     }
 
     @Override
-    public void close() {
+    public void shutdown() {
         clients.values()
                 .forEach(T::shutdown);
         clients.clear();

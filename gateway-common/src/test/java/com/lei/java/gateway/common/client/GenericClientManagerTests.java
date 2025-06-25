@@ -15,6 +15,14 @@
  */
 package com.lei.java.gateway.common.client;
 
+import java.util.HashSet;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
@@ -113,7 +121,7 @@ public class GenericClientManagerTests {
     }
 
     @Test
-    public void test_close() throws InterruptedException {
+    public void test_shutdown() throws InterruptedException {
         GenericClientManager.ClientFactory<ClientExample> clientFactory = ClientExample::new;
         ClientManager<ClientExample> clientManager = new GenericClientManager<>(clientFactory);
 
@@ -130,11 +138,48 @@ public class GenericClientManagerTests {
 
         ChannelFuture closeFuture = clientExample.getChannel()
                 .closeFuture();
-        clientManager.close();
+        clientManager.shutdown();
 
         closeFuture.syncUninterruptibly();
         assertThat(clientExample).isNotNull()
                 .matches(t -> !t.isActive());
+    }
+
+    @Test
+    public void test_concurrent() throws InterruptedException {
+        // 并发测试
+        GenericClientManager.ClientFactory<ClientExample> clientFactory = ClientExample::new;
+        ClientManager<ClientExample> clientManager = new GenericClientManager<>(clientFactory);
+
+        ServiceInstance serviceInstance = new ServiceInstance("127.0.0.1", SERVER_PORT);
+
+        int threadCount = 10;
+        CyclicBarrier cyclicBarrier = new CyclicBarrier(threadCount);
+        CountDownLatch countDownLatch = new CountDownLatch(threadCount);
+        ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
+        HashSet<Integer> clientIds = new HashSet<>();
+        for (int i = 0; i < threadCount; i++) {
+            executorService.submit(() -> {
+                try {
+                    cyclicBarrier.await();
+                } catch (InterruptedException | BrokenBarrierException e) {
+                    throw new RuntimeException(e);
+                }
+                clientManager.getClient(serviceInstance)
+                        .whenComplete((r, e) -> {
+                            clientIds.add(r.hashCode());
+                            countDownLatch.countDown();
+                        });
+            });
+        }
+
+        assertThat(countDownLatch.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(clientIds).isNotNull()
+                .size()
+                .isEqualTo(1);
+
+        executorService.shutdown();
+        executorService.shutdownNow();
     }
 
     public static class ClientExample extends AbstractClient<ClientExample> {

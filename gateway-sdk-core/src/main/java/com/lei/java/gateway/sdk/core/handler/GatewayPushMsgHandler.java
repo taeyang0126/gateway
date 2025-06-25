@@ -25,7 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.lei.java.gateway.common.protocol.GatewayMessage;
-import com.lei.java.gateway.sdk.core.connection.GatewayConnection;
+import com.lei.java.gateway.sdk.core.client.GatewayPushClient;
 
 /**
  * <p>
@@ -36,10 +36,10 @@ import com.lei.java.gateway.sdk.core.connection.GatewayConnection;
  */
 public class GatewayPushMsgHandler extends SimpleChannelInboundHandler<GatewayMessage> {
     private static final Logger LOGGER = LoggerFactory.getLogger(GatewayPushMsgHandler.class);
-    private final GatewayConnection connection;
+    private final GatewayPushClient gatewayPushClient;
 
-    public GatewayPushMsgHandler(GatewayConnection connection) {
-        this.connection = connection;
+    public GatewayPushMsgHandler(GatewayPushClient gatewayPushClient) {
+        this.gatewayPushClient = gatewayPushClient;
     }
 
     @Override
@@ -47,7 +47,7 @@ public class GatewayPushMsgHandler extends SimpleChannelInboundHandler<GatewayMe
         byte msgType = msg.getMsgType();
         long requestId = msg.getRequestId();
         if (GatewayMessage.MESSAGE_TYPE_PUSH_SUCCESS == msgType) {
-            connection.pushSuccess(requestId);
+            gatewayPushClient.pushSuccess(requestId);
             return;
         }
         if (GatewayMessage.MESSAGE_TYPE_PUSH_FAIL == msgType) {
@@ -56,8 +56,10 @@ public class GatewayPushMsgHandler extends SimpleChannelInboundHandler<GatewayMe
             if (body != null) {
                 errorMsg = new String(body);
             }
-            connection.pushFail(requestId, errorMsg);
+            gatewayPushClient.pushFail(requestId, errorMsg);
+            return;
         }
+        ctx.fireChannelRead(msg);
     }
 
     @Override
@@ -75,10 +77,5 @@ public class GatewayPushMsgHandler extends SimpleChannelInboundHandler<GatewayMe
                 LOGGER.info("[push] heartbeat message send to server");
             }
         }
-    }
-
-    @Override
-    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-        // todo-wl 重连
     }
 }

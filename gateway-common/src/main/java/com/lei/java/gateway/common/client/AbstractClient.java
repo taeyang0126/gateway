@@ -91,6 +91,11 @@ public abstract class AbstractClient<T extends AbstractClient<T>> implements Cli
      */
     protected abstract void initBusinessHandlers(ChannelPipeline pipeline);
 
+    @Override
+    public void postProcessInActive() {
+        // NO-OP
+    }
+
     @SuppressWarnings("unchecked")
     @Override
     public void connect(CompletableFuture<T> connectionFuture) {
@@ -175,6 +180,8 @@ public abstract class AbstractClient<T extends AbstractClient<T>> implements Cli
     private void connectSuccess(ChannelFuture f) {
         logger.info("成功连接到 {}:{}", host, port);
         this.channel = f.channel();
+        // postProcessInActive
+        postProcessInActive();
         resetAttempts();
     }
 

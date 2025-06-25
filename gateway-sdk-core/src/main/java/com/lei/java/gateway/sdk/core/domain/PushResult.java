@@ -13,23 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.lei.java.gateway.sdk.core.message;
+package com.lei.java.gateway.sdk.core.domain;
 
-import java.util.concurrent.CompletableFuture;
-
-import com.lei.java.gateway.sdk.core.domain.PushResult;
-
-/**
- * <p>
- * MessageDispatcher
- * </p>
- *
- * @author 伍磊
- */
-public interface MessageDispatcher {
-
-    CompletableFuture<PushResult> dispatch(Long requestId, String clientId, byte[] content);
-
-    void shutdown();
-
+public record PushResult(
+        boolean push
+) {
 }
