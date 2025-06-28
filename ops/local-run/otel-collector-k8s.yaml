@@ -1,0 +1,116 @@
+# otel-collector-k8s.yaml (最终修正版 V2)
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-conf
+  namespace: observability
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          # Collector 的收货地址，使用新的、未被占用的端口
+          grpc:
+            endpoint: 0.0.0.0:5317
+          http:
+            endpoint: 0.0.0.0:5318
+
+    processors:
+      batch:
+
+    exporters:
+      loki:
+        endpoint: http://ubuntu.orb.local:3100/loki/api/v1/push
+      
+      # 修改点 1：将 Jaeger 导出器明确定义为 OTLP 类型
+      otlp/jaeger:
+        # Collector 的发货地址，指向您环境中 Jaeger 正在监听的已知端口
+        endpoint: ubuntu.orb.local:4317
+        tls:
+          insecure: true
+
+      # Collector 会在 9464 端口上暴露一个 /metrics 端点供 Prometheus 抓取
+      prometheus:
+        endpoint: 0.0.0.0:9464
+        # namespace: gateway_server 
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          # 修改点 2：在 pipeline 中使用我们新定义的 OTLP exporter
+          exporters: [otlp/jaeger]
+        logs:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [loki]
+        metrics:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [prometheus]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app: opentelemetry-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opentelemetry-collector
+  template:
+    metadata:
+      labels:
+        app: opentelemetry-collector
+    spec:
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.104.0
+          command:
+            - "/otelcol-contrib"
+            - "--config=/conf/config.yaml"
+          volumeMounts:
+            - name: otel-collector-config-vol
+              mountPath: /conf
+          ports:
+            - name: otlp-grpc
+              containerPort: 5317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 5318
+              protocol: TCP
+      volumes:
+        - name: otel-collector-config-vol
+          configMap:
+            name: otel-collector-conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector-service
+  namespace: observability
+spec:
+  type: LoadBalancer
+  selector:
+    app: opentelemetry-collector
+  ports:
+    # 将 Service 的端口指向新的目标端口
+    - name: otlp-grpc
+      port: 5317
+      targetPort: 5317
+    - name: otlp-http
+      port: 5318
+      targetPort: 5318
+    - name: prometheus
+      port: 9464
+      targetPort: 9464
