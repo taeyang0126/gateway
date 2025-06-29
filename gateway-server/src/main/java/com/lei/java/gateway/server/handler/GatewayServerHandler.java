@@ -25,6 +25,13 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.ReferenceCountUtil;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,12 +40,14 @@ import com.lei.java.gateway.server.route.RouteService;
 import com.lei.java.gateway.server.session.DefaultSession;
 import com.lei.java.gateway.server.session.Session;
 import com.lei.java.gateway.server.session.SessionManager;
+import com.lei.java.gateway.server.trace.TracingAttributes;
 
 /**
  * 网关服务器消息处理器
  */
 public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
     private static final Logger logger = LoggerFactory.getLogger(GatewayServerHandler.class);
+    private static final Tracer TRACER = GlobalOpenTelemetry.getTracer("gateway-server-handler");
 
     private final SessionManager sessionManager;
     private final RouteService routeService;
@@ -74,8 +83,17 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         }
 
         Session session = getSession(message);
+        Span span = TRACER.spanBuilder("biz-handler")
+                .setSpanKind(SpanKind.SERVER)
+                .setAttribute("message.type", String.valueOf(message.getMsgType()))
+                .setAttribute("client.id", message.getClientId())
+                .setAttribute("request.id", String.valueOf(message.getRequestId()))
+                .startSpan();
 
-        try {
+        try (Scope scope = span.makeCurrent()) {
+            ctx.channel()
+                    .attr(TracingAttributes.SERVER_SPAN_KEY)
+                    .set(span);
             // 处理不同类型的消息
             switch (message.getMsgType()) {
                 case GatewayMessage.MESSAGE_TYPE_HEARTBEAT:
@@ -86,19 +104,22 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
                     // 业务消息提交到业务线程池处理
                     final GatewayMessage requestMessage = message;
                     final Session currentSession = session;
-                    businessFactory.newThread(() -> {
-                        try {
-                            handleBizMessage(requestMessage, currentSession);
-                        } catch (Exception e) {
-                            logger.error("Handle business message error", e);
-                            handleError(requestMessage, e);
-                        }
-                    })
+                    businessFactory.newThread(Context.current()
+                            .wrap(() -> {
+                                try {
+                                    handleBizMessage(requestMessage, currentSession);
+                                } catch (Exception e) {
+                                    logger.error("Handle business message error", e);
+                                    handleError(requestMessage, e);
+                                }
+                            }))
                             .start();
                     break;
                 case GatewayMessage.MESSAGE_TYPE_PUSH:
+                    logger.info("push msg to: {}", message.getClientId());
                     // 推送消息
-                    pushFactory.newThread(() -> handlerPushMsg(message))
+                    pushFactory.newThread(Context.current()
+                            .wrap(() -> handlerPushMsg(message)))
                             .start();
                     break;
                 case GatewayMessage.MESSAGE_TYPE_PUSH_HEARTBEAT:
@@ -112,6 +133,9 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
             logger.error("Handle message error", e);
             handleError(message, e);
             ReferenceCountUtil.release(msg);
+            span.recordException(e);
+            span.setStatus(StatusCode.ERROR, "Gateway Server Handler Error");
+            span.end();
         }
     }
 
@@ -166,13 +190,20 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void handleHeartbeat(GatewayMessage message, Session session) {
+        Span span = ctx.channel()
+                .attr(TracingAttributes.SERVER_SPAN_KEY)
+                .getAndSet(null);
         if (session == null) {
             logger.warn("Unknown heartbeat message received");
+            span.setStatus(StatusCode.ERROR, "Unknown heartbeat message received");
+            span.end();
             ctx.close();
             return;
         }
         if (!session.isAuthenticated()) {
             logger.warn("Unauthorized heartbeat message received");
+            span.setStatus(StatusCode.ERROR, "Unauthorized heartbeat message received");
+            span.end();
             sessionManager.removeSession(session.getId());
             return;
         }
@@ -185,17 +216,35 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         response.setMsgType(GatewayMessage.MESSAGE_TYPE_HEARTBEAT);
         response.setRequestId(message.getRequestId());
         response.setClientId(message.getClientId());
-        ctx.writeAndFlush(response);
+        ctx.writeAndFlush(response)
+                .addListener(new ChannelFutureListener() {
+                    @Override
+                    public void operationComplete(ChannelFuture future) throws Exception {
+                        if (!future.isSuccess()) {
+                            // 如果发送失败，记录异常
+                            span.recordException(future.cause());
+                            span.setStatus(StatusCode.ERROR, "Heartbeat Response write failed");
+                        }
+                        span.end();
+                    }
+                });
     }
 
     private void handleBizMessage(GatewayMessage message, Session session) {
+        Span span = ctx.channel()
+                .attr(TracingAttributes.SERVER_SPAN_KEY)
+                .getAndSet(null);
         if (session == null) {
             logger.warn("UnKnown business message received");
+            span.setStatus(StatusCode.ERROR, "UnKnown business message received");
+            span.end();
             ctx.close();
             return;
         }
         if (!session.isAuthenticated()) {
             logger.warn("Unauthorized business message received");
+            span.setStatus(StatusCode.ERROR, "Unauthorized business message received");
+            span.end();
             sessionManager.removeSession(session.getId());
             return;
         }
@@ -208,48 +257,84 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
                 .whenComplete((response, ex) -> {
                     if (ex != null) {
                         logger.error("Failed to route message={}, e: ", message, ex);
+                        span.recordException(ex);
+                        span.setStatus(StatusCode.ERROR, "Failed to route message");
+                        span.end();
                         handleError(message, ex);
                     } else {
-                        ctx.writeAndFlush(response);
+                        ctx.writeAndFlush(response)
+                                .addListener(new ChannelFutureListener() {
+                                    @Override
+                                    public void operationComplete(ChannelFuture future)
+                                            throws Exception {
+                                        if (!future.isSuccess()) {
+                                            // 如果发送失败，记录异常
+                                            span.recordException(future.cause());
+                                            span.setStatus(StatusCode.ERROR,
+                                                    "Biz Response write failed");
+                                        }
+                                        span.end();
+                                    }
+                                });
                     }
                 });
     }
 
     private void handlerPushMsg(GatewayMessage message) {
-        long requestId = message.getRequestId();
-        String clientId = message.getClientId();
-        Session session = sessionManager.getSessionByClientId(clientId);
-        GatewayMessage response = new GatewayMessage();
-        response.setClientId(clientId);
-        response.setRequestId(requestId);
-        if (session == null) {
-            response.setMsgType(GatewayMessage.MESSAGE_TYPE_PUSH_FAIL);
-            response.setBody("client not found or offline".getBytes(StandardCharsets.UTF_8));
-            ctx.writeAndFlush(response);
-            return;
-        }
 
-        // 推送给客户
-        // todo-wl 当前只是发送出去就算推送成功，没有做确认
-        session.getChannel()
-                .writeAndFlush(message)
-                .addListener(new ChannelFutureListener() {
-                    @Override
-                    public void operationComplete(ChannelFuture future) throws Exception {
-                        if (future.isSuccess()) {
-                            response.setMsgType(GatewayMessage.MESSAGE_TYPE_PUSH_SUCCESS);
-                            logger.info("Push message success: {}", clientId);
-                            ctx.writeAndFlush(response);
-                        } else {
-                            response.setMsgType(GatewayMessage.MESSAGE_TYPE_PUSH_FAIL);
-                            response.setBody(("client message push failed: "
-                                    + future.cause()
-                                            .getMessage())
-                                    .getBytes(StandardCharsets.UTF_8));
-                            ctx.writeAndFlush(response);
+        Span span = TRACER.spanBuilder("push-handler")
+                .setSpanKind(SpanKind.SERVER)
+                .setAttribute("push.client.id", message.getClientId())
+                .setAttribute("push.request.id", String.valueOf(message.getRequestId()))
+                .startSpan();
+
+        Span parentSpan = ctx.channel()
+                .attr(TracingAttributes.SERVER_SPAN_KEY)
+                .getAndSet(null);
+
+        try (Scope scope = span.makeCurrent()) {
+            long requestId = message.getRequestId();
+            String clientId = message.getClientId();
+            Session session = sessionManager.getSessionByClientId(clientId);
+            GatewayMessage response = new GatewayMessage();
+            response.setClientId(clientId);
+            response.setRequestId(requestId);
+            if (session == null) {
+                response.setMsgType(GatewayMessage.MESSAGE_TYPE_PUSH_FAIL);
+                response.setBody("client not found or offline".getBytes(StandardCharsets.UTF_8));
+                span.setStatus(StatusCode.ERROR, "client not found or offline");
+                span.end();
+                parentSpan.end();
+                ctx.writeAndFlush(response);
+                return;
+            }
+
+            // 推送给客户
+            // todo-wl 当前只是发送出去就算推送成功，没有做确认
+            session.getChannel()
+                    .writeAndFlush(message)
+                    .addListener(new ChannelFutureListener() {
+                        @Override
+                        public void operationComplete(ChannelFuture future) throws Exception {
+                            if (future.isSuccess()) {
+                                response.setMsgType(GatewayMessage.MESSAGE_TYPE_PUSH_SUCCESS);
+                                logger.info("Push message success: {}", clientId);
+                                ctx.writeAndFlush(response);
+                            } else {
+                                response.setMsgType(GatewayMessage.MESSAGE_TYPE_PUSH_FAIL);
+                                response.setBody(("client message push failed: "
+                                        + future.cause()
+                                                .getMessage())
+                                        .getBytes(StandardCharsets.UTF_8));
+                                ctx.writeAndFlush(response);
+                                span.recordException(future.cause());
+                                span.setStatus(StatusCode.ERROR, "client message push failed");
+                            }
+                            span.end();
+                            parentSpan.end();
                         }
-                    }
-                });
+                    });
+        }
     }
 
     private void handleError(GatewayMessage message, Throwable cause) {

@@ -435,7 +435,7 @@
                         <include>**/*Tests.java</include>
                     </includes>
                     <skipTests>${skipUTs}</skipTests>
-                    <argLine>--enable-native-access=ALL-UNNAMED @{argLine}</argLine>
+                    <argLine>--enable-native-access=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
 
