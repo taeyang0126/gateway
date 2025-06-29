@@ -18,6 +18,7 @@ package com.lei.java.gateway.server.handler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
@@ -25,8 +26,12 @@ import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
 
 import com.lei.java.gateway.common.protocol.GatewayMessage;
+import com.lei.java.gateway.server.metrics.GatewayMetrics;
 
+import static com.lei.java.gateway.server.metrics.MetricsUtil.MESSAGES_RECEIVED_COUNTER;
+import static com.lei.java.gateway.server.trace.TracingAttributes.METRICS_ATTRIBUTES;
 import static com.lei.java.gateway.server.trace.TracingAttributes.SERVER_SPAN_KEY;
+import static com.lei.java.gateway.server.trace.TracingAttributes.START_TIME_KEY;
 
 /**
  * <p>
@@ -40,6 +45,21 @@ public class TraceInboundHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        if (!(msg instanceof GatewayMessage message)) {
+            return;
+        }
+
+        Attributes attributes =
+                Attributes.of(GatewayMetrics.MESSAGE_TYPE, String.valueOf(message.getMsgType()));
+        ctx.channel()
+                .attr(START_TIME_KEY)
+                .set(System.nanoTime());
+        ctx.channel()
+                .attr(METRICS_ATTRIBUTES)
+                .set(attributes);
+
+        MESSAGES_RECEIVED_COUNTER.add(1, attributes);
+
         Span parentSpan = TRACER.spanBuilder("Process Gateway Request")
                 .setSpanKind(SpanKind.SERVER)
                 .setAttribute("net.peer.address",
@@ -47,11 +67,9 @@ public class TraceInboundHandler extends ChannelInboundHandlerAdapter {
                                 .remoteAddress()
                                 .toString())
                 .startSpan();
-        if (msg instanceof GatewayMessage message) {
-            parentSpan.setAttribute("message.type", String.valueOf(message.getMsgType()));
-            parentSpan.setAttribute("client.id", message.getClientId());
-            parentSpan.setAttribute("request.id", String.valueOf(message.getRequestId()));
-        }
+        parentSpan.setAttribute("message.type", String.valueOf(message.getMsgType()));
+        parentSpan.setAttribute("client.id", message.getClientId());
+        parentSpan.setAttribute("request.id", String.valueOf(message.getRequestId()));
 
         ctx.channel()
                 .attr(SERVER_SPAN_KEY)

@@ -31,6 +31,7 @@ import com.lei.java.gateway.server.GatewayServer;
 import com.lei.java.gateway.server.auth.AuthService;
 import com.lei.java.gateway.server.auth.DefaultAuthService;
 import com.lei.java.gateway.server.handler.AuthHandler;
+import com.lei.java.gateway.server.metrics.MetricsUtil;
 import com.lei.java.gateway.server.route.DefaultRouteService;
 import com.lei.java.gateway.server.route.RouteService;
 import com.lei.java.gateway.server.route.ServiceRegistry;
@@ -67,7 +68,10 @@ public class GatewayConfiguration {
 
     @Bean
     public SessionManager sessionManager(RedissonClient redissonClient) {
-        return new DistributedSessionManager(redissonClient);
+        DistributedSessionManager sessionManager = new DistributedSessionManager(redissonClient);
+        // metrics
+        MetricsUtil.registerActiveSessionsGauge(sessionManager);
+        return sessionManager;
     }
 
     @Bean

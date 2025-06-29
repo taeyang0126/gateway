@@ -15,7 +15,11 @@
  */
 package com.lei.java.gateway.upstream.server.spring.example;
 
+import java.util.Random;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +45,8 @@ public class UpstreamServer {
         context.register(UpstreamServerConfiguration.class);
         // 刷新容器
         context.refresh();
+        final ExecutorService executorService = Executors.newFixedThreadPool(10);
+        final Random random = new Random();
 
         // 推送消息
         MessageDispatcher messageDispatcher = context.getBean(MessageDispatcher.class);
@@ -50,15 +56,22 @@ public class UpstreamServer {
         for (int i = 0; i < count; i++) {
             String msg = "Hello World -> "
                     + i;
-            messageDispatcher.dispatch(start + i, CLIENT_ID, msg.getBytes())
-                    .whenComplete((result, ex) -> {
-                        if (ex != null) {
-                            logger.error("msg push error: ", ex);
-                        } else {
-                            logger.info("{} msg push success", msg);
-                        }
-                        countDownLatch.countDown();
-                    });
+            int finalI = i;
+            executorService.submit(() -> {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(random.nextInt(1000, 3000));
+                } catch (InterruptedException ignore) {
+                }
+                messageDispatcher.dispatch(start + finalI, CLIENT_ID, msg.getBytes())
+                        .whenComplete((result, ex) -> {
+                            if (ex != null) {
+                                logger.error("msg push error: ", ex);
+                            } else {
+                                logger.info("{} msg push success", msg);
+                            }
+                            countDownLatch.countDown();
+                        });
+            });
         }
 
         countDownLatch.await();
@@ -66,5 +79,6 @@ public class UpstreamServer {
                 count,
                 System.currentTimeMillis() - start);
         context.close();
+        executorService.shutdown();
     }
 }

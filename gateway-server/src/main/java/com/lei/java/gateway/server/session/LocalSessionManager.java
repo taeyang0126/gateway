@@ -98,6 +98,11 @@ public class LocalSessionManager implements SessionManager {
         clientIdIndex.clear();
     }
 
+    @Override
+    public long getActiveSessionCount() {
+        return sessions.size();
+    }
+
     private String generateSessionId() {
         return UUID.randomUUID()
                 .toString()
