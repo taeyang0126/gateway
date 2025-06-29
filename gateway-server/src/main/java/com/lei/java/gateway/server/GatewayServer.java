@@ -51,6 +51,8 @@ import com.lei.java.gateway.server.config.GatewayConfiguration;
 import com.lei.java.gateway.server.config.GlobalNodeId;
 import com.lei.java.gateway.server.handler.AuthHandler;
 import com.lei.java.gateway.server.handler.GatewayServerHandler;
+import com.lei.java.gateway.server.handler.TraceInboundHandler;
+import com.lei.java.gateway.server.handler.TraceOutboundHandler;
 import com.lei.java.gateway.server.route.DefaultRouteService;
 import com.lei.java.gateway.server.route.DefaultServiceRegistry;
 import com.lei.java.gateway.server.route.RouteService;
@@ -160,6 +162,11 @@ public class GatewayServer implements DisposableBean {
                                     TimeUnit.SECONDS));
                             // 添加消息编解码器
                             p.addLast(new GatewayMessageCodec());
+
+                            // trace
+                            p.addLast(new TraceInboundHandler());
+                            p.addLast(new TraceOutboundHandler());
+
                             // auth handler
                             p.addLast(authHandler);
                             // 添加网关处理器

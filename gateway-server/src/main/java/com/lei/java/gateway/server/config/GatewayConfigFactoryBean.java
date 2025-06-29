@@ -15,11 +15,8 @@
  */
 package com.lei.java.gateway.server.config;
 
-import java.util.concurrent.Executor;
-
 import com.alibaba.nacos.api.NacosFactory;
 import com.alibaba.nacos.api.config.ConfigService;
-import com.alibaba.nacos.api.config.listener.Listener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -43,7 +40,6 @@ public class GatewayConfigFactoryBean
     private final NacosConfig nacosConfig;
     private ConfigService configService;
     private GatewayConfig gatewayConfig;
-    private Listener configListener;
 
     public GatewayConfigFactoryBean(NacosConfig nacosConfig) {
         this.nacosConfig = nacosConfig;
@@ -61,22 +57,6 @@ public class GatewayConfigFactoryBean
         }
         // 更新配置
         updateGatewayConfig(initialConfig);
-
-        // 添加监听器以实现动态刷新
-        this.configListener = new Listener() {
-            @Override
-            public Executor getExecutor() {
-                return null; // 使用默认线程池
-            }
-
-            @Override
-            public void receiveConfigInfo(String configInfo) {
-                System.out.println("Nacos config changed, reloading...");
-                updateGatewayConfig(configInfo);
-            }
-        };
-        configService
-                .addListener(nacosConfig.getDataId(), nacosConfig.getGroup(), this.configListener);
     }
 
     private void updateGatewayConfig(String configStr) {
@@ -89,9 +69,6 @@ public class GatewayConfigFactoryBean
     public void destroy() throws Exception {
         if (this.configService != null) {
             logger.info("Removing Nacos listener and shutting down config service...");
-            this.configService.removeListener(nacosConfig.getDataId(),
-                    nacosConfig.getGroup(),
-                    this.configListener);
             this.configService.shutDown();
         }
     }

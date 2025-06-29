@@ -70,6 +70,12 @@ public class GenericClientManager<T extends Client<T>> implements ClientManager<
         }
         return pendingClients.computeIfAbsent(instance, key -> {
             CompletableFuture<T> future = new CompletableFuture<>();
+            // 双重判断
+            T t = clients.get(instance);
+            if (t != null) {
+                future.complete(t);
+                return future;
+            }
             future.whenComplete((completableClient, throwable) -> {
                 if (throwable != null) {
                     logger.error("Failed to connect to instance: {}", key, throwable);

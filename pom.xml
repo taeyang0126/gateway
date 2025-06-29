@@ -34,6 +34,7 @@
         <log4j2.version>2.23.1</log4j2.version>
         <snakeyaml.version>2.2</snakeyaml.version>
         <lombok.version>1.18.38</lombok.version>
+        <opentelemetry.version>1.51.0</opentelemetry.version>
 
         <!-- Runtime Deps for Testing -->
         <mockito.version>5.18.0</mockito.version>
@@ -197,6 +198,20 @@
                 <groupId>com.alibaba.nacos</groupId>
                 <artifactId>nacos-client</artifactId>
                 <version>${nacos.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.alibaba.nacos</groupId>
+                        <artifactId>nacos-logback-adapter-12</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.alibaba.nacos</groupId>
+                        <artifactId>logback-adapter</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <artifactId>nacos-log4j2-adapter</artifactId>
+                        <groupId>com.alibaba.nacos</groupId>
+                    </exclusion>
+                </exclusions>
             </dependency>
 
             <!-- Redisson Dependencies -->
@@ -225,6 +240,14 @@
                 <artifactId>lombok</artifactId>
                 <scope>provided</scope>
                 <version>${lombok.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-bom</artifactId>
+                <version>${opentelemetry.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
 
         </dependencies>
@@ -412,6 +435,7 @@
                         <include>**/*Tests.java</include>
                     </includes>
                     <skipTests>${skipUTs}</skipTests>
+                    <argLine>--enable-native-access=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
 

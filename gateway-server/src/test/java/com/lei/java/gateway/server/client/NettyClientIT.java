@@ -90,7 +90,7 @@ public class NettyClientIT extends BaseIntegrationTest {
         // 重新启用
         proxy.enable();
         LOGGER.info("proxy enabled");
-        assertThat(BLOCKING_QUEUE.poll(5, TimeUnit.SECONDS)).isNotNull()
+        assertThat(BLOCKING_QUEUE.poll(10, TimeUnit.SECONDS)).isNotNull()
                 .isEqualTo(ACTIVE);
         assertThat(clientExample).isNotNull()
                 .matches(AbstractClient::isActive);

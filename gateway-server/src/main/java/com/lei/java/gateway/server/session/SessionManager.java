@@ -67,4 +67,11 @@ public interface SessionManager {
      * 关闭会话管理器
      */
     void shutdown();
+
+    /**
+     * 获取活跃会话数量
+     *
+     * @return 数量
+     */
+    long getActiveSessionCount();
 }
