@@ -24,6 +24,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../../" &>/dev/null && pwd)
 
 MVN_PROFILES="artifact-fat-jar,fast"
+export MAVEN_OPTS="--enable-native-access=ALL-UNNAMED"
 JAR_SUB_PATH="gateway-server/target/gateway-server-0.1.0-SNAPSHOT.jar"
 JAR_FILE_PATH="$PROJECT_ROOT/$JAR_SUB_PATH"
 
@@ -34,6 +35,7 @@ JAVA_OPTS=(
     "-Xmx512m"
     "-XX:+HeapDumpOnOutOfMemoryError"
     "-XX:HeapDumpPath=${PROJECT_ROOT}/heapdumps/"
+    "--enable-native-access=ALL-UNNAMED"
 )
 
 # 3. OpenTelemetry 配置

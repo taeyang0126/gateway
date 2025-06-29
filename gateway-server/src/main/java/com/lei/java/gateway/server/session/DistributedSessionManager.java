@@ -21,6 +21,8 @@ import io.netty.channel.Channel;
 import org.redisson.api.RBatch;
 import org.redisson.api.RMapAsync;
 import org.redisson.api.RedissonClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.lei.java.gateway.common.constants.CacheConstant;
 import com.lei.java.gateway.server.config.GlobalNodeId;
@@ -38,6 +40,7 @@ import static com.lei.java.gateway.common.constants.GatewayConstant.SESSION_ID;
  * @author 伍磊
  */
 public class DistributedSessionManager extends LocalSessionManager {
+    private final Logger logger = LoggerFactory.getLogger(getClass());
     private final RedissonClient redissonClient;
 
     public DistributedSessionManager(RedissonClient redissonClient) {
@@ -48,6 +51,7 @@ public class DistributedSessionManager extends LocalSessionManager {
     public Session createSession(String clientId, Channel channel) {
         Session session = super.createSession(clientId, channel);
         saveCache(session);
+        logger.info("[session]-(create): clientId={}, sessionId={}", clientId, session.getId());
 
         return session;
     }
@@ -61,6 +65,7 @@ public class DistributedSessionManager extends LocalSessionManager {
                     .delete();
         }
         super.removeSession(sessionId);
+        logger.info("[session]-(remove): sessionId={}", sessionId);
     }
 
     @Override
