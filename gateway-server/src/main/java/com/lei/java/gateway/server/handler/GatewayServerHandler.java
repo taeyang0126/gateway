@@ -40,7 +40,6 @@ import com.lei.java.gateway.server.route.RouteService;
 import com.lei.java.gateway.server.session.DefaultSession;
 import com.lei.java.gateway.server.session.Session;
 import com.lei.java.gateway.server.session.SessionManager;
-import com.lei.java.gateway.server.trace.TracingAttributes;
 
 /**
  * 网关服务器消息处理器
@@ -83,17 +82,14 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         }
 
         Session session = getSession(message);
-        Span span = TRACER.spanBuilder("biz-handler")
-                .setSpanKind(SpanKind.SERVER)
+        Span span = TRACER.spanBuilder("server-handler")
+                .setSpanKind(SpanKind.INTERNAL)
                 .setAttribute("message.type", String.valueOf(message.getMsgType()))
                 .setAttribute("client.id", message.getClientId())
                 .setAttribute("request.id", String.valueOf(message.getRequestId()))
                 .startSpan();
 
         try (Scope scope = span.makeCurrent()) {
-            ctx.channel()
-                    .attr(TracingAttributes.SERVER_SPAN_KEY)
-                    .set(span);
             // 处理不同类型的消息
             switch (message.getMsgType()) {
                 case GatewayMessage.MESSAGE_TYPE_HEARTBEAT:
@@ -135,6 +131,7 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
             ReferenceCountUtil.release(msg);
             span.recordException(e);
             span.setStatus(StatusCode.ERROR, "Gateway Server Handler Error");
+        } finally {
             span.end();
         }
     }
@@ -190,20 +187,13 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void handleHeartbeat(GatewayMessage message, Session session) {
-        Span span = ctx.channel()
-                .attr(TracingAttributes.SERVER_SPAN_KEY)
-                .getAndSet(null);
         if (session == null) {
             logger.warn("Unknown heartbeat message received");
-            span.setStatus(StatusCode.ERROR, "Unknown heartbeat message received");
-            span.end();
             ctx.close();
             return;
         }
         if (!session.isAuthenticated()) {
             logger.warn("Unauthorized heartbeat message received");
-            span.setStatus(StatusCode.ERROR, "Unauthorized heartbeat message received");
-            span.end();
             sessionManager.removeSession(session.getId());
             return;
         }
@@ -216,35 +206,17 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         response.setMsgType(GatewayMessage.MESSAGE_TYPE_HEARTBEAT);
         response.setRequestId(message.getRequestId());
         response.setClientId(message.getClientId());
-        ctx.writeAndFlush(response)
-                .addListener(new ChannelFutureListener() {
-                    @Override
-                    public void operationComplete(ChannelFuture future) throws Exception {
-                        if (!future.isSuccess()) {
-                            // 如果发送失败，记录异常
-                            span.recordException(future.cause());
-                            span.setStatus(StatusCode.ERROR, "Heartbeat Response write failed");
-                        }
-                        span.end();
-                    }
-                });
+        ctx.writeAndFlush(response);
     }
 
     private void handleBizMessage(GatewayMessage message, Session session) {
-        Span span = ctx.channel()
-                .attr(TracingAttributes.SERVER_SPAN_KEY)
-                .getAndSet(null);
         if (session == null) {
             logger.warn("UnKnown business message received");
-            span.setStatus(StatusCode.ERROR, "UnKnown business message received");
-            span.end();
             ctx.close();
             return;
         }
         if (!session.isAuthenticated()) {
             logger.warn("Unauthorized business message received");
-            span.setStatus(StatusCode.ERROR, "Unauthorized business message received");
-            span.end();
             sessionManager.removeSession(session.getId());
             return;
         }
@@ -253,29 +225,14 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
         session.updateLastActiveTime();
 
         // 实现业务消息路由转发逻辑
+        // todo-wl trace 尚未实现
         routeService.route(message)
                 .whenComplete((response, ex) -> {
                     if (ex != null) {
                         logger.error("Failed to route message={}, e: ", message, ex);
-                        span.recordException(ex);
-                        span.setStatus(StatusCode.ERROR, "Failed to route message");
-                        span.end();
                         handleError(message, ex);
                     } else {
-                        ctx.writeAndFlush(response)
-                                .addListener(new ChannelFutureListener() {
-                                    @Override
-                                    public void operationComplete(ChannelFuture future)
-                                            throws Exception {
-                                        if (!future.isSuccess()) {
-                                            // 如果发送失败，记录异常
-                                            span.recordException(future.cause());
-                                            span.setStatus(StatusCode.ERROR,
-                                                    "Biz Response write failed");
-                                        }
-                                        span.end();
-                                    }
-                                });
+                        ctx.writeAndFlush(response);
                     }
                 });
     }
@@ -287,10 +244,6 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
                 .setAttribute("push.client.id", message.getClientId())
                 .setAttribute("push.request.id", String.valueOf(message.getRequestId()))
                 .startSpan();
-
-        Span parentSpan = ctx.channel()
-                .attr(TracingAttributes.SERVER_SPAN_KEY)
-                .getAndSet(null);
 
         try (Scope scope = span.makeCurrent()) {
             long requestId = message.getRequestId();
@@ -304,7 +257,6 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
                 response.setBody("client not found or offline".getBytes(StandardCharsets.UTF_8));
                 span.setStatus(StatusCode.ERROR, "client not found or offline");
                 span.end();
-                parentSpan.end();
                 ctx.writeAndFlush(response);
                 return;
             }
@@ -331,7 +283,6 @@ public class GatewayServerHandler extends ChannelInboundHandlerAdapter {
                                 span.setStatus(StatusCode.ERROR, "client message push failed");
                             }
                             span.end();
-                            parentSpan.end();
                         }
                     });
         }
