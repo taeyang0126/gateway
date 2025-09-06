@@ -48,9 +48,10 @@
 ### 服务治理
 - 基于 Nacos 的服务发现
 - 负载均衡
+- 监控告警
 - ~~故障转移~~
 - ~~限流熔断~~
-- ~~监控告警~~
+
 
 ## 快速开始
 
@@ -131,6 +132,8 @@ Spring 框架集成支持，提供：
 - Spotbugs：静态分析
 - Surefire：单元测试执行
 - Failsafe：集成测试执行
+- spotless: 代码规范
+- gatling: 性能测试
 
 ### 代码风格
 ```bash
@@ -156,7 +159,7 @@ mvn spotless:apply
 - Mockito 5.18.0
 - TestContainers 1.19.3
 - SLF4J & Log4j2 2.23.1
-- Jackson 2.13.5
+- Jackson 2.19.0
 
 ## 开源协议
 [MIT License](LICENSE) 
