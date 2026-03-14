@@ -16,6 +16,11 @@
 - 网关需求总入口：`docs/requirements/README.md`
 - 采用从小到大的迭代方式，按阶段拆分需求，供后续概要设计与详细设计直接引用。
 
+## 分阶段学习文档
+- 学习总入口：`docs/learning/README.md`
+- 阶段 1 学习导航：`docs/learning/stage1/00-阶段1-学习导航.md`
+- 学习内容覆盖：架构、代码规范、压测实战、需求追踪、CI 与打包流程。
+
 ## 阶段执行流程（强约束）
 - 严格按阶段串行推进：前一阶段未完成，禁止进入下一阶段。
 - 每阶段必须先过 Gate（`docs/requirements/stage-gates/`）再进入下一阶段。
@@ -61,6 +66,7 @@
 ## CI 工作流
 - `quality-gate.yml`：执行完整质量校验。
 - `quality-config.yml`：校验质量配置文件和 Maven 配置可解析性。
+- `package-build.yml`：执行打包并上传构建产物（JAR Artifact）。
 
 ## 贡献说明
 - 提交信息建议使用 Conventional Commit：`type(scope): summary`。
