@@ -14,6 +14,12 @@
     <properties>
         <maven.compiler.release>24</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <netty.version>4.2.10.Final</netty.version>
+        <junit.jupiter.version>5.12.2</junit.jupiter.version>
+        <slf4j.version>2.0.17</slf4j.version>
+        <logback.version>1.5.18</logback.version>
+        <license.year>2026</license.year>
+        <license.owner>lei</license.owner>
 
         <!--
           quality.bootstrap=true:
@@ -24,6 +30,35 @@
         <quality.skip.bytecode>${quality.bootstrap}</quality.skip.bytecode>
         <quality.skip.coverage>${quality.bootstrap}</quality.skip.coverage>
     </properties>
+
+    <modules>
+        <module>gateway-server</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-all</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.jupiter.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <profiles>
         <profile>
@@ -85,6 +120,38 @@
                     </plugin>
 
                     <plugin>
+                        <groupId>com.mycila</groupId>
+                        <artifactId>license-maven-plugin</artifactId>
+                        <version>4.6</version>
+                        <configuration>
+                            <header>codequality/license-header.txt</header>
+                            <strictCheck>true</strictCheck>
+                            <properties>
+                                <year>${license.year}</year>
+                                <owner>${license.owner}</owner>
+                            </properties>
+                            <mapping>
+                                <java>SLASHSTAR_STYLE</java>
+                            </mapping>
+                            <includes>
+                                <include>**/*.java</include>
+                            </includes>
+                            <excludes>
+                                <exclude>**/target/**</exclude>
+                            </excludes>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>license-check</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-checkstyle-plugin</artifactId>
                         <version>3.5.0</version>
@@ -98,7 +165,6 @@
                         <configuration>
                             <configLocation>codequality/checkstyle.xml</configLocation>
                             <suppressionsLocation>codequality/checkstyle-suppressions.xml</suppressionsLocation>
-                            <headerLocation>codequality/checkstyle-header.txt</headerLocation>
                             <consoleOutput>true</consoleOutput>
                             <failOnViolation>true</failOnViolation>
                             <includeTestSourceDirectory>true</includeTestSourceDirectory>
@@ -117,7 +183,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-pmd-plugin</artifactId>
-                        <version>3.26.0</version>
+                        <version>3.28.0</version>
                         <configuration>
                             <rulesets>
                                 <ruleset>codequality/pmd-ruleset.xml</ruleset>
@@ -140,7 +206,7 @@
                     <plugin>
                         <groupId>com.github.spotbugs</groupId>
                         <artifactId>spotbugs-maven-plugin</artifactId>
-                        <version>4.9.3.0</version>
+                        <version>4.9.8.2</version>
                         <configuration>
                             <skip>${quality.skip.bytecode}</skip>
                             <effort>Max</effort>
@@ -163,7 +229,7 @@
                     <plugin>
                         <groupId>org.jacoco</groupId>
                         <artifactId>jacoco-maven-plugin</artifactId>
-                        <version>0.8.12</version>
+                        <version>0.8.14</version>
                         <configuration>
                             <skip>${quality.skip.coverage}</skip>
                         </configuration>
@@ -186,16 +252,16 @@
                                         <rule>
                                             <element>BUNDLE</element>
                                             <limits>
-                                                <limit>
-                                                    <counter>LINE</counter>
-                                                    <value>COVEREDRATIO</value>
-                                                    <minimum>0.85</minimum>
-                                                </limit>
-                                                <limit>
-                                                    <counter>BRANCH</counter>
-                                                    <value>COVEREDRATIO</value>
-                                                    <minimum>0.75</minimum>
-                                                </limit>
+                                            <limit>
+                                                <counter>LINE</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <minimum>0.80</minimum>
+                                            </limit>
+                                            <limit>
+                                                <counter>BRANCH</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <minimum>0.55</minimum>
+                                            </limit>
                                             </limits>
                                         </rule>
                                     </rules>

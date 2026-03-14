@@ -31,7 +31,6 @@
 ## 4. 文件说明
 - `checkstyle.xml`：主风格规则
 - `checkstyle-suppressions.xml`：临时豁免（应最小化）
-- `checkstyle-header.txt`：统一版权头模板
 - `pmd-ruleset.xml`：PMD 规则集
 - `spotbugs-exclude.xml`：SpotBugs 过滤规则
 - `testing-standards.md`：单元测试标准

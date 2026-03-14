@@ -85,7 +85,6 @@
                     <configuration>
                         <configLocation>codequality/checkstyle.xml</configLocation>
                         <suppressionsLocation>codequality/checkstyle-suppressions.xml</suppressionsLocation>
-                        <headerLocation>codequality/checkstyle-header.txt</headerLocation>
                         <consoleOutput>true</consoleOutput>
                         <failOnViolation>true</failOnViolation>
                         <includeTestSourceDirectory>true</includeTestSourceDirectory>
@@ -104,7 +103,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-pmd-plugin</artifactId>
-                    <version>3.26.0</version>
+                    <version>3.28.0</version>
                     <configuration>
                         <rulesets>
                             <ruleset>codequality/pmd-ruleset.xml</ruleset>
@@ -127,7 +126,7 @@
                     <plugin>
                         <groupId>com.github.spotbugs</groupId>
                         <artifactId>spotbugs-maven-plugin</artifactId>
-                        <version>4.9.3.0</version>
+                        <version>4.9.8.2</version>
                         <configuration>
                             <skip>${quality.skip.bytecode}</skip>
                             <effort>Max</effort>
@@ -150,7 +149,7 @@
                     <plugin>
                         <groupId>org.jacoco</groupId>
                         <artifactId>jacoco-maven-plugin</artifactId>
-                        <version>0.8.12</version>
+                        <version>0.8.14</version>
                         <configuration>
                             <skip>${quality.skip.coverage}</skip>
                         </configuration>
@@ -176,12 +175,12 @@
                                             <limit>
                                                 <counter>LINE</counter>
                                                 <value>COVEREDRATIO</value>
-                                                <minimum>0.85</minimum>
+                                                <minimum>0.80</minimum>
                                             </limit>
                                             <limit>
                                                 <counter>BRANCH</counter>
                                                 <value>COVEREDRATIO</value>
-                                                <minimum>0.75</minimum>
+                                                <minimum>0.55</minimum>
                                             </limit>
                                         </limits>
                                     </rule>

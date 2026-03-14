@@ -1,0 +1,5 @@
+[INFO] 阈值评估结果
+- rssGrowthPct: 0.04% (阈值<=15%) => PASS
+- fdMaxDeviationPct: 0.00% (阈值<=10%) => PASS
+- gcPauseP99Ms: 12.664 (阈值<=200) => PASS
+- overall: PASS

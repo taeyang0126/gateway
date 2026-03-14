@@ -9,8 +9,29 @@
 - CI 工作流：`.github/workflows/`
 - Maven Wrapper 与根构建配置：`mvnw`、`.mvn/`、`pom.xml`
 - 本地与 CI 对齐脚本：`scripts/ci/run-quality.sh`
+- 阶段 1 业务模块：`gateway-server/`（Netty HTTP Server 启动链路）
+  - 模块详细说明：`gateway-server/README.md`
 
-当前仓库尚未引入具体业务模块，这是启动阶段的预期状态。
+## 分阶段需求文档
+- 网关需求总入口：`docs/requirements/README.md`
+- 采用从小到大的迭代方式，按阶段拆分需求，供后续概要设计与详细设计直接引用。
+
+## 阶段执行流程（强约束）
+- 严格按阶段串行推进：前一阶段未完成，禁止进入下一阶段。
+- 每阶段必须先过 Gate（`docs/requirements/stage-gates/`）再进入下一阶段。
+- 每阶段必须维护需求追踪矩阵（`docs/requirements/traceability/`），确保需求到代码和测试可追溯。
+- 本地自动化校验脚本：`./scripts/requirements/verify-stage.sh`
+  - 基础校验：`./scripts/requirements/verify-stage.sh 1`
+  - 严格校验：`./scripts/requirements/verify-stage.sh stage1 --strict`
+- 进入下一阶段前，必须满足：
+  - 当前阶段 GateStatus=`PASS`
+  - 追踪矩阵关键条目状态为 `PASS`
+  - 严格校验通过（`--strict`）
+
+## 研发基线
+- JDK：`JDK 24`
+- 压测工具：`Gatling`
+- 阶段设计和实现必须优先保证“可验证性”：每条需求都有对应任务、代码实现、测试用例和验收证据。
 
 ## 质量门禁
 本地推荐执行：

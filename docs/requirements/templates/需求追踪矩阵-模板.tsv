@@ -1,0 +1,4 @@
+需求ID	类型	任务ID	代码实现	测试用例	验收条目	状态	证据
+# FR-*-*	FR	TASK-*	src/...	*Tests#...	AC-*-*	TODO	链接或文件路径
+# NFR-*-*	NFR	TASK-*	src/...	*Tests#...	AC-*-*	TODO	链接或文件路径
+# AC-*-*	AC	TASK-*	src/...	*IT#...	AC-*-*	TODO	链接或文件路径
