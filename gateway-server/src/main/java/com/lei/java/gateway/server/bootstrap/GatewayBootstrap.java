@@ -20,6 +20,16 @@ import java.net.SocketAddress;
 import java.util.Objects;
 
 import com.lei.java.gateway.server.config.GatewayServerConfig;
+import com.lei.java.gateway.server.http.DefaultErrorResponseMapper;
+import com.lei.java.gateway.server.http.DefaultHeaderPolicyService;
+import com.lei.java.gateway.server.http.ErrorResponseMapper;
+import com.lei.java.gateway.server.http.HeaderPolicyService;
+import com.lei.java.gateway.server.logging.AccessLogService;
+import com.lei.java.gateway.server.logging.DefaultAccessLogService;
+import com.lei.java.gateway.server.proxy.DefaultTimeoutPolicy;
+import com.lei.java.gateway.server.proxy.TimeoutPolicy;
+import com.lei.java.gateway.server.routing.RouteService;
+import com.lei.java.gateway.server.routing.StaticRouteService;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
@@ -38,9 +48,51 @@ public final class GatewayBootstrap {
     private static final int DEFAULT_BOSS_THREADS = 1;
     private static final int DEFAULT_BACKLOG = 1024;
 
+    private final RouteService routeService;
+    private final HeaderPolicyService headerPolicyService;
+    private final TimeoutPolicy timeoutPolicy;
+    private final ErrorResponseMapper errorResponseMapper;
+    private final AccessLogService accessLogService;
+
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
+
+    /** 使用默认实现构造启动器。 */
+    public GatewayBootstrap() {
+        this(
+                new StaticRouteService(),
+                new DefaultHeaderPolicyService(),
+                new DefaultTimeoutPolicy(),
+                new DefaultErrorResponseMapper(),
+                new DefaultAccessLogService());
+    }
+
+    /**
+     * 使用显式注入的依赖构造启动器。
+     *
+     * @param routeService 路由选择服务
+     * @param headerPolicyService 请求头策略服务
+     * @param timeoutPolicy 超时策略服务
+     * @param errorResponseMapper 异常到错误响应映射服务
+     * @param accessLogService 访问日志服务
+     */
+    public GatewayBootstrap(
+            final RouteService routeService,
+            final HeaderPolicyService headerPolicyService,
+            final TimeoutPolicy timeoutPolicy,
+            final ErrorResponseMapper errorResponseMapper,
+            final AccessLogService accessLogService) {
+        this.routeService = Objects.requireNonNull(routeService, "routeService must not be null");
+        this.headerPolicyService =
+                Objects.requireNonNull(headerPolicyService, "headerPolicyService must not be null");
+        this.timeoutPolicy =
+                Objects.requireNonNull(timeoutPolicy, "timeoutPolicy must not be null");
+        this.errorResponseMapper =
+                Objects.requireNonNull(errorResponseMapper, "errorResponseMapper must not be null");
+        this.accessLogService =
+                Objects.requireNonNull(accessLogService, "accessLogService must not be null");
+    }
 
     /**
      * 启动网关服务。
@@ -69,7 +121,14 @@ public final class GatewayBootstrap {
                             new io.netty.channel.ChannelInitializer<SocketChannel>() {
                                 @Override
                                 protected void initChannel(final SocketChannel channel) {
-                                    new ServerPipelineFactory(config).configure(channel.pipeline());
+                                    new ServerPipelineFactory(
+                                                    config,
+                                                    routeService,
+                                                    headerPolicyService,
+                                                    timeoutPolicy,
+                                                    errorResponseMapper,
+                                                    accessLogService)
+                                            .configure(channel.pipeline());
                                 }
                             });
 

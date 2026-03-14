@@ -2,7 +2,7 @@
 
 ## 1. 模块定位
 - 提供阶段 1 的 HTTP 反向代理最小闭环实现。
-- 技术栈：Netty（服务端 + 上游客户端）、SLF4J 日志门面。
+- 技术栈：Spring Boot（依赖注入 + 外置配置）、Netty（服务端 + 上游客户端）、SLF4J 日志门面。
 
 ## 2. 关键设计
 - 启动与生命周期：
@@ -36,6 +36,19 @@ gateway-server/src/main/java/com/lei/java/gateway/server
 ```bash
 ./mvnw -pl gateway-server -am test
 ```
+- 打包（可运行 fat-jar）：
+```bash
+./mvnw -pl gateway-server -am -DskipTests package
+java -jar gateway-server/target/gateway-server-2.0.0-SNAPSHOT.jar
+```
+- 外置配置启动（推荐）：
+```bash
+java -jar gateway-server/target/gateway-server-2.0.0-SNAPSHOT.jar \
+  --spring.config.additional-location=file:./gateway-config.yml
+```
+- 配置入口：
+  - 默认配置：`gateway-server/src/main/resources/application.yml`
+  - 支持外置文件覆盖 `gateway.*`（含 routes/upstream/timeout）。
 - 本地压测（默认产物输出到仓库内 `reports/`）：
 ```bash
 GATLING_HOME=/tmp/gatling-dist/gatling-charts-highcharts-bundle-3.15.0 \

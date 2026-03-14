@@ -25,12 +25,12 @@ jobs:
           cache: maven
 
       - name: Package
-        run: ./mvnw -B -ntp -DskipTests package
+        run: ./mvnw -B -ntp -pl gateway-server -am -DskipTests package
 
       - name: Upload Gateway Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gateway-server-jar
-          path: gateway-server/target/*.jar
+          path: gateway-server/target/gateway-server-*.jar
           if-no-files-found: error
           retention-days: 14

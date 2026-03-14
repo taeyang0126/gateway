@@ -15,103 +15,98 @@
  */
 package com.lei.java.gateway.server.app;
 
-import java.util.List;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
 
 import com.lei.java.gateway.server.bootstrap.GatewayBootstrap;
 import com.lei.java.gateway.server.config.GatewayServerConfig;
-import com.lei.java.gateway.server.config.HostRewriteMode;
-import com.lei.java.gateway.server.config.MatchType;
-import com.lei.java.gateway.server.config.RouteConfig;
-import com.lei.java.gateway.server.config.UpstreamConfig;
+import com.lei.java.gateway.server.config.GatewayServerConfigFactory;
+import com.lei.java.gateway.server.config.GatewayServerProperties;
+import com.lei.java.gateway.server.http.DefaultErrorResponseMapper;
+import com.lei.java.gateway.server.http.DefaultHeaderPolicyService;
+import com.lei.java.gateway.server.http.ErrorResponseMapper;
+import com.lei.java.gateway.server.http.HeaderPolicyService;
+import com.lei.java.gateway.server.logging.AccessLogService;
+import com.lei.java.gateway.server.logging.DefaultAccessLogService;
+import com.lei.java.gateway.server.proxy.DefaultTimeoutPolicy;
+import com.lei.java.gateway.server.proxy.TimeoutPolicy;
+import com.lei.java.gateway.server.routing.RouteService;
+import com.lei.java.gateway.server.routing.StaticRouteService;
 
-/**
- * 阶段 1 本地运行入口。
- *
- * <p>环境变量：
- *
- * <ul>
- *   <li>GATEWAY_PORT（默认 8080）
- *   <li>UPSTREAM_HOST（默认 127.0.0.1）
- *   <li>UPSTREAM_PORT（默认 9001）
- *   <li>ROUTE_PREFIX（默认 /api/）
- *   <li>CONNECT_TIMEOUT_MS（默认 1000）
- *   <li>READ_TIMEOUT_MS（默认 1000）
- *   <li>WRITE_TIMEOUT_MS（默认 1000）
- * </ul>
- */
-public final class GatewayServerMain {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(GatewayServerMain.class);
-
-    private GatewayServerMain() {
-        // utility
-    }
+/** 基于 Spring Boot 的网关服务启动入口。 */
+@SpringBootApplication(proxyBeanMethods = false)
+@EnableConfigurationProperties(GatewayServerProperties.class)
+public class GatewayServerMain {
 
     /**
-     * 启动网关并保持进程存活。
+     * 启动 Spring 容器并自动拉起网关。
      *
-     * @param args 命令行参数（未使用）
-     * @throws InterruptedException 线程中断
+     * @param args 启动参数
      */
-    public static void main(final String[] args) throws InterruptedException {
-        final int port = getIntEnv("GATEWAY_PORT", 8080);
-        final String upstreamHost = getStringEnv("UPSTREAM_HOST", "127.0.0.1");
-        final int upstreamPort = getIntEnv("UPSTREAM_PORT", 9001);
-        final String routePrefix = getStringEnv("ROUTE_PREFIX", "/api/");
-        final int connectTimeoutMs = getIntEnv("CONNECT_TIMEOUT_MS", 1000);
-        final int readTimeoutMs = getIntEnv("READ_TIMEOUT_MS", 1000);
-        final int writeTimeoutMs = getIntEnv("WRITE_TIMEOUT_MS", 1000);
-
-        final RouteConfig route =
-                new RouteConfig(
-                        "route-main",
-                        100,
-                        MatchType.PREFIX,
-                        routePrefix,
-                        HostRewriteMode.REWRITE,
-                        new UpstreamConfig(
-                                "http",
-                                upstreamHost,
-                                upstreamPort,
-                                connectTimeoutMs,
-                                readTimeoutMs,
-                                writeTimeoutMs));
-
-        final GatewayServerConfig config =
-                new GatewayServerConfig(port, 1024 * 1024, true, List.of(route));
-        final GatewayBootstrap bootstrap = new GatewayBootstrap();
-        bootstrap.start(config);
-
-        Runtime.getRuntime().addShutdownHook(new Thread(bootstrap::stop, "gateway-stop-hook"));
-
-        LOGGER.info(
-                "gateway started, port={}, upstream={}:{}, routePrefix={}",
-                bootstrap.boundPort(),
-                upstreamHost,
-                upstreamPort,
-                routePrefix);
-
-        while (bootstrap.isRunning()) {
-            Thread.sleep(1_000L);
-        }
+    public static void main(final String[] args) {
+        final SpringApplication application = new SpringApplication(GatewayServerMain.class);
+        application.setWebApplicationType(WebApplicationType.NONE);
+        application.run(args);
     }
 
-    private static int getIntEnv(final String name, final int defaultValue) {
-        final String raw = System.getenv(name);
-        if (raw == null || raw.isBlank()) {
-            return defaultValue;
-        }
-        return Integer.parseInt(raw.trim());
+    @Bean
+    public RouteService routeService() {
+        return new StaticRouteService();
     }
 
-    private static String getStringEnv(final String name, final String defaultValue) {
-        final String raw = System.getenv(name);
-        if (raw == null || raw.isBlank()) {
-            return defaultValue;
-        }
-        return raw.trim();
+    @Bean
+    public HeaderPolicyService headerPolicyService() {
+        return new DefaultHeaderPolicyService();
+    }
+
+    @Bean
+    public TimeoutPolicy timeoutPolicy() {
+        return new DefaultTimeoutPolicy();
+    }
+
+    @Bean
+    public ErrorResponseMapper errorResponseMapper() {
+        return new DefaultErrorResponseMapper();
+    }
+
+    @Bean
+    public AccessLogService accessLogService() {
+        return new DefaultAccessLogService();
+    }
+
+    @Bean
+    public GatewayBootstrap gatewayBootstrap(
+            final RouteService routeService,
+            final HeaderPolicyService headerPolicyService,
+            final TimeoutPolicy timeoutPolicy,
+            final ErrorResponseMapper errorResponseMapper,
+            final AccessLogService accessLogService) {
+        return new GatewayBootstrap(
+                routeService,
+                headerPolicyService,
+                timeoutPolicy,
+                errorResponseMapper,
+                accessLogService);
+    }
+
+    @Bean
+    public GatewayServerConfigFactory gatewayServerConfigFactory() {
+        return new GatewayServerConfigFactory();
+    }
+
+    @Bean
+    public GatewayServerConfig gatewayServerConfig(
+            final GatewayServerConfigFactory factory, final GatewayServerProperties properties) {
+        return factory.create(properties);
+    }
+
+    @Bean
+    public GatewayServerLifecycle gatewayServerLifecycle(
+            final GatewayBootstrap gatewayBootstrap,
+            final GatewayServerConfig gatewayServerConfig) {
+        return new GatewayServerLifecycle(gatewayBootstrap, gatewayServerConfig);
     }
 }

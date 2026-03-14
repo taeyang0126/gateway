@@ -113,38 +113,44 @@ PY
 
 pushd "$ROOT_DIR" >/dev/null
 
-./mvnw -pl gateway-server -am -DskipTests compile >/dev/null
-./mvnw -pl gateway-server -am -DskipTests -q dependency:build-classpath \
-  -Dmdep.includeScope=runtime \
-  -Dmdep.outputFile="$output_dir/runtime.classpath"
+./mvnw -pl gateway-server -am -DskipTests package >/dev/null
 
-runtime_cp_file="$output_dir/runtime.classpath"
-if [[ ! -f "$runtime_cp_file" ]]; then
-  echo "[ERROR] 运行时 classpath 文件缺失: $runtime_cp_file"
+gateway_jar="$(find gateway-server/target -maxdepth 1 -type f -name 'gateway-server-*.jar' ! -name '*.original' | head -n 1)"
+if [[ -z "$gateway_jar" || ! -f "$gateway_jar" ]]; then
+  echo "[ERROR] 未找到可运行 fat-jar: gateway-server/target/gateway-server-*.jar"
   exit 3
 fi
-runtime_cp="$(cat "$runtime_cp_file")"
-if [[ -z "$runtime_cp" ]]; then
-  echo "[ERROR] 运行时 classpath 为空: $runtime_cp_file"
-  exit 4
-fi
+
+gateway_config_file="$output_dir/gateway-config.yml"
+cat >"$gateway_config_file" <<YAML
+gateway:
+  port: ${gateway_port}
+  max-content-length: 1048576
+  pooled-allocator-enabled: true
+  routes:
+    - route-id: route-main
+      priority: 100
+      match-type: PREFIX
+      path: /api/
+      host-rewrite-mode: REWRITE
+      upstream:
+        scheme: http
+        host: 127.0.0.1
+        port: ${upstream_port}
+        connect-timeout-ms: 5000
+        read-timeout-ms: 5000
+        write-timeout-ms: 5000
+YAML
 
 echo "[INFO] 启动 gateway-server JVM 参数: -Xms${gateway_jvm_xms} -Xmx${gateway_jvm_xmx}"
 
 python3 "$upstream_py" >"$output_dir/upstream.log" 2>&1 &
 upstream_pid=$!
 
-GATEWAY_PORT="$gateway_port" \
-UPSTREAM_HOST="127.0.0.1" \
-UPSTREAM_PORT="$upstream_port" \
-ROUTE_PREFIX="/api/" \
-CONNECT_TIMEOUT_MS="5000" \
-READ_TIMEOUT_MS="5000" \
-WRITE_TIMEOUT_MS="5000" \
 java -Xms"${gateway_jvm_xms}" -Xmx"${gateway_jvm_xmx}" \
   -Xlog:gc*:file="$output_dir/gateway-gc.log":time \
-  -cp "gateway-server/target/classes:${runtime_cp}" \
-  com.lei.java.gateway.server.app.GatewayServerMain \
+  -jar "$gateway_jar" \
+  --spring.config.additional-location="file:${gateway_config_file}" \
   >"$output_dir/gateway.log" 2>&1 &
 gateway_pid=$!
 

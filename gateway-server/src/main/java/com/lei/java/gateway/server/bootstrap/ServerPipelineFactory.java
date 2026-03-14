@@ -18,6 +18,16 @@ package com.lei.java.gateway.server.bootstrap;
 import java.util.Objects;
 
 import com.lei.java.gateway.server.config.GatewayServerConfig;
+import com.lei.java.gateway.server.http.DefaultErrorResponseMapper;
+import com.lei.java.gateway.server.http.DefaultHeaderPolicyService;
+import com.lei.java.gateway.server.http.ErrorResponseMapper;
+import com.lei.java.gateway.server.http.HeaderPolicyService;
+import com.lei.java.gateway.server.logging.AccessLogService;
+import com.lei.java.gateway.server.logging.DefaultAccessLogService;
+import com.lei.java.gateway.server.proxy.DefaultTimeoutPolicy;
+import com.lei.java.gateway.server.proxy.TimeoutPolicy;
+import com.lei.java.gateway.server.routing.RouteService;
+import com.lei.java.gateway.server.routing.StaticRouteService;
 
 import io.netty.channel.ChannelPipeline;
 import io.netty.handler.codec.http.HttpObjectAggregator;
@@ -27,9 +37,39 @@ import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 final class ServerPipelineFactory {
 
     private final GatewayServerConfig config;
+    private final RouteService routeService;
+    private final HeaderPolicyService headerPolicyService;
+    private final TimeoutPolicy timeoutPolicy;
+    private final ErrorResponseMapper errorResponseMapper;
+    private final AccessLogService accessLogService;
 
     ServerPipelineFactory(final GatewayServerConfig config) {
+        this(
+                config,
+                new StaticRouteService(),
+                new DefaultHeaderPolicyService(),
+                new DefaultTimeoutPolicy(),
+                new DefaultErrorResponseMapper(),
+                new DefaultAccessLogService());
+    }
+
+    ServerPipelineFactory(
+            final GatewayServerConfig config,
+            final RouteService routeService,
+            final HeaderPolicyService headerPolicyService,
+            final TimeoutPolicy timeoutPolicy,
+            final ErrorResponseMapper errorResponseMapper,
+            final AccessLogService accessLogService) {
         this.config = Objects.requireNonNull(config, "config must not be null");
+        this.routeService = Objects.requireNonNull(routeService, "routeService must not be null");
+        this.headerPolicyService =
+                Objects.requireNonNull(headerPolicyService, "headerPolicyService must not be null");
+        this.timeoutPolicy =
+                Objects.requireNonNull(timeoutPolicy, "timeoutPolicy must not be null");
+        this.errorResponseMapper =
+                Objects.requireNonNull(errorResponseMapper, "errorResponseMapper must not be null");
+        this.accessLogService =
+                Objects.requireNonNull(accessLogService, "accessLogService must not be null");
     }
 
     void configure(final ChannelPipeline pipeline) {
@@ -37,6 +77,14 @@ final class ServerPipelineFactory {
         pipeline.addLast(new HttpServerCodec());
         pipeline.addLast(new HttpObjectAggregator(config.maxContentLength()));
         pipeline.addLast(new HttpServerKeepAliveHandler());
-        pipeline.addLast(new DefaultHttpServerHandler(config.maxContentLength(), config.routes()));
+        pipeline.addLast(
+                new DefaultHttpServerHandler(
+                        config.maxContentLength(),
+                        config.routes(),
+                        routeService,
+                        headerPolicyService,
+                        timeoutPolicy,
+                        errorResponseMapper,
+                        accessLogService));
     }
 }

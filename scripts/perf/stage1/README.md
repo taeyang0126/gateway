@@ -35,6 +35,7 @@
 - `run-stage1-ac4-local.sh` 启动网关时固定指定 JVM 内存参数。
 - 默认值：`-Xms2g -Xmx2g`。
 - 可通过环境变量覆盖：`GATEWAY_JVM_XMS`、`GATEWAY_JVM_XMX`。
+- 本地脚本会先打包 `gateway-server` fat-jar，并在输出目录生成 `gateway-config.yml` 作为外置配置再启动网关。
 
 ## 5. 阈值
 - RSS 增幅：`<= 15%`
