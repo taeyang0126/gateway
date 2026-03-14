@@ -3,4 +3,8 @@
         "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
         "https://checkstyle.org/dtds/suppressions_1_2.dtd">
 <suppressions>
+    <!--
+      示例（仅在必须时添加，且要注明原因和清理计划）:
+      <suppress files=".*Generated.*\.java" checks="JavadocType,JavadocMethod"/>
+    -->
 </suppressions>

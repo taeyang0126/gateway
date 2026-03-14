@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- 测试类不做 SpotBugs 阻断 -->
+    <Match>
+        <Class name="~.*Tests?$"/>
+    </Match>
+    <Match>
+        <Class name="~.*IT$"/>
+    </Match>
+
+    <!-- 允许生成代码按需豁免 -->
+    <Match>
+        <Class name="~.*\\$\\$.*"/>
+    </Match>
+</FindBugsFilter>

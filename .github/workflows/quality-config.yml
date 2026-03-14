@@ -1,0 +1,50 @@
+name: Quality Config Validate
+
+on:
+  push:
+    branches:
+      - main
+      - rewrite/**
+      - feature/**
+    paths:
+      - 'codequality/**'
+      - 'pom.xml'
+      - '.github/workflows/quality-*.yml'
+  pull_request:
+    paths:
+      - 'codequality/**'
+      - 'pom.xml'
+      - '.github/workflows/quality-*.yml'
+  workflow_dispatch:
+
+jobs:
+  config-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install xmllint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxml2-utils
+
+      - name: Validate XML Files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in codequality/*.xml pom.xml; do
+            echo "Checking $f"
+            xmllint --noout "$f"
+          done
+
+      - name: Setup JDK 24
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '24'
+          cache: maven
+
+      - name: Maven Profile Parse Check
+        run: ./mvnw -B -ntp -Pquality -Dquality.bootstrap=true validate

@@ -1,316 +1,108 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.lei.java</groupId>
     <artifactId>gateway</artifactId>
-    <version>${revision}</version>
+    <version>2.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <name>Gateway Parent</name>
-
-    <modules>
-        <module>gateway-server</module>
-        <module>gateway-common</module>
-        <module>gateway-client-example</module>
-        <module>gateway-sdk-core</module>
-        <module>gateway-sdk-spring</module>
-        <module>gateway-upstream-server-spring-example</module>
-    </modules>
+    <name>gateway</name>
+    <description>Gateway rewrite quality baseline</description>
 
     <properties>
-        <!-- Project -->
-        <java.version>24</java.version>
-        <revision>0.1.0-SNAPSHOT</revision>
+        <maven.compiler.release>24</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- Runtime Deps -->
-        <spring.version>6.2.8</spring.version>
-        <redisson.version>3.27.1</redisson.version>
-        <nacos.version>2.5.1</nacos.version>
-        <netty.version>4.2.2.Final</netty.version>
-        <slf4j.version>2.0.13</slf4j.version>
-        <log4j2.version>2.23.1</log4j2.version>
-        <snakeyaml.version>2.2</snakeyaml.version>
-        <lombok.version>1.18.38</lombok.version>
-        <opentelemetry.version>1.51.0</opentelemetry.version>
-        <jackson.version>2.19.0</jackson.version>
-
-        <!-- Runtime Deps for Testing -->
-        <mockito.version>5.18.0</mockito.version>
-        <testcontainers.version>1.19.3</testcontainers.version>
-        <toxiproxy.version>1.18.3</toxiproxy.version>
-        <junit.version>5.12.1</junit.version>
-        <assertj.version>3.18.0</assertj.version>
-        <gatling.version>3.14.3</gatling.version>
-        <gatling-maven-plugin.version>4.20.1</gatling-maven-plugin.version>
-
-        <!-- Maven plugins -->
-        <maven.compiler.source>${java.version}</maven.compiler.source>
-        <maven.compiler.target>${java.version}</maven.compiler.target>
-        <flatten-maven-plugin.version>1.6.0</flatten-maven-plugin.version>
-        <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
-        <maven-surefire-plugin.version>3.3.0</maven-surefire-plugin.version>
-        <maven-failsafe-plugin.version>3.3.0</maven-failsafe-plugin.version>
-        <checkstyle.version>10.12.7</checkstyle.version>
-        <maven-checkstyle-plugin.version>3.3.1</maven-checkstyle-plugin.version>
-        <spotless-maven-plugin.version>2.43.0</spotless-maven-plugin.version>
-        <spotless-maven-plugin.eclipse.version>4.31</spotless-maven-plugin.eclipse.version>
-        <spotbugs-maven-plugin.version>4.9.3.0</spotbugs-maven-plugin.version>
-
-        <!--Config-->
-        <skipITs>false</skipITs>
-        <skipUTs>false</skipUTs>
-        <!--M1/M2..-->
-        <os.arch>osx-aarch_64</os.arch>
+        <!--
+          quality.bootstrap=true:
+          1) 当前仓库暂无业务模块时用于“可运行”校验
+          2) 会跳过依赖字节码/覆盖率的门禁（SpotBugs/JaCoCo）
+        -->
+        <quality.bootstrap>false</quality.bootstrap>
+        <quality.skip.bytecode>${quality.bootstrap}</quality.skip.bytecode>
+        <quality.skip.coverage>${quality.bootstrap}</quality.skip.coverage>
     </properties>
-
-    <dependencyManagement>
-        <dependencies>
-
-            <dependency>
-                <groupId>com.lei.java</groupId>
-                <artifactId>gateway-common</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>com.lei.java</groupId>
-                <artifactId>gateway-sdk-core</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>com.lei.java</groupId>
-                <artifactId>gateway-sdk-spring</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-
-            <!-- Netty Dependencies -->
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-common</artifactId>
-                <version>${netty.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-buffer</artifactId>
-                <version>${netty.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-codec</artifactId>
-                <version>${netty.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-handler</artifactId>
-                <version>${netty.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-codec-compression</artifactId>
-                <version>${netty.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-codec-http</artifactId>
-                <version>${netty.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.netty</groupId>
-                <artifactId>netty-resolver-dns-native-macos</artifactId>
-                <version>${netty.version}</version>
-                <classifier>${os.arch}</classifier>
-            </dependency>
-
-            <!-- Testing Dependencies -->
-            <dependency>
-                <groupId>org.junit</groupId>
-                <artifactId>junit-bom</artifactId>
-                <version>${junit.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.assertj</groupId>
-                <artifactId>assertj-core</artifactId>
-                <version>${assertj.version}</version>
-                <scope>test</scope>
-            </dependency>
-
-            <!-- Logging Dependencies -->
-            <dependency>
-                <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-api</artifactId>
-                <version>${slf4j.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.logging.log4j</groupId>
-                <artifactId>log4j-slf4j2-impl</artifactId>
-                <version>${log4j2.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.logging.log4j</groupId>
-                <artifactId>log4j-api</artifactId>
-                <version>${log4j2.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.logging.log4j</groupId>
-                <artifactId>log4j-core</artifactId>
-                <version>${log4j2.version}</version>
-            </dependency>
-
-            <!-- Mockito Dependencies -->
-            <dependency>
-                <groupId>org.mockito</groupId>
-                <artifactId>mockito-core</artifactId>
-                <version>${mockito.version}</version>
-                <scope>test</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.mockito</groupId>
-                <artifactId>mockito-junit-jupiter</artifactId>
-                <version>${mockito.version}</version>
-                <scope>test</scope>
-            </dependency>
-
-            <!-- TestContainers Dependencies -->
-            <dependency>
-                <groupId>org.testcontainers</groupId>
-                <artifactId>testcontainers</artifactId>
-                <version>${testcontainers.version}</version>
-                <scope>test</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.testcontainers</groupId>
-                <artifactId>toxiproxy</artifactId>
-                <version>${toxiproxy.version}</version>
-                <scope>test</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.testcontainers</groupId>
-                <artifactId>junit-jupiter</artifactId>
-                <version>${testcontainers.version}</version>
-                <scope>test</scope>
-            </dependency>
-
-            <!-- Nacos Client -->
-            <dependency>
-                <groupId>com.alibaba.nacos</groupId>
-                <artifactId>nacos-client</artifactId>
-                <version>${nacos.version}</version>
-                <exclusions>
-                    <exclusion>
-                        <groupId>com.alibaba.nacos</groupId>
-                        <artifactId>nacos-logback-adapter-12</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <groupId>com.alibaba.nacos</groupId>
-                        <artifactId>logback-adapter</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <artifactId>nacos-log4j2-adapter</artifactId>
-                        <groupId>com.alibaba.nacos</groupId>
-                    </exclusion>
-                </exclusions>
-            </dependency>
-
-            <!-- Redisson Dependencies -->
-            <dependency>
-                <groupId>org.redisson</groupId>
-                <artifactId>redisson</artifactId>
-                <version>${redisson.version}</version>
-            </dependency>
-
-            <!-- Spring Dependencies -->
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-context</artifactId>
-                <version>${spring.version}</version>
-            </dependency>
-
-            <!--yaml-->
-            <dependency>
-                <groupId>org.yaml</groupId>
-                <artifactId>snakeyaml</artifactId>
-                <version>${snakeyaml.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.projectlombok</groupId>
-                <artifactId>lombok</artifactId>
-                <scope>provided</scope>
-                <version>${lombok.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>io.opentelemetry</groupId>
-                <artifactId>opentelemetry-bom</artifactId>
-                <version>${opentelemetry.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-
-            <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-databind</artifactId>
-                <version>${jackson.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-core</artifactId>
-                <version>${jackson.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-annotations</artifactId>
-                <version>${jackson.version}</version>
-            </dependency>
-
-            <!--gatling-->
-            <dependency>
-                <groupId>io.gatling.highcharts</groupId>
-                <artifactId>gatling-charts-highcharts</artifactId>
-                <version>${gatling.version}</version>
-                <scope>test</scope>
-            </dependency>
-
-        </dependencies>
-    </dependencyManagement>
-
-    <dependencies>
-        <!-- lombok -->
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-        </dependency>
-    </dependencies>
 
     <profiles>
         <profile>
-            <id>checkstyle</id>
+            <id>quality</id>
             <build>
                 <plugins>
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-enforcer-plugin</artifactId>
+                        <version>3.5.0</version>
+                        <executions>
+                            <execution>
+                                <id>enforce-baseline</id>
+                                <goals>
+                                    <goal>enforce</goal>
+                                </goals>
+                                <configuration>
+                                    <rules>
+                                        <requireJavaVersion>
+                                            <version>[24,)</version>
+                                        </requireJavaVersion>
+                                        <requireMavenVersion>
+                                            <version>[3.9.0,)</version>
+                                        </requireMavenVersion>
+                                    </rules>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>com.diffplug.spotless</groupId>
+                        <artifactId>spotless-maven-plugin</artifactId>
+                        <version>2.44.3</version>
+                        <configuration>
+                            <java>
+                                <googleJavaFormat>
+                                    <version>1.22.0</version>
+                                    <style>AOSP</style>
+                                </googleJavaFormat>
+                                <removeUnusedImports/>
+                                <formatAnnotations/>
+                                <trimTrailingWhitespace/>
+                                <endWithNewline/>
+                                <importOrder>
+                                    <order>java,javax,jakarta,org,com</order>
+                                </importOrder>
+                            </java>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>spotless-check</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-checkstyle-plugin</artifactId>
-                        <version>${maven-checkstyle-plugin.version}</version>
+                        <version>3.5.0</version>
+                        <dependencies>
+                            <dependency>
+                                <groupId>com.puppycrawl.tools</groupId>
+                                <artifactId>checkstyle</artifactId>
+                                <version>10.18.2</version>
+                            </dependency>
+                        </dependencies>
                         <configuration>
                             <configLocation>codequality/checkstyle.xml</configLocation>
+                            <suppressionsLocation>codequality/checkstyle-suppressions.xml</suppressionsLocation>
                             <headerLocation>codequality/checkstyle-header.txt</headerLocation>
                             <consoleOutput>true</consoleOutput>
                             <failOnViolation>true</failOnViolation>
                             <includeTestSourceDirectory>true</includeTestSourceDirectory>
                         </configuration>
-                        <dependencies>
-                            <dependency>
-                                <groupId>com.puppycrawl.tools</groupId>
-                                <artifactId>checkstyle</artifactId>
-                                <version>${checkstyle.version}</version>
-                            </dependency>
-                        </dependencies>
                         <executions>
                             <execution>
                                 <id>checkstyle-validation</id>
@@ -321,158 +113,131 @@
                             </execution>
                         </executions>
                     </plugin>
+
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-pmd-plugin</artifactId>
+                        <version>3.26.0</version>
+                        <configuration>
+                            <rulesets>
+                                <ruleset>codequality/pmd-ruleset.xml</ruleset>
+                            </rulesets>
+                            <printFailingErrors>true</printFailingErrors>
+                            <failOnViolation>true</failOnViolation>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>pmd-check</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>check</goal>
+                                    <goal>cpd-check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs-maven-plugin</artifactId>
+                        <version>4.9.3.0</version>
+                        <configuration>
+                            <skip>${quality.skip.bytecode}</skip>
+                            <effort>Max</effort>
+                            <threshold>Low</threshold>
+                            <xmlOutput>true</xmlOutput>
+                            <excludeFilterFile>codequality/spotbugs-exclude.xml</excludeFilterFile>
+                            <failOnError>true</failOnError>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>spotbugs-check</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <version>0.8.12</version>
+                        <configuration>
+                            <skip>${quality.skip.coverage}</skip>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>prepare-agent</id>
+                                <goals>
+                                    <goal>prepare-agent</goal>
+                                </goals>
+                            </execution>
+                            <execution>
+                                <id>report-and-check</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>report</goal>
+                                    <goal>check</goal>
+                                </goals>
+                                <configuration>
+                                    <rules>
+                                        <rule>
+                                            <element>BUNDLE</element>
+                                            <limits>
+                                                <limit>
+                                                    <counter>LINE</counter>
+                                                    <value>COVEREDRATIO</value>
+                                                    <minimum>0.85</minimum>
+                                                </limit>
+                                                <limit>
+                                                    <counter>BRANCH</counter>
+                                                    <value>COVEREDRATIO</value>
+                                                    <minimum>0.75</minimum>
+                                                </limit>
+                                            </limits>
+                                        </rule>
+                                    </rules>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.5.2</version>
+                        <configuration>
+                            <includes>
+                                <include>**/*Tests.java</include>
+                            </includes>
+                            <trimStackTrace>false</trimStackTrace>
+                            <failIfNoTests>false</failIfNoTests>
+                        </configuration>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <version>3.5.2</version>
+                        <configuration>
+                            <includes>
+                                <include>**/*IT.java</include>
+                                <include>**/*ST.java</include>
+                            </includes>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
                 </plugins>
             </build>
         </profile>
-
-        <profile>
-            <id>skip-all-tests</id>
-            <properties>
-                <skipUTs>true</skipUTs>
-                <skipITs>true</skipITs>
-            </properties>
-        </profile>
-
-        <profile>
-            <id>skip-its</id>
-            <properties>
-                <skipITs>true</skipITs>
-            </properties>
-        </profile>
-
-        <profile>
-            <id>fast</id>
-            <properties>
-                <maven.test.skip>true</maven.test.skip>
-            </properties>
-        </profile>
     </profiles>
-
-    <build>
-        <plugins>
-
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>flatten-maven-plugin</artifactId>
-                <version>${flatten-maven-plugin.version}</version>
-                <configuration>
-                    <updatePomFile>true</updatePomFile>
-                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>flatten</id>
-                        <phase>process-resources</phase>
-                        <goals>
-                            <goal>flatten</goal>
-                        </goals>
-                    </execution>
-                    <execution>
-                        <id>flatten.clean</id>
-                        <phase>clean</phase>
-                        <goals>
-                            <goal>clean</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <!--编译-->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>${maven-compiler-plugin.version}</version>
-                <configuration>
-                    <annotationProcessors>
-                        <annotationProcessor>lombok.launch.AnnotationProcessorHider$AnnotationProcessor
-                        </annotationProcessor>
-                    </annotationProcessors>
-                </configuration>
-            </plugin>
-
-            <!--静态 Bug 分析插件-->
-            <plugin>
-                <groupId>com.github.spotbugs</groupId>
-                <artifactId>spotbugs-maven-plugin</artifactId>
-                <version>${spotbugs-maven-plugin.version}</version>
-            </plugin>
-
-            <!--代码规范-->
-            <plugin>
-                <groupId>com.diffplug.spotless</groupId>
-                <artifactId>spotless-maven-plugin</artifactId>
-                <version>${spotless-maven-plugin.version}</version>
-                <configuration>
-                    <java>
-                        <includes>
-                            <include>src/main/java/**/*.java</include>
-                            <include>src/test/java/**/*.java</include>
-                        </includes>
-                        <eclipse>
-                            <version>${spotless-maven-plugin.eclipse.version}</version>
-                            <file>./codequality/eclipse.xml</file>
-                        </eclipse>
-                        <trimTrailingWhitespace/>
-                        <importOrder>
-                            <!-- 1. An empty string for all the imports that didn't specify explicitly,
-                            2. '|' for joining a group without blank line,
-                            3. '\#' prefix for static imports. -->
-                            <order>java|javax|jakarta,,com.lei,\#java|\#javax|\#jakarta,\#</order>
-                        </importOrder>
-                        <licenseHeader>
-                            <file>./codequality/java-license-header.txt</file>
-                        </licenseHeader>
-                    </java>
-                </configuration>
-            </plugin>
-
-            <!--集成测试-->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-failsafe-plugin</artifactId>
-                <version>${maven-failsafe-plugin.version}</version>
-                <configuration>
-                    <!-- Activate the use of TCP to transmit events to the plugin -->
-                    <forkNode implementation="org.apache.maven.plugin.surefire.extensions.SurefireForkNodeFactory"/>
-                    <includes>
-                        <include>**/*IT.java</include>
-                        <include>**/*ST.java</include>
-                    </includes>
-                    <skipITs>${skipITs}</skipITs>
-                </configuration>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>integration-test</goal>
-                            <goal>verify</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <!--单元测试-->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>${maven-surefire-plugin.version}</version>
-                <configuration>
-                    <!-- Activate the use of TCP to transmit events to the plugin -->
-                    <forkNode implementation="org.apache.maven.plugin.surefire.extensions.SurefireForkNodeFactory"/>
-                    <includes>
-                        <include>**/*Tests.java</include>
-                    </includes>
-                    <skipTests>${skipUTs}</skipTests>
-                    <argLine>--enable-native-access=ALL-UNNAMED</argLine>
-                </configuration>
-            </plugin>
-
-            <!--性能测试-->
-            <plugin>
-                <groupId>io.gatling</groupId>
-                <artifactId>gatling-maven-plugin</artifactId>
-                <version>${gatling-maven-plugin.version}</version>
-            </plugin>
-
-        </plugins>
-    </build>
-</project> 
+</project>
