@@ -19,6 +19,18 @@
 2. 追踪矩阵关键项状态为 `PASS`
 3. `./scripts/requirements/verify-stage.sh 1 --strict` 通过
 
-## 5. 学习者实操要求
+## 5. `--strict` 实际检查项（重点）
+执行 `./scripts/requirements/verify-stage.sh 1 --strict` 时，脚本会同时校验：
+1. Gate 文件必须是 `GateStatus=PASS`。
+2. 追踪矩阵每一行 `状态` 必须是 `PASS`。
+3. 追踪矩阵每一行以下三列必须填写且不能是“待补充”：
+   - `代码实现`
+   - `测试用例`
+   - `证据`
+
+如果失败，脚本会按“需求 ID”逐条给出清单式错误，例如：
+- `strict 失败: FR-1-7 -> 状态!=PASS(当前=PENDING); 证据为空/待补充`
+
+## 6. 学习者实操要求
 - 随机抽 3 条需求，独立定位对应代码和测试。
 - 复述该条需求的验收证据放在哪个文件。

@@ -16,6 +16,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <netty.version>4.2.10.Final</netty.version>
         <spring.boot.version>3.5.0</spring.boot.version>
+        <micrometer.version>1.14.7</micrometer.version>
         <junit.jupiter.version>5.12.2</junit.jupiter.version>
         <slf4j.version>2.0.17</slf4j.version>
         <logback.version>1.5.18</logback.version>
@@ -54,6 +55,16 @@
                 <version>${spring.boot.version}</version>
             </dependency>
             <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-core</artifactId>
+                <version>${micrometer.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-registry-prometheus</artifactId>
+                <version>${micrometer.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>org.junit.jupiter</groupId>
                 <artifactId>junit-jupiter</artifactId>
                 <version>${junit.jupiter.version}</version>
@@ -74,8 +85,15 @@
     <profiles>
         <profile>
             <id>quality</id>
+            <!--
+              统一质量门禁入口（由 scripts/ci/run-quality.sh 触发）：
+              1) validate 阶段先拦截“格式/规范/许可证”
+              2) test + integration-test 跑测试
+              3) verify 阶段做“静态分析 + 覆盖率”最终判定
+            -->
             <build>
                 <plugins>
+                    <!-- 基线环境门禁：JDK 与 Maven 版本不满足直接失败 -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-enforcer-plugin</artifactId>
@@ -100,6 +118,7 @@
                         </executions>
                     </plugin>
 
+                    <!-- 代码格式门禁：import 顺序、空白、注解格式、行尾等 -->
                     <plugin>
                         <groupId>com.diffplug.spotless</groupId>
                         <artifactId>spotless-maven-plugin</artifactId>
@@ -130,6 +149,7 @@
                         </executions>
                     </plugin>
 
+                    <!-- 许可证头门禁：所有 Java 文件必须带统一开源协议头 -->
                     <plugin>
                         <groupId>com.mycila</groupId>
                         <artifactId>license-maven-plugin</artifactId>
@@ -162,6 +182,7 @@
                         </executions>
                     </plugin>
 
+                    <!-- 代码风格门禁：命名、空白、复杂度等 Checkstyle 规则 -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-checkstyle-plugin</artifactId>
@@ -191,6 +212,7 @@
                         </executions>
                     </plugin>
 
+                    <!-- 静态规则门禁：PMD + CPD（重复代码） -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-pmd-plugin</artifactId>
@@ -214,6 +236,8 @@
                         </executions>
                     </plugin>
 
+                    <!-- 字节码缺陷扫描：NPE、资源泄露、错误并发用法等 -->
+                    <!-- quality.bootstrap=true 时会跳过（项目冷启动期使用） -->
                     <plugin>
                         <groupId>com.github.spotbugs</groupId>
                         <artifactId>spotbugs-maven-plugin</artifactId>
@@ -237,6 +261,9 @@
                         </executions>
                     </plugin>
 
+                    <!-- 覆盖率门禁：要求达到最低阈值，否则 verify 失败 -->
+                    <!-- 当前阈值：行覆盖率 >= 80%，分支覆盖率 >= 55% -->
+                    <!-- quality.bootstrap=true 时会跳过（项目冷启动期使用） -->
                     <plugin>
                         <groupId>org.jacoco</groupId>
                         <artifactId>jacoco-maven-plugin</artifactId>
@@ -281,6 +308,7 @@
                         </executions>
                     </plugin>
 
+                    <!-- 单元测试门禁：匹配 *Tests.java -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-surefire-plugin</artifactId>
@@ -294,6 +322,7 @@
                         </configuration>
                     </plugin>
 
+                    <!-- 集成/系统测试门禁：匹配 *IT.java / *ST.java -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>

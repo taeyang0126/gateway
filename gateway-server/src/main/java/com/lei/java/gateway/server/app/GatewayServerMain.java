@@ -29,12 +29,15 @@ import com.lei.java.gateway.server.http.DefaultErrorResponseMapper;
 import com.lei.java.gateway.server.http.DefaultHeaderPolicyService;
 import com.lei.java.gateway.server.http.ErrorResponseMapper;
 import com.lei.java.gateway.server.http.HeaderPolicyService;
-import com.lei.java.gateway.server.logging.AccessLogService;
-import com.lei.java.gateway.server.logging.DefaultAccessLogService;
+import com.lei.java.gateway.server.metrics.GatewayMetricsService;
+import com.lei.java.gateway.server.metrics.PrometheusGatewayMetricsService;
 import com.lei.java.gateway.server.proxy.DefaultTimeoutPolicy;
 import com.lei.java.gateway.server.proxy.TimeoutPolicy;
 import com.lei.java.gateway.server.routing.RouteService;
 import com.lei.java.gateway.server.routing.StaticRouteService;
+
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 
 /** 基于 Spring Boot 的网关服务启动入口。 */
 @SpringBootApplication(proxyBeanMethods = false)
@@ -73,8 +76,14 @@ public class GatewayServerMain {
     }
 
     @Bean
-    public AccessLogService accessLogService() {
-        return new DefaultAccessLogService();
+    public PrometheusMeterRegistry prometheusMeterRegistry() {
+        return new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+    }
+
+    @Bean
+    public GatewayMetricsService gatewayMetricsService(
+            final PrometheusMeterRegistry prometheusMeterRegistry) {
+        return new PrometheusGatewayMetricsService(prometheusMeterRegistry);
     }
 
     @Bean
@@ -83,13 +92,13 @@ public class GatewayServerMain {
             final HeaderPolicyService headerPolicyService,
             final TimeoutPolicy timeoutPolicy,
             final ErrorResponseMapper errorResponseMapper,
-            final AccessLogService accessLogService) {
+            final GatewayMetricsService gatewayMetricsService) {
         return new GatewayBootstrap(
                 routeService,
                 headerPolicyService,
                 timeoutPolicy,
                 errorResponseMapper,
-                accessLogService);
+                gatewayMetricsService);
     }
 
     @Bean

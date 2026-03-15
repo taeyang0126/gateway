@@ -24,8 +24,8 @@ import com.lei.java.gateway.server.http.DefaultErrorResponseMapper;
 import com.lei.java.gateway.server.http.DefaultHeaderPolicyService;
 import com.lei.java.gateway.server.http.ErrorResponseMapper;
 import com.lei.java.gateway.server.http.HeaderPolicyService;
-import com.lei.java.gateway.server.logging.AccessLogService;
-import com.lei.java.gateway.server.logging.DefaultAccessLogService;
+import com.lei.java.gateway.server.metrics.GatewayMetricsService;
+import com.lei.java.gateway.server.metrics.NoopGatewayMetricsService;
 import com.lei.java.gateway.server.proxy.DefaultTimeoutPolicy;
 import com.lei.java.gateway.server.proxy.TimeoutPolicy;
 import com.lei.java.gateway.server.routing.RouteService;
@@ -52,7 +52,7 @@ public final class GatewayBootstrap {
     private final HeaderPolicyService headerPolicyService;
     private final TimeoutPolicy timeoutPolicy;
     private final ErrorResponseMapper errorResponseMapper;
-    private final AccessLogService accessLogService;
+    private final GatewayMetricsService gatewayMetricsService;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -65,7 +65,7 @@ public final class GatewayBootstrap {
                 new DefaultHeaderPolicyService(),
                 new DefaultTimeoutPolicy(),
                 new DefaultErrorResponseMapper(),
-                new DefaultAccessLogService());
+                new NoopGatewayMetricsService());
     }
 
     /**
@@ -75,14 +75,14 @@ public final class GatewayBootstrap {
      * @param headerPolicyService 请求头策略服务
      * @param timeoutPolicy 超时策略服务
      * @param errorResponseMapper 异常到错误响应映射服务
-     * @param accessLogService 访问日志服务
+     * @param gatewayMetricsService 指标采集服务
      */
     public GatewayBootstrap(
             final RouteService routeService,
             final HeaderPolicyService headerPolicyService,
             final TimeoutPolicy timeoutPolicy,
             final ErrorResponseMapper errorResponseMapper,
-            final AccessLogService accessLogService) {
+            final GatewayMetricsService gatewayMetricsService) {
         this.routeService = Objects.requireNonNull(routeService, "routeService must not be null");
         this.headerPolicyService =
                 Objects.requireNonNull(headerPolicyService, "headerPolicyService must not be null");
@@ -90,8 +90,9 @@ public final class GatewayBootstrap {
                 Objects.requireNonNull(timeoutPolicy, "timeoutPolicy must not be null");
         this.errorResponseMapper =
                 Objects.requireNonNull(errorResponseMapper, "errorResponseMapper must not be null");
-        this.accessLogService =
-                Objects.requireNonNull(accessLogService, "accessLogService must not be null");
+        this.gatewayMetricsService =
+                Objects.requireNonNull(
+                        gatewayMetricsService, "gatewayMetricsService must not be null");
     }
 
     /**
@@ -127,7 +128,7 @@ public final class GatewayBootstrap {
                                                     headerPolicyService,
                                                     timeoutPolicy,
                                                     errorResponseMapper,
-                                                    accessLogService)
+                                                    gatewayMetricsService)
                                             .configure(channel.pipeline());
                                 }
                             });

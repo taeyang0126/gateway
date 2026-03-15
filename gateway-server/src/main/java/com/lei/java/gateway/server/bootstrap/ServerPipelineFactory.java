@@ -22,8 +22,8 @@ import com.lei.java.gateway.server.http.DefaultErrorResponseMapper;
 import com.lei.java.gateway.server.http.DefaultHeaderPolicyService;
 import com.lei.java.gateway.server.http.ErrorResponseMapper;
 import com.lei.java.gateway.server.http.HeaderPolicyService;
-import com.lei.java.gateway.server.logging.AccessLogService;
-import com.lei.java.gateway.server.logging.DefaultAccessLogService;
+import com.lei.java.gateway.server.metrics.GatewayMetricsService;
+import com.lei.java.gateway.server.metrics.NoopGatewayMetricsService;
 import com.lei.java.gateway.server.proxy.DefaultTimeoutPolicy;
 import com.lei.java.gateway.server.proxy.TimeoutPolicy;
 import com.lei.java.gateway.server.routing.RouteService;
@@ -41,7 +41,7 @@ final class ServerPipelineFactory {
     private final HeaderPolicyService headerPolicyService;
     private final TimeoutPolicy timeoutPolicy;
     private final ErrorResponseMapper errorResponseMapper;
-    private final AccessLogService accessLogService;
+    private final GatewayMetricsService gatewayMetricsService;
 
     ServerPipelineFactory(final GatewayServerConfig config) {
         this(
@@ -50,7 +50,7 @@ final class ServerPipelineFactory {
                 new DefaultHeaderPolicyService(),
                 new DefaultTimeoutPolicy(),
                 new DefaultErrorResponseMapper(),
-                new DefaultAccessLogService());
+                new NoopGatewayMetricsService());
     }
 
     ServerPipelineFactory(
@@ -59,7 +59,7 @@ final class ServerPipelineFactory {
             final HeaderPolicyService headerPolicyService,
             final TimeoutPolicy timeoutPolicy,
             final ErrorResponseMapper errorResponseMapper,
-            final AccessLogService accessLogService) {
+            final GatewayMetricsService gatewayMetricsService) {
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.routeService = Objects.requireNonNull(routeService, "routeService must not be null");
         this.headerPolicyService =
@@ -68,8 +68,9 @@ final class ServerPipelineFactory {
                 Objects.requireNonNull(timeoutPolicy, "timeoutPolicy must not be null");
         this.errorResponseMapper =
                 Objects.requireNonNull(errorResponseMapper, "errorResponseMapper must not be null");
-        this.accessLogService =
-                Objects.requireNonNull(accessLogService, "accessLogService must not be null");
+        this.gatewayMetricsService =
+                Objects.requireNonNull(
+                        gatewayMetricsService, "gatewayMetricsService must not be null");
     }
 
     void configure(final ChannelPipeline pipeline) {
@@ -85,6 +86,6 @@ final class ServerPipelineFactory {
                         headerPolicyService,
                         timeoutPolicy,
                         errorResponseMapper,
-                        accessLogService));
+                        gatewayMetricsService));
     }
 }

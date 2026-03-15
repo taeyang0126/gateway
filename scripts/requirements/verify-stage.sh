@@ -2,6 +2,13 @@
 
 set -euo pipefail
 
+is_placeholder_or_empty() {
+  local value="$1"
+  local trimmed
+  trimmed="$(echo "${value}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  [[ -z "${trimmed}" || "${trimmed}" == "待补充" ]]
+}
+
 usage() {
   cat <<'EOF'
 用法:
@@ -93,18 +100,34 @@ fi
 
 if [[ "$strict" == "true" ]]; then
   invalid=0
+  error_count=0
   while IFS=$'\t' read -r id type task code test ac status evidence; do
     [[ "$id" == "需求ID" || -z "$id" ]] && continue
+    row_errors=()
+
     if [[ "$status" != "PASS" ]]; then
-      echo "[ERROR] strict 模式要求状态为 PASS: ${id} (当前=${status})"
-      invalid=1
+      row_errors+=("状态!=PASS(当前=${status})")
     fi
-    if [[ -z "$code" || "$code" == "待补充" || -z "$test" || "$test" == "待补充" || -z "$evidence" || "$evidence" == "待补充" ]]; then
-      echo "[ERROR] strict 模式要求代码/测试/证据完整: ${id}"
+
+    if is_placeholder_or_empty "${code}"; then
+      row_errors+=("代码位置为空/待补充")
+    fi
+    if is_placeholder_or_empty "${test}"; then
+      row_errors+=("测试用例为空/待补充")
+    fi
+    if is_placeholder_or_empty "${evidence}"; then
+      row_errors+=("证据为空/待补充")
+    fi
+
+    if [[ ${#row_errors[@]} -gt 0 ]]; then
+      echo "[ERROR] strict 失败: ${id} -> $(IFS='; '; echo "${row_errors[*]}")"
       invalid=1
+      error_count=$((error_count + 1))
     fi
   done < "$matrix_file"
   if [[ $invalid -ne 0 ]]; then
+    echo "[ERROR] strict 校验未通过，共 ${error_count} 条需求存在问题。"
+    echo "[ERROR] 修复清单: 状态=PASS 且 代码位置/测试用例/证据 三列必须全部填写。"
     exit 9
   fi
 fi
