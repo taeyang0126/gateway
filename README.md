@@ -80,7 +80,12 @@
 - `quality-gate.yml`：执行完整质量校验。
 - `quality-config.yml`：校验质量配置文件和 Maven 配置可解析性。
 - `package-build.yml`：执行打包、fat-jar 启动冒烟并上传构建产物（JAR Artifact）。
-- `visual-board-sync.yml`：当需求/设计/实现变更时，强制要求同步阶段开发流程看板（06）与学习指导看板（07），并校验 README 保留可点击入口。
+
+## 双看板同步（强制流程）
+- 当需求/设计/实现变更时，必须同步更新阶段双看板：
+  - `docs/learning/stageX/06-阶段X开发流程可视化.html`
+  - `docs/learning/stageX/07-阶段X学习指导看板.html`
+- 该规则由 `AGENTS.md` 强制执行，不再通过单独 GitHub Action 校验。
 
 ## 贡献说明
 - 提交信息建议使用 Conventional Commit：`type(scope): summary`。

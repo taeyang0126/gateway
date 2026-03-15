@@ -51,10 +51,11 @@
   3. 按任务依赖顺序编码与测试
   4. 回填追踪矩阵（代码实现/测试用例/证据/状态）
   5. 更新 Gate 结论
-  6. 执行双校验：
+  6. 同步阶段双看板（`06-阶段X开发流程可视化.html` + `07-阶段X学习指导看板.html`）
+  7. 执行双校验：
      - `./scripts/ci/run-quality.sh`
      - `./scripts/requirements/verify-stage.sh <stage> --strict`
-  7. 双校验通过后，才允许进入提交与推送
+  8. 双校验通过后，才允许进入提交与推送
 - 任一步骤未完成时，不得宣称“阶段完成”。
 - 除非 lei 明确批准跳过，否则 AI 无权跳过上述任何步骤。
 
@@ -98,6 +99,7 @@ PR 说明需包含：
   - 阶段设计文档：`docs/design/stageX/01-阶段X-概要设计.md`、`docs/design/stageX/03-阶段X-详细设计.md`
   - 阶段追踪矩阵：`docs/requirements/traceability/阶段X-需求追踪矩阵.tsv`
   - 阶段学习文档：`docs/learning/stageX/`
+  - 阶段双看板：`docs/learning/stageX/06-*.html` 与 `docs/learning/stageX/07-*.html`（需求/设计/实现变更时必须同时同步）
   - 模块文档：`<module>/README.md`
   - 仓库总览：`README.md`（若对外行为、流程或入口发生变化）
 - 未完成上述同步时，不得宣称“阶段完成”或进入提交阶段。
