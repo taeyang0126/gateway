@@ -22,7 +22,6 @@ import org.junit.jupiter.api.Test;
 import com.lei.java.gateway.server.config.GatewayServerConfig;
 
 import io.netty.channel.embedded.EmbeddedChannel;
-import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 
@@ -39,7 +38,6 @@ class ServerPipelineFactoryTests {
             factory.configure(channel.pipeline());
 
             assertNotNull(channel.pipeline().get(HttpServerCodec.class));
-            assertNotNull(channel.pipeline().get(HttpObjectAggregator.class));
             assertNotNull(channel.pipeline().get(HttpServerKeepAliveHandler.class));
             assertNotNull(channel.pipeline().get(DefaultHttpServerHandler.class));
         } finally {

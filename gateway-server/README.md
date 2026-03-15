@@ -8,13 +8,15 @@
 - 启动与生命周期：
   - `GatewayBootstrap` 负责 Netty Server 的启动、停止与端口绑定管理。
 - 请求处理主链路：
-  - `ServerPipelineFactory` 组装 `HttpServerCodec`、`HttpObjectAggregator`、`HttpServerKeepAliveHandler`、`DefaultHttpServerHandler`。
+  - `ServerPipelineFactory` 组装 `HttpServerCodec`、`HttpServerKeepAliveHandler`、`DefaultHttpServerHandler`。
+  - `DefaultHttpServerHandler` 内部按头部规则对请求/响应自适应选择“聚合或流式”处理路径。
 - 路由与转发：
   - `StaticRouteService` 负责静态路由匹配（优先级 + 匹配类型 + 最长前缀）。
   - `DefaultHttpServerHandler` 负责请求转发、健康检查、错误映射与访问日志（直接使用 SLF4J）。
   - 上游连接采用“按路由复用连接 + 单连接串行在途请求”模型，避免每请求建连导致端口耗尽。
 - Header 策略：
-  - `DefaultHeaderPolicyService` 处理 Hop-by-Hop 移除、`X-Forwarded-*`、`Host rewrite`、`X-Trace-Id`。
+  - `DefaultHeaderPolicyService` 处理 Hop-by-Hop 移除、`X-Forwarded-*`、`Host REWRITE/PRESERVE`、`X-Trace-Id`。
+  - 默认 Host 策略为 `PRESERVE`，可按路由切换到 `REWRITE`。
 - 超时与错误：
   - `DefaultTimeoutPolicy` 提供 connect/read/write 超时策略。
   - `DefaultErrorResponseMapper` 统一错误分类与错误响应格式。
@@ -49,6 +51,8 @@ java -jar gateway-server/target/gateway-server-2.0.0-SNAPSHOT.jar \
 - 配置入口：
   - 默认配置：`gateway-server/src/main/resources/application.yml`
   - 支持外置文件覆盖 `gateway.*`（含 routes/upstream/timeout）。
+  - `gateway.max-content-length` 默认 `5242880`（5MB），用于聚合阈值。
+  - 请求/响应体决策规则：`chunked -> 流式`，`Content-Length<=阈值 -> 聚合`，`未知长度或超阈值 -> 流式`。
   - 阶段 1 约束：`upstream.scheme` 仅支持 `http`，配置 `https` 会在启动阶段直接失败。
 - 管理端点安全：
   - 默认白名单仅允许本机访问（`127.0.0.1` / `::1`）。

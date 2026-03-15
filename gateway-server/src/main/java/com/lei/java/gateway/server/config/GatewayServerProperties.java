@@ -113,7 +113,7 @@ public final class GatewayServerProperties {
         private int priority = 100;
         private MatchType matchType = MatchType.PREFIX;
         private String path = "/api/";
-        private HostRewriteMode hostRewriteMode = HostRewriteMode.REWRITE;
+        private HostRewriteMode hostRewriteMode = HostRewriteMode.PRESERVE;
         private UpstreamProperties upstream = new UpstreamProperties();
 
         public String getRouteId() {

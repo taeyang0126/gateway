@@ -596,18 +596,20 @@ flowchart LR
   E -->|/metrics/prometheus| G[handleMetricsRequest]
   E -->|业务路径| H[StaticRouteService.select]
 
-  H --> I[buildOutboundRequest]
-  I --> J[DefaultHeaderPolicyService.applyRequestHeaders]
-  I --> K[DefaultTimeoutPolicy]
-  K --> L[Upstream Service]
+  H --> I[shouldAggregateByHeaders]
+  I --> J[buildAggregatedOutboundRequest / buildStreamingOutboundRequest]
+  J --> K[DefaultHeaderPolicyService.applyRequestHeaders]
+  K --> T[DefaultTimeoutPolicy]
+  T --> L[Upstream Service]
 
-  L --> M[响应回传]
+  L --> M[onUpstreamResponseHead + shouldAggregateByHeaders]
+  M --> U[聚合回写或流式透传]
   L -.异常.-> N[DefaultErrorResponseMapper.map]
   N --> O[ErrorResponse.toJson]
-  O --> M
+  O --> U
 
   D --> P[GatewayMetricsService]
-  M --> Q[Client Response]
+  U --> Q[Client Response]
   P --> Q
         </pre>
       </div>
@@ -758,21 +760,26 @@ flowchart LR
         id: "topic-header",
         order: "S1-03",
         title: "Header 策略与 TraceId",
-        summary: "重点理解 Hop-by-Hop 移除、X-Forwarded-* 补齐、Host 策略与 TraceId 透传。",
+        summary: "重点理解 Hop-by-Hop 移除、X-Forwarded-* 补齐、Host 策略、TraceId 与聚合/流式判定。",
         tag: "协议处理",
         docPaths: [
           "docs/learning/stage1/02-代码与规范实战.md"
         ],
         points: [
           "先删 Hop-by-Hop 再补 Forwarded 头，避免语义冲突。",
-          "区分 REWRITE 与 PRESERVE 的 Host 行为差异。",
+          "默认 Host 策略是 PRESERVE，按路由可切 REWRITE。",
+          "掌握 chunked/Content-Length 驱动的请求与响应自适应聚合或流式。",
           "TraceId 在入站、转发、日志、错误响应中的一致性。"
         ],
         refs: [
           { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/http/DefaultHeaderPolicyService.java:59", note: "请求头策略 applyRequestHeaders" },
-          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/bootstrap/DefaultHttpServerHandler.java:305", note: "构建出站请求 buildOutboundRequest" },
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/bootstrap/DefaultHttpServerHandler.java:650", note: "聚合/流式判定 shouldAggregateByHeaders" },
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/bootstrap/DefaultHttpServerHandler.java:551", note: "流式出站请求 buildStreamingOutboundRequest" },
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/bootstrap/DefaultHttpServerHandler.java:1022", note: "上游响应头处理与模式选择" },
           { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/http/DefaultHeaderPolicyServiceTests.java:35", note: "Header 策略单测" },
-          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/bootstrap/HttpProxyIT.java:40", note: "转发链路集成验证" }
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/bootstrap/HttpProxyIT.java:157", note: "超阈值触发流式（请求+响应）" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/bootstrap/HttpProxyIT.java:211", note: "6MB 真文件流式回归" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/bootstrap/HttpProxyIT.java:268", note: "显式 chunked 真文件上传" }
         ]
       },
       {
@@ -882,7 +889,12 @@ flowchart LR
       {
         id: "L3",
         title: "完成 Header 与 TraceId 演练",
-        detail: "能复述先删 Hop-by-Hop 再补 Forwarded 的原因。"
+        detail: "能复述先删 Hop-by-Hop 再补 Forwarded 的原因，并解释 Host 默认 PRESERVE。"
+      },
+      {
+        id: "L3A",
+        title: "完成聚合/流式规则演练",
+        detail: "能说清 chunked、Content-Length 阈值、未知长度三种分支。"
       },
       {
         id: "L4",

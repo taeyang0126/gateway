@@ -31,7 +31,7 @@ class GatewayServerConfigTests {
         final GatewayServerConfig config = GatewayServerConfig.defaultConfig();
 
         assertEquals(8080, config.port());
-        assertEquals(1024 * 1024, config.maxContentLength());
+        assertEquals(5 * 1024 * 1024, config.maxContentLength());
         assertTrue(config.pooledAllocatorEnabled());
         assertTrue(config.healthEndpointEnabled());
         assertTrue(config.metricsEndpointEnabled());

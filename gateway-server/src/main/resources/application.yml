@@ -4,7 +4,7 @@ spring:
 
 gateway:
   port: 8080
-  max-content-length: 1048576
+  max-content-length: 5242880
   pooled-allocator-enabled: true
   health-endpoint-enabled: true
   metrics-endpoint-enabled: true
@@ -16,12 +16,12 @@ gateway:
     - route-id: route-main
       priority: 100
       match-type: PREFIX
-      path: /api/
-      host-rewrite-mode: REWRITE
+      path: /
+      host-rewrite-mode: PRESERVE
       upstream:
         scheme: http
         host: 127.0.0.1
-        port: 9001
+        port: 8081
         connect-timeout-ms: 1000
         read-timeout-ms: 1000
         write-timeout-ms: 1000

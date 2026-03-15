@@ -16,11 +16,13 @@
 
 ## 3. 阻断项
 - 无（2026-03-15 已完成 `run-quality.sh`、`verify-stage --strict` 与阶段 1 回归测试）。
+- 已补充并回归通过：5MB 阈值下大包体流式转发、显式 `Transfer-Encoding: chunked` 真文件上传场景。
 
 ## 4. 证据链接
 - 追踪矩阵：`docs/requirements/traceability/阶段1-需求追踪矩阵.tsv`
 - 测试报告：`./mvnw -pl gateway-server -am verify`
 - 测试摘要落盘：`reports/tests/stage1-unit-tests-summary.txt`
+- 大包体/Chunked 集成验证：`gateway-server/src/test/java/com/lei/java/gateway/server/bootstrap/HttpProxyIT.java`
 - 压测报告（Gatling）：`docs/requirements/evidence/stage1/T1-206-压测与稳定性报告.md`
 - 压测脚本：`scripts/perf/stage1/run-stage1-ac4.sh`
 - 稳定性采样脚本：`scripts/perf/stage1/sample-runtime-metrics.sh`

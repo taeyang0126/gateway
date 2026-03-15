@@ -87,6 +87,19 @@ class DefaultHeaderPolicyServiceTests {
     }
 
     @Test
+    void shouldFormatIpv6HostWhenRewriteHostAndInboundHostMissing() {
+        final HeaderPolicyService service = new DefaultHeaderPolicyService();
+        final RouteConfig route = route(HostRewriteMode.REWRITE, "2001:db8::1");
+        final HttpHeaders inbound = new DefaultHttpHeaders();
+
+        final HttpHeaders outbound = new DefaultHttpHeaders();
+        service.applyRequestHeaders(inbound, outbound, route, "127.0.0.1", "trace-1");
+
+        assertEquals("[2001:db8::1]:9001", outbound.get(HttpHeaderNames.HOST));
+        assertEquals("[2001:db8::1]:9001", outbound.get("X-Forwarded-Host"));
+    }
+
+    @Test
     void shouldKeepTraceIdValueAfterApply() {
         final HeaderPolicyService service = new DefaultHeaderPolicyService();
         final RouteConfig route = route(HostRewriteMode.REWRITE);
@@ -101,12 +114,16 @@ class DefaultHeaderPolicyServiceTests {
     }
 
     private static RouteConfig route(final HostRewriteMode hostRewriteMode) {
+        return route(hostRewriteMode, "127.0.0.1");
+    }
+
+    private static RouteConfig route(final HostRewriteMode hostRewriteMode, final String host) {
         return new RouteConfig(
                 "r1",
                 1,
                 MatchType.PREFIX,
                 "/api/",
                 hostRewriteMode,
-                new UpstreamConfig("http", "127.0.0.1", 9001, 1000, 1000, 1000));
+                new UpstreamConfig("http", host, 9001, 1000, 1000, 1000));
     }
 }

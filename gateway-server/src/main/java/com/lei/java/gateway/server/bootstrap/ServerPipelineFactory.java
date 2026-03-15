@@ -30,7 +30,6 @@ import com.lei.java.gateway.server.routing.RouteService;
 import com.lei.java.gateway.server.routing.StaticRouteService;
 
 import io.netty.channel.ChannelPipeline;
-import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpServerKeepAliveHandler;
 
@@ -76,7 +75,6 @@ final class ServerPipelineFactory {
     void configure(final ChannelPipeline pipeline) {
         Objects.requireNonNull(pipeline, "pipeline must not be null");
         pipeline.addLast(new HttpServerCodec());
-        pipeline.addLast(new HttpObjectAggregator(config.maxContentLength()));
         pipeline.addLast(new HttpServerKeepAliveHandler());
         pipeline.addLast(
                 new DefaultHttpServerHandler(

@@ -101,4 +101,19 @@ class GatewayServerConfigFactoryTests {
         final GatewayServerConfigFactory factory = new GatewayServerConfigFactory();
         assertThrows(IllegalArgumentException.class, () -> factory.create(properties));
     }
+
+    @Test
+    void shouldUsePreserveAsDefaultHostRewriteModeWhenNotSpecified() {
+        final GatewayServerProperties properties = new GatewayServerProperties();
+        final GatewayServerProperties.RouteProperties route =
+                new GatewayServerProperties.RouteProperties();
+        route.setRouteId("route-default-host-mode");
+        route.setPath("/api/");
+        properties.setRoutes(List.of(route));
+
+        final GatewayServerConfigFactory factory = new GatewayServerConfigFactory();
+        final GatewayServerConfig config = factory.create(properties);
+
+        assertEquals(HostRewriteMode.PRESERVE, config.routes().getFirst().hostRewriteMode());
+    }
 }

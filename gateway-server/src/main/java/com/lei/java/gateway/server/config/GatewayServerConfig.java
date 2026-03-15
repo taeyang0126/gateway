@@ -41,7 +41,7 @@ public record GatewayServerConfig(
         int maxPendingPerRoute) {
 
     public static final int DEFAULT_PORT = 8080;
-    public static final int DEFAULT_MAX_CONTENT_LENGTH = 1024 * 1024;
+    public static final int DEFAULT_MAX_CONTENT_LENGTH = 5 * 1024 * 1024;
     public static final int DEFAULT_MAX_PENDING_PER_ROUTE = 1024;
     public static final List<String> DEFAULT_MANAGEMENT_ALLOWED_CLIENT_IPS =
             List.of("127.0.0.1", "::1", "0:0:0:0:0:0:0:1");

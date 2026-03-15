@@ -27,6 +27,10 @@ import com.lei.java.gateway.server.config.RouteConfig;
 /** 阶段 1 静态路由实现。 */
 public final class StaticRouteService implements RouteService {
 
+    /**
+     * 供 {@code Stream.min(...)} 使用的“最优路由优先”比较器（比较结果越小代表越优先）： 1) priority 越大越优先；2) 同 priority 时
+     * EXACT 优先于 PREFIX； 3) 同为 PREFIX 时前缀越长越优先；4) 仍冲突时按声明顺序（index）稳定选择。
+     */
     private static final Comparator<Candidate> ROUTE_COMPARATOR =
             Comparator.comparingInt((Candidate candidate) -> candidate.route().priority())
                     .reversed()

@@ -35,6 +35,7 @@ public final class DefaultHeaderPolicyService implements HeaderPolicyService {
     private static final CharSequence X_FORWARDED_HOST = "X-Forwarded-Host";
     private static final CharSequence KEEP_ALIVE_HEADER = AsciiString.cached("Keep-Alive");
 
+    /** Hop-by-hop 请求头（仅对当前一跳连接生效），网关转发到上游前必须移除，避免把连接级语义错误透传到下一跳。 */
     private static final List<CharSequence> HOP_BY_HOP_HEADERS =
             List.of(
                     HttpHeaderNames.CONNECTION,
@@ -105,6 +106,12 @@ public final class DefaultHeaderPolicyService implements HeaderPolicyService {
     }
 
     private static String buildUpstreamHost(final RouteConfig route) {
-        return route.upstream().host() + ":" + route.upstream().port();
+        final String upstreamHost = route.upstream().host();
+        if (upstreamHost.contains(":")
+                && !upstreamHost.startsWith("[")
+                && !upstreamHost.endsWith("]")) {
+            return "[" + upstreamHost + "]:" + route.upstream().port();
+        }
+        return upstreamHost + ":" + route.upstream().port();
     }
 }

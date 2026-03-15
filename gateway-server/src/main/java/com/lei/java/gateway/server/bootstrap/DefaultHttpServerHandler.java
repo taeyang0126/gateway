@@ -15,6 +15,7 @@
  */
 package com.lei.java.gateway.server.bootstrap;
 
+import java.io.ByteArrayOutputStream;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.channels.ClosedChannelException;
@@ -64,24 +65,32 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
-import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.DefaultHttpRequest;
+import io.netty.handler.codec.http.DefaultHttpResponse;
+import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpClientCodec;
+import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.HttpMessage;
 import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpObjectAggregator;
+import io.netty.handler.codec.http.HttpObject;
+import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.handler.timeout.WriteTimeoutHandler;
 import io.netty.util.ReferenceCountUtil;
 
-final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
+final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObject> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultHttpServerHandler.class);
     private static final CharSequence TRACE_ID_HEADER = "X-Trace-Id";
@@ -94,9 +103,12 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
     private static final byte[] HEALTH_BODY = "OK".getBytes(StandardCharsets.UTF_8);
     private static final String ROUTE_ID_LOCAL_METRICS = "local_metrics";
     private static final String ROUTE_ID_LOCAL_HEALTH = "local_health";
+    private static final String ROUTE_ID_ROUTE_NOT_FOUND = "route_not_found";
     private static final String ERROR_CODE_MANAGEMENT_ENDPOINT_FORBIDDEN =
             "MANAGEMENT_ENDPOINT_FORBIDDEN";
     private static final String ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW = "UPSTREAM_BACKLOG_OVERFLOW";
+    private static final String ERROR_CODE_CLIENT_CHANNEL_INACTIVE = "CLIENT_CHANNEL_INACTIVE";
+    private static final String ERROR_CODE_CLIENT_WRITE_FAILED = "CLIENT_WRITE_FAILED";
     private static final List<CharSequence> HOP_BY_HOP_HEADERS =
             List.of(
                     HttpHeaderNames.CONNECTION,
@@ -120,6 +132,8 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
     private final Set<String> managementAllowedClientIps;
     private final int maxPendingPerRoute;
     private final Map<String, UpstreamRouteClient> upstreamClients;
+
+    private InboundRequestState currentInboundRequest;
 
     DefaultHttpServerHandler(final int maxContentLength, final List<RouteConfig> routes) {
         this(
@@ -169,35 +183,12 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
     }
 
     @Override
-    protected void channelRead0(
-            final ChannelHandlerContext context, final FullHttpRequest request) {
-        gatewayMetricsService.onInboundStart();
-        final boolean keepAlive = HttpUtil.isKeepAlive(request);
-        final String traceId = resolveTraceId(request.headers());
-        final ProxyRequest proxyRequest =
-                createProxyRequest(request, keepAlive, resolveClientIp(context), traceId);
-
-        final QueryStringDecoder decoder = new QueryStringDecoder(request.uri());
-        final String requestPath = decoder.path();
-        final RequestDispatchTarget target = resolveDispatchTarget(requestPath);
-        switch (target) {
-            case MetricsTarget ignored -> {
-                if (!isManagementClientAllowed(proxyRequest.clientIp())) {
-                    handleManagementForbiddenRequest(context, proxyRequest, ROUTE_ID_LOCAL_METRICS);
-                    return;
-                }
-                handleMetricsRequest(context, proxyRequest);
-            }
-            case HealthTarget ignored -> {
-                if (!isManagementClientAllowed(proxyRequest.clientIp())) {
-                    handleManagementForbiddenRequest(context, proxyRequest, ROUTE_ID_LOCAL_HEALTH);
-                    return;
-                }
-                handleHealthRequest(context, proxyRequest);
-            }
-            case NotFoundTarget ignored -> handleNotFoundRequest(context, proxyRequest);
-            case RoutedTarget routedTarget ->
-                    forwardRequest(context, proxyRequest, routedTarget.route());
+    protected void channelRead0(final ChannelHandlerContext context, final HttpObject message) {
+        if (message instanceof HttpRequest request) {
+            handleInboundRequestStart(context, request);
+        }
+        if (message instanceof HttpContent content) {
+            handleInboundRequestContent(context, content);
         }
     }
 
@@ -233,131 +224,282 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
         context.fireChannelInactive();
     }
 
-    private void forwardRequest(
-            final ChannelHandlerContext context,
-            final ProxyRequest request,
-            final RouteConfig route) {
-        final String routeId = route.routeId();
-        final String upstreamAddress = buildUpstreamAddress(route);
-        final UpstreamRouteClient routeClient =
-                upstreamClients.computeIfAbsent(
-                        routeId,
-                        ignored -> new UpstreamRouteClient(context, route, upstreamAddress));
-        routeClient.submit(request);
+    private void handleInboundRequestStart(
+            final ChannelHandlerContext context, final HttpRequest inboundRequest) {
+        if (currentInboundRequest != null) {
+            throw new IllegalStateException("previous inbound request has not completed");
+        }
+
+        gatewayMetricsService.onInboundStart();
+        final boolean keepAlive = HttpUtil.isKeepAlive(inboundRequest);
+        final String traceId = resolveTraceId(inboundRequest.headers());
+        final RequestContext requestContext =
+                createRequestContext(inboundRequest, keepAlive, resolveClientIp(context), traceId);
+
+        final QueryStringDecoder decoder = new QueryStringDecoder(requestContext.uri());
+        final String requestPath = decoder.path();
+        final RequestDispatchTarget target = resolveDispatchTarget(requestPath);
+        if (target instanceof RoutedTarget routedTarget) {
+            final RouteConfig route = routedTarget.route();
+            final String routeId = route.routeId();
+            final String upstreamAddress = buildUpstreamAddress(route);
+            final UpstreamRouteClient routeClient =
+                    upstreamClients.computeIfAbsent(
+                            routeId,
+                            ignored -> new UpstreamRouteClient(context, route, upstreamAddress));
+            final PendingExchange pendingExchange = routeClient.begin(requestContext);
+            if (pendingExchange == null) {
+                currentInboundRequest =
+                        InboundRequestState.discardForBacklogOverflow(
+                                requestContext, route, routeClient);
+                return;
+            }
+
+            if (shouldAggregateByHeaders(inboundRequest)) {
+                currentInboundRequest =
+                        InboundRequestState.aggregate(
+                                requestContext, route, routeClient, pendingExchange);
+                return;
+            }
+
+            final HttpRequest outboundRequestHead =
+                    buildStreamingOutboundRequest(requestContext, route, inboundRequest);
+            routeClient.appendRequestPart(pendingExchange, outboundRequestHead, false, 0);
+            currentInboundRequest =
+                    InboundRequestState.stream(requestContext, route, routeClient, pendingExchange);
+            return;
+        }
+
+        currentInboundRequest = InboundRequestState.discardForLocalTarget(requestContext, target);
+    }
+
+    private void handleInboundRequestContent(
+            final ChannelHandlerContext context, final HttpContent inboundContent) {
+        if (currentInboundRequest == null) {
+            return;
+        }
+
+        final InboundRequestState state = currentInboundRequest;
+        final int readableBytes = inboundContent.content().readableBytes();
+        state.requestBytes += readableBytes;
+
+        if (state.isRouted() && !state.backlogRejected()) {
+            if (state.bodyMode() == RequestBodyMode.AGGREGATE) {
+                appendBytes(state.requestBodyBuffer(), inboundContent.content());
+                if (inboundContent instanceof LastHttpContent) {
+                    final byte[] requestBody = state.requestBodyBuffer().toByteArray();
+                    final DefaultFullHttpRequest outbound =
+                            buildAggregatedOutboundRequest(
+                                    state.request(), state.route(), requestBody);
+                    state.routeClient()
+                            .completeAggregatedRequest(
+                                    state.pendingExchange(), outbound, state.requestBytes);
+                }
+            } else {
+                final HttpContent outboundContent = duplicateHttpContent(inboundContent);
+                final boolean completed = inboundContent instanceof LastHttpContent;
+                state.routeClient()
+                        .appendRequestPart(
+                                state.pendingExchange(), outboundContent, completed, readableBytes);
+            }
+        }
+
+        if (inboundContent instanceof LastHttpContent) {
+            if (!state.isRouted() || state.backlogRejected()) {
+                finalizeLocalOrRejectedRequest(context, state);
+            }
+            currentInboundRequest = null;
+        }
+    }
+
+    private void finalizeLocalOrRejectedRequest(
+            final ChannelHandlerContext context, final InboundRequestState state) {
+        if (state.backlogRejected()) {
+            handleBacklogOverflowRequest(context, state);
+            return;
+        }
+
+        final RequestDispatchTarget target = state.target();
+        if (target instanceof MetricsTarget) {
+            if (!isManagementClientAllowed(state.request().clientIp())) {
+                handleManagementForbiddenRequest(
+                        context, state.request(), ROUTE_ID_LOCAL_METRICS, state.requestBytes);
+                return;
+            }
+            handleMetricsRequest(context, state.request(), state.requestBytes);
+            return;
+        }
+        if (target instanceof HealthTarget) {
+            if (!isManagementClientAllowed(state.request().clientIp())) {
+                handleManagementForbiddenRequest(
+                        context, state.request(), ROUTE_ID_LOCAL_HEALTH, state.requestBytes);
+                return;
+            }
+            handleHealthRequest(context, state.request(), state.requestBytes);
+            return;
+        }
+        if (target instanceof NotFoundTarget) {
+            handleNotFoundRequest(context, state.request(), state.requestBytes);
+            return;
+        }
+        throw new IllegalStateException("unexpected request target: " + target.type());
     }
 
     private void handleMetricsRequest(
-            final ChannelHandlerContext context, final ProxyRequest proxyRequest) {
+            final ChannelHandlerContext context,
+            final RequestContext request,
+            final long requestBytes) {
         final byte[] body = gatewayMetricsService.scrape().getBytes(StandardCharsets.UTF_8);
         writePlainTextResponse(
                 context,
-                proxyRequest.keepAlive(),
+                request.keepAlive(),
                 HttpResponseStatus.OK,
                 body,
-                proxyRequest.traceId(),
+                request.traceId(),
                 CONTENT_TYPE_PROMETHEUS);
         gatewayMetricsService.onInboundComplete(
                 ROUTE_ID_LOCAL_METRICS,
-                proxyRequest.method().name(),
+                request.method().name(),
                 HttpResponseStatus.OK.code(),
-                latencyMs(proxyRequest.startTimeNanos()),
+                latencyMs(request.startTimeNanos()),
                 true,
                 "-",
-                proxyRequest.body().length,
+                requestBytes,
                 body.length);
     }
 
     private void handleHealthRequest(
-            final ChannelHandlerContext context, final ProxyRequest proxyRequest) {
+            final ChannelHandlerContext context,
+            final RequestContext request,
+            final long requestBytes) {
         writePlainTextResponse(
                 context,
-                proxyRequest.keepAlive(),
+                request.keepAlive(),
                 HttpResponseStatus.OK,
                 HEALTH_BODY,
-                proxyRequest.traceId(),
+                request.traceId(),
                 CONTENT_TYPE_TEXT);
         logAccessSuccess(
-                proxyRequest.traceId(),
-                proxyRequest.uri(),
-                proxyRequest.method().name(),
+                request.traceId(),
+                request.uri(),
+                request.method().name(),
                 HttpResponseStatus.OK.code(),
-                latencyMs(proxyRequest.startTimeNanos()),
+                latencyMs(request.startTimeNanos()),
                 ROUTE_ID_LOCAL_HEALTH,
                 "local://health");
         gatewayMetricsService.onInboundComplete(
                 ROUTE_ID_LOCAL_HEALTH,
-                proxyRequest.method().name(),
+                request.method().name(),
                 HttpResponseStatus.OK.code(),
-                latencyMs(proxyRequest.startTimeNanos()),
+                latencyMs(request.startTimeNanos()),
                 true,
                 "-",
-                proxyRequest.body().length,
+                requestBytes,
                 HEALTH_BODY.length);
     }
 
     private void handleManagementForbiddenRequest(
             final ChannelHandlerContext context,
-            final ProxyRequest proxyRequest,
-            final String routeId) {
+            final RequestContext request,
+            final String routeId,
+            final long requestBytes) {
         final ErrorResponse errorResponse =
                 new ErrorResponse(
                         OffsetDateTime.now(ZoneOffset.UTC).toString(),
-                        proxyRequest.traceId(),
+                        request.traceId(),
                         "GATEWAY_ERROR",
                         ERROR_CODE_MANAGEMENT_ENDPOINT_FORBIDDEN,
                         "management endpoint forbidden",
                         HttpResponseStatus.FORBIDDEN.code());
         final byte[] responseBodyBytes = errorResponse.toJson().getBytes(StandardCharsets.UTF_8);
-        writeErrorResponse(context, proxyRequest.keepAlive(), errorResponse);
+        writeErrorResponse(context, request.keepAlive(), errorResponse);
         logAccessFailure(
-                proxyRequest.traceId(),
-                proxyRequest.uri(),
-                proxyRequest.method().name(),
+                request.traceId(),
+                request.uri(),
+                request.method().name(),
                 HttpResponseStatus.FORBIDDEN.code(),
-                latencyMs(proxyRequest.startTimeNanos()),
+                latencyMs(request.startTimeNanos()),
                 routeId,
                 "local://management",
                 ERROR_CODE_MANAGEMENT_ENDPOINT_FORBIDDEN);
         gatewayMetricsService.onInboundComplete(
                 routeId,
-                proxyRequest.method().name(),
+                request.method().name(),
                 HttpResponseStatus.FORBIDDEN.code(),
-                latencyMs(proxyRequest.startTimeNanos()),
+                latencyMs(request.startTimeNanos()),
                 false,
                 ERROR_CODE_MANAGEMENT_ENDPOINT_FORBIDDEN,
-                proxyRequest.body().length,
+                requestBytes,
                 responseBodyBytes.length);
     }
 
     private void handleNotFoundRequest(
-            final ChannelHandlerContext context, final ProxyRequest proxyRequest) {
+            final ChannelHandlerContext context,
+            final RequestContext request,
+            final long requestBytes) {
         final ErrorResponse errorResponse =
                 new ErrorResponse(
                         OffsetDateTime.now(ZoneOffset.UTC).toString(),
-                        proxyRequest.traceId(),
+                        request.traceId(),
                         "GATEWAY_ERROR",
                         "ROUTE_NOT_FOUND",
                         "route not found",
                         HttpResponseStatus.NOT_FOUND.code());
         final byte[] responseBodyBytes = errorResponse.toJson().getBytes(StandardCharsets.UTF_8);
-        writeErrorResponse(context, proxyRequest.keepAlive(), errorResponse);
+        writeErrorResponse(context, request.keepAlive(), errorResponse);
         logAccessFailure(
-                proxyRequest.traceId(),
-                proxyRequest.uri(),
-                proxyRequest.method().name(),
+                request.traceId(),
+                request.uri(),
+                request.method().name(),
                 HttpResponseStatus.NOT_FOUND.code(),
-                latencyMs(proxyRequest.startTimeNanos()),
-                "route_not_found",
+                latencyMs(request.startTimeNanos()),
+                ROUTE_ID_ROUTE_NOT_FOUND,
                 "-",
                 "ROUTE_NOT_FOUND");
         gatewayMetricsService.onInboundComplete(
-                "route_not_found",
-                proxyRequest.method().name(),
+                ROUTE_ID_ROUTE_NOT_FOUND,
+                request.method().name(),
                 HttpResponseStatus.NOT_FOUND.code(),
-                latencyMs(proxyRequest.startTimeNanos()),
+                latencyMs(request.startTimeNanos()),
                 false,
                 "ROUTE_NOT_FOUND",
-                proxyRequest.body().length,
+                requestBytes,
+                responseBodyBytes.length);
+    }
+
+    private void handleBacklogOverflowRequest(
+            final ChannelHandlerContext context, final InboundRequestState state) {
+        final RequestContext request = state.request();
+        final RouteConfig route = state.route();
+        final ErrorResponse errorResponse =
+                new ErrorResponse(
+                        OffsetDateTime.now(ZoneOffset.UTC).toString(),
+                        request.traceId(),
+                        "GATEWAY_ERROR",
+                        ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW,
+                        "upstream backlog overflow",
+                        HttpResponseStatus.SERVICE_UNAVAILABLE.code());
+        final byte[] responseBodyBytes = errorResponse.toJson().getBytes(StandardCharsets.UTF_8);
+        if (context.channel().isActive()) {
+            writeErrorResponse(context, request.keepAlive(), errorResponse);
+        }
+        logAccessFailure(
+                request.traceId(),
+                request.uri(),
+                request.method().name(),
+                HttpResponseStatus.SERVICE_UNAVAILABLE.code(),
+                latencyMs(request.startTimeNanos()),
+                route.routeId(),
+                buildUpstreamAddress(route),
+                ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW);
+        gatewayMetricsService.onInboundComplete(
+                route.routeId(),
+                request.method().name(),
+                HttpResponseStatus.SERVICE_UNAVAILABLE.code(),
+                latencyMs(request.startTimeNanos()),
+                false,
+                ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW,
+                state.requestBytes(),
                 responseBodyBytes.length);
     }
 
@@ -389,66 +531,52 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
                 || managementAllowedClientIps.contains(clientIp);
     }
 
-    private FullHttpRequest buildOutboundRequest(
-            final ProxyRequest inboundRequest, final RouteConfig route) {
-        final ByteBuf body = Unpooled.wrappedBuffer(inboundRequest.body());
-        final FullHttpRequest outboundRequest =
+    private DefaultFullHttpRequest buildAggregatedOutboundRequest(
+            final RequestContext request, final RouteConfig route, final byte[] bodyBytes) {
+        final ByteBuf body = Unpooled.wrappedBuffer(bodyBytes);
+        final DefaultFullHttpRequest outboundRequest =
                 new DefaultFullHttpRequest(
-                        HttpVersion.HTTP_1_1, inboundRequest.method(), inboundRequest.uri(), body);
+                        HttpVersion.HTTP_1_1, request.method(), request.uri(), body);
 
         headerPolicyService.applyRequestHeaders(
-                inboundRequest.headers(),
+                request.headers(),
                 outboundRequest.headers(),
                 route,
-                inboundRequest.clientIp(),
-                inboundRequest.traceId());
+                request.clientIp(),
+                request.traceId());
         HttpUtil.setContentLength(outboundRequest, body.readableBytes());
         return outboundRequest;
     }
 
-    private void writeMappedError(
-            final ChannelHandlerContext context,
-            final PendingExchange exchange,
-            final String routeId,
-            final String upstreamAddress,
-            final Throwable throwable) {
-        final ProxyRequest request = exchange.request();
-        final ErrorResponse errorResponse =
-                errorResponseMapper.map(
-                        Objects.requireNonNullElseGet(
-                                throwable,
-                                () -> new IllegalStateException("unknown upstream error")),
-                        request.traceId());
-        final byte[] responseBodyBytes = errorResponse.toJson().getBytes(StandardCharsets.UTF_8);
-        if (context.channel().isActive()) {
-            writeErrorResponse(context, request.keepAlive(), errorResponse);
+    private HttpRequest buildStreamingOutboundRequest(
+            final RequestContext request,
+            final RouteConfig route,
+            final HttpRequest inboundRequestHead) {
+        final DefaultHttpRequest outboundRequest =
+                new DefaultHttpRequest(HttpVersion.HTTP_1_1, request.method(), request.uri());
+        headerPolicyService.applyRequestHeaders(
+                request.headers(),
+                outboundRequest.headers(),
+                route,
+                request.clientIp(),
+                request.traceId());
+
+        if (HttpUtil.isTransferEncodingChunked(inboundRequestHead)) {
+            HttpUtil.setTransferEncodingChunked(outboundRequest, true);
+            outboundRequest.headers().remove(HttpHeaderNames.CONTENT_LENGTH);
+            return outboundRequest;
         }
-        logAccessFailure(
-                request.traceId(),
-                request.uri(),
-                request.method().name(),
-                errorResponse.status(),
-                latencyMs(request.startTimeNanos()),
-                routeId,
-                upstreamAddress,
-                errorResponse.code());
-        gatewayMetricsService.onUpstreamComplete(
-                routeId,
-                errorResponse.status(),
-                latencyMs(exchange.upstreamStartTimeNanos()),
-                false,
-                errorResponse.code(),
-                request.body().length,
-                responseBodyBytes.length);
-        gatewayMetricsService.onInboundComplete(
-                routeId,
-                request.method().name(),
-                errorResponse.status(),
-                latencyMs(request.startTimeNanos()),
-                false,
-                errorResponse.code(),
-                request.body().length,
-                responseBodyBytes.length);
+
+        final long contentLength = HttpUtil.getContentLength(inboundRequestHead, -1);
+        if (contentLength >= 0) {
+            outboundRequest.headers().set(HttpHeaderNames.CONTENT_LENGTH, contentLength);
+            outboundRequest.headers().remove(HttpHeaderNames.TRANSFER_ENCODING);
+            return outboundRequest;
+        }
+
+        HttpUtil.setTransferEncodingChunked(outboundRequest, true);
+        outboundRequest.headers().remove(HttpHeaderNames.CONTENT_LENGTH);
+        return outboundRequest;
     }
 
     private void closeUpstreamClients() {
@@ -502,25 +630,57 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
         context.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
     }
 
-    private ProxyRequest createProxyRequest(
-            final FullHttpRequest inboundRequest,
+    private RequestContext createRequestContext(
+            final HttpRequest inboundRequest,
             final boolean keepAlive,
             final String clientIp,
             final String traceId) {
-        final byte[] body = new byte[inboundRequest.content().readableBytes()];
-        inboundRequest.content().getBytes(inboundRequest.content().readerIndex(), body);
         final HttpHeaders headers = new DefaultHttpHeaders();
         headers.set(inboundRequest.headers());
-
-        return new ProxyRequest(
+        return new RequestContext(
                 inboundRequest.method(),
                 inboundRequest.uri(),
                 headers,
-                body,
                 keepAlive,
                 clientIp,
                 traceId,
                 System.nanoTime());
+    }
+
+    private boolean shouldAggregateByHeaders(final HttpMessage message) {
+        if (HttpUtil.isTransferEncodingChunked(message)) {
+            return false;
+        }
+        final long contentLength = HttpUtil.getContentLength(message, -1L);
+        return contentLength >= 0L && contentLength <= maxContentLength;
+    }
+
+    private static HttpContent duplicateHttpContent(final HttpContent content) {
+        final ByteBuf copiedContent = Unpooled.copiedBuffer(content.content());
+        if (content instanceof LastHttpContent lastContent) {
+            final DefaultLastHttpContent duplicated = new DefaultLastHttpContent(copiedContent);
+            duplicated.trailingHeaders().set(lastContent.trailingHeaders());
+            return duplicated;
+        }
+        return new DefaultHttpContent(copiedContent);
+    }
+
+    private static void appendBytes(final ByteArrayOutputStream out, final ByteBuf source) {
+        final int readable = source.readableBytes();
+        if (readable <= 0) {
+            return;
+        }
+        final byte[] bytes = new byte[readable];
+        source.getBytes(source.readerIndex(), bytes);
+        out.writeBytes(bytes);
+    }
+
+    private static ByteArrayOutputStream createBodyBuffer(final HttpMessage message) {
+        final long contentLength = HttpUtil.getContentLength(message, -1L);
+        if (contentLength > 0L && contentLength <= Integer.MAX_VALUE) {
+            return new ByteArrayOutputStream((int) contentLength);
+        }
+        return new ByteArrayOutputStream(256);
     }
 
     private static void writeTraceId(final HttpHeaders headers, final String traceId) {
@@ -636,6 +796,17 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
         }
     }
 
+    private enum RequestBodyMode {
+        AGGREGATE,
+        STREAM,
+        DISCARD
+    }
+
+    private enum ResponseBodyMode {
+        AGGREGATE,
+        STREAM
+    }
+
     private final class UpstreamRouteClient {
 
         private final ChannelHandlerContext inboundContext;
@@ -646,6 +817,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
         private Channel upstreamChannel;
         private PendingExchange inFlight;
         private boolean connecting;
+        private boolean writingRequestPart;
 
         private UpstreamRouteClient(
                 final ChannelHandlerContext inboundContext,
@@ -657,53 +829,37 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
             this.backlog = new ArrayDeque<>();
         }
 
-        private void submit(final ProxyRequest request) {
+        private PendingExchange begin(final RequestContext request) {
             if (pendingRequestCount() >= maxPendingPerRoute) {
-                rejectForBacklogOverflow(request);
-                return;
+                return null;
             }
-            final FullHttpRequest outboundRequest = buildOutboundRequest(request, route);
+            final PendingExchange exchange = new PendingExchange(request, System.nanoTime());
+            backlog.addLast(exchange);
             gatewayMetricsService.onUpstreamStart();
-            backlog.addLast(new PendingExchange(request, outboundRequest, System.nanoTime()));
             drain();
+            return exchange;
         }
 
         private int pendingRequestCount() {
             return backlog.size() + (inFlight == null ? 0 : 1);
         }
 
-        private void rejectForBacklogOverflow(final ProxyRequest request) {
-            final ErrorResponse errorResponse =
-                    new ErrorResponse(
-                            OffsetDateTime.now(ZoneOffset.UTC).toString(),
-                            request.traceId(),
-                            "GATEWAY_ERROR",
-                            ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW,
-                            "upstream backlog overflow",
-                            HttpResponseStatus.SERVICE_UNAVAILABLE.code());
-            final byte[] responseBodyBytes =
-                    errorResponse.toJson().getBytes(StandardCharsets.UTF_8);
-            if (inboundContext.channel().isActive()) {
-                writeErrorResponse(inboundContext, request.keepAlive(), errorResponse);
-            }
-            logAccessFailure(
-                    request.traceId(),
-                    request.uri(),
-                    request.method().name(),
-                    HttpResponseStatus.SERVICE_UNAVAILABLE.code(),
-                    latencyMs(request.startTimeNanos()),
-                    route.routeId(),
-                    upstreamAddress,
-                    ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW);
-            gatewayMetricsService.onInboundComplete(
-                    route.routeId(),
-                    request.method().name(),
-                    HttpResponseStatus.SERVICE_UNAVAILABLE.code(),
-                    latencyMs(request.startTimeNanos()),
-                    false,
-                    ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW,
-                    request.body().length,
-                    responseBodyBytes.length);
+        private void appendRequestPart(
+                final PendingExchange exchange,
+                final HttpObject outboundPart,
+                final boolean completed,
+                final long bodyBytes) {
+            exchange.enqueueRequestPart(outboundPart, bodyBytes);
+            drain();
+        }
+
+        private void completeAggregatedRequest(
+                final PendingExchange exchange,
+                final DefaultFullHttpRequest outboundRequest,
+                final long requestBytes) {
+            exchange.setRequestBytes(requestBytes);
+            exchange.enqueueRequestPart(outboundRequest, 0);
+            drain();
         }
 
         private void drain() {
@@ -712,38 +868,57 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
                 closeChannel();
                 return;
             }
-            if (connecting || inFlight != null || backlog.isEmpty()) {
+            if (connecting) {
                 return;
+            }
+            if (inFlight == null) {
+                if (backlog.isEmpty()) {
+                    return;
+                }
+                if (upstreamChannel == null || !upstreamChannel.isActive()) {
+                    connectUpstream();
+                    return;
+                }
+                inFlight = backlog.pollFirst();
             }
             if (upstreamChannel == null || !upstreamChannel.isActive()) {
                 connectUpstream();
                 return;
             }
+            writeNextRequestPart();
+        }
 
-            final PendingExchange exchange = backlog.pollFirst();
-            if (exchange == null) {
+        private void writeNextRequestPart() {
+            if (writingRequestPart
+                    || inFlight == null
+                    || upstreamChannel == null
+                    || !upstreamChannel.isActive()) {
                 return;
             }
-            inFlight = exchange;
+
+            final HttpObject part = inFlight.pollRequestPart();
+            if (part == null) {
+                return;
+            }
+
+            writingRequestPart = true;
             upstreamChannel
-                    .writeAndFlush(exchange.outboundRequest())
+                    .writeAndFlush(part)
                     .addListener(
                             (ChannelFuture writeFuture) -> {
-                                if (writeFuture.isSuccess()) {
+                                writingRequestPart = false;
+                                if (!writeFuture.isSuccess()) {
+                                    final PendingExchange failed = inFlight;
+                                    inFlight = null;
+                                    if (failed != null) {
+                                        releaseQueuedRequestParts(failed);
+                                        emitMappedError(failed, writeFuture.cause());
+                                    }
+                                    closeChannel();
+                                    drain();
                                     return;
                                 }
-                                final PendingExchange failed = inFlight;
-                                inFlight = null;
-                                if (failed != null) {
-                                    writeMappedError(
-                                            inboundContext,
-                                            failed,
-                                            route.routeId(),
-                                            upstreamAddress,
-                                            writeFuture.cause());
-                                }
-                                closeChannel();
-                                drain();
+                                writeNextRequestPart();
                             });
         }
 
@@ -776,10 +951,6 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
                                                             new WriteTimeoutHandler(
                                                                     writeTimeoutMs,
                                                                     TimeUnit.MILLISECONDS));
-                                            channel.pipeline()
-                                                    .addLast(
-                                                            new HttpObjectAggregator(
-                                                                    maxContentLength));
                                             channel.pipeline()
                                                     .addLast(
                                                             new ReusableUpstreamResponseHandler(
@@ -823,12 +994,8 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
                                                                         closedFuture.cause(),
                                                                         ClosedChannelException
                                                                                 ::new);
-                                                        writeMappedError(
-                                                                inboundContext,
-                                                                failed,
-                                                                route.routeId(),
-                                                                upstreamAddress,
-                                                                cause);
+                                                        releaseQueuedRequestParts(failed);
+                                                        emitMappedError(failed, cause);
                                                     }
                                                     if (!backlog.isEmpty()) {
                                                         drain();
@@ -838,25 +1005,124 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
                             });
         }
 
-        private void onUpstreamResponse(final FullHttpResponse upstreamResponse) {
+        private void onUpstreamObject(final HttpObject upstreamObject) {
             final PendingExchange exchange = inFlight;
-            inFlight = null;
             if (exchange == null) {
                 return;
             }
-            final ProxyRequest request = exchange.request();
-            final long upstreamLatencyMs = latencyMs(exchange.upstreamStartTimeNanos());
+
+            if (upstreamObject instanceof HttpResponse response) {
+                onUpstreamResponseHead(exchange, response);
+            }
+            if (upstreamObject instanceof HttpContent content) {
+                onUpstreamResponseContent(exchange, content);
+            }
+        }
+
+        private void onUpstreamResponseHead(
+                final PendingExchange exchange, final HttpResponse upstreamResponseHead) {
+            if (exchange.completed()) {
+                return;
+            }
+
+            exchange.setUpstreamStatus(upstreamResponseHead.status().code());
+            if (shouldAggregateByHeaders(upstreamResponseHead)) {
+                exchange.setResponseMode(ResponseBodyMode.AGGREGATE);
+                final HttpHeaders copiedHeaders = new DefaultHttpHeaders();
+                copiedHeaders.set(upstreamResponseHead.headers());
+                exchange.setUpstreamResponseHeaders(copiedHeaders);
+                exchange.setResponseBodyBuffer(createBodyBuffer(upstreamResponseHead));
+                return;
+            }
+
+            exchange.setResponseMode(ResponseBodyMode.STREAM);
+            final DefaultHttpResponse responseHeadToClient =
+                    new DefaultHttpResponse(HttpVersion.HTTP_1_1, upstreamResponseHead.status());
+            responseHeadToClient.headers().set(upstreamResponseHead.headers());
+            removeHopByHopHeaders(responseHeadToClient.headers());
+            writeTraceId(responseHeadToClient.headers(), exchange.request().traceId());
+            if (exchange.request().keepAlive()) {
+                responseHeadToClient
+                        .headers()
+                        .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+            }
+            if (!HttpUtil.isTransferEncodingChunked(responseHeadToClient)
+                    && !HttpUtil.isContentLengthSet(responseHeadToClient)) {
+                HttpUtil.setTransferEncodingChunked(responseHeadToClient, true);
+            }
+
+            if (!inboundContext.channel().isActive()) {
+                completeClientWriteFailure(exchange, ERROR_CODE_CLIENT_CHANNEL_INACTIVE);
+                return;
+            }
+
+            inboundContext
+                    .writeAndFlush(responseHeadToClient)
+                    .addListener(
+                            (ChannelFuture writeFuture) -> {
+                                if (!writeFuture.isSuccess()) {
+                                    completeClientWriteFailure(
+                                            exchange, ERROR_CODE_CLIENT_WRITE_FAILED);
+                                }
+                            });
+        }
+
+        private void onUpstreamResponseContent(
+                final PendingExchange exchange, final HttpContent upstreamContent) {
+            if (exchange.completed()) {
+                return;
+            }
+
+            exchange.addResponseBytes(upstreamContent.content().readableBytes());
+            if (exchange.responseMode() == ResponseBodyMode.AGGREGATE) {
+                appendBytes(exchange.responseBodyBuffer(), upstreamContent.content());
+                if (upstreamContent instanceof LastHttpContent) {
+                    writeAggregatedResponseToInbound(exchange);
+                }
+                return;
+            }
+
+            final HttpContent contentToClient = duplicateHttpContent(upstreamContent);
+            if (!inboundContext.channel().isActive()) {
+                ReferenceCountUtil.safeRelease(contentToClient);
+                completeClientWriteFailure(exchange, ERROR_CODE_CLIENT_CHANNEL_INACTIVE);
+                return;
+            }
+
+            final boolean last = upstreamContent instanceof LastHttpContent;
+            final ChannelFuture writeFuture = inboundContext.writeAndFlush(contentToClient);
+            if (last && !exchange.request().keepAlive()) {
+                writeFuture.addListener(ChannelFutureListener.CLOSE);
+            }
+            writeFuture.addListener(
+                    (ChannelFuture future) -> {
+                        if (!future.isSuccess()) {
+                            completeClientWriteFailure(exchange, ERROR_CODE_CLIENT_WRITE_FAILED);
+                            return;
+                        }
+                        if (last) {
+                            completeSuccess(exchange);
+                        }
+                    });
+        }
+
+        private void writeAggregatedResponseToInbound(final PendingExchange exchange) {
+            if (exchange.completed()) {
+                return;
+            }
+
+            final byte[] responseBodyBytes = exchange.responseBodyBuffer().toByteArray();
             final FullHttpResponse responseToClient =
                     new DefaultFullHttpResponse(
                             HttpVersion.HTTP_1_1,
-                            upstreamResponse.status(),
-                            upstreamResponse.content().copy());
-            responseToClient.headers().set(upstreamResponse.headers());
+                            HttpResponseStatus.valueOf(exchange.upstreamStatus()),
+                            Unpooled.wrappedBuffer(responseBodyBytes));
+            responseToClient.headers().set(exchange.upstreamResponseHeaders());
             removeHopByHopHeaders(responseToClient.headers());
             HttpUtil.setContentLength(responseToClient, responseToClient.content().readableBytes());
-            writeTraceId(responseToClient.headers(), request.traceId());
+            writeTraceId(responseToClient.headers(), exchange.request().traceId());
 
-            if (request.keepAlive()) {
+            if (exchange.request().keepAlive()) {
                 responseToClient
                         .headers()
                         .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
@@ -864,111 +1130,156 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
 
             if (!inboundContext.channel().isActive()) {
                 ReferenceCountUtil.safeRelease(responseToClient);
-                gatewayMetricsService.onUpstreamComplete(
-                        route.routeId(),
-                        HttpResponseStatus.BAD_GATEWAY.code(),
-                        upstreamLatencyMs,
-                        false,
-                        "CLIENT_CHANNEL_INACTIVE",
-                        request.body().length,
-                        upstreamResponse.content().readableBytes());
-                gatewayMetricsService.onInboundComplete(
-                        route.routeId(),
-                        request.method().name(),
-                        HttpResponseStatus.BAD_GATEWAY.code(),
-                        latencyMs(request.startTimeNanos()),
-                        false,
-                        "CLIENT_CHANNEL_INACTIVE",
-                        request.body().length,
-                        upstreamResponse.content().readableBytes());
-                closeChannel();
+                completeClientWriteFailure(exchange, ERROR_CODE_CLIENT_CHANNEL_INACTIVE);
                 return;
             }
 
             final ChannelFuture writeFuture = inboundContext.writeAndFlush(responseToClient);
-            if (!request.keepAlive()) {
+            if (!exchange.request().keepAlive()) {
                 writeFuture.addListener(ChannelFutureListener.CLOSE);
             }
             writeFuture.addListener(
                     (ChannelFuture future) -> {
-                        if (future.isSuccess()) {
-                            logAccessSuccess(
-                                    request.traceId(),
-                                    request.uri(),
-                                    request.method().name(),
-                                    upstreamResponse.status().code(),
-                                    latencyMs(request.startTimeNanos()),
-                                    route.routeId(),
-                                    upstreamAddress);
-                            gatewayMetricsService.onUpstreamComplete(
-                                    route.routeId(),
-                                    upstreamResponse.status().code(),
-                                    upstreamLatencyMs,
-                                    true,
-                                    "-",
-                                    request.body().length,
-                                    responseToClient.content().readableBytes());
-                            gatewayMetricsService.onInboundComplete(
-                                    route.routeId(),
-                                    request.method().name(),
-                                    upstreamResponse.status().code(),
-                                    latencyMs(request.startTimeNanos()),
-                                    true,
-                                    "-",
-                                    request.body().length,
-                                    responseToClient.content().readableBytes());
-                        } else {
-                            logAccessFailure(
-                                    request.traceId(),
-                                    request.uri(),
-                                    request.method().name(),
-                                    HttpResponseStatus.BAD_GATEWAY.code(),
-                                    latencyMs(request.startTimeNanos()),
-                                    route.routeId(),
-                                    upstreamAddress,
-                                    "CLIENT_WRITE_FAILED");
-                            gatewayMetricsService.onUpstreamComplete(
-                                    route.routeId(),
-                                    HttpResponseStatus.BAD_GATEWAY.code(),
-                                    upstreamLatencyMs,
-                                    false,
-                                    "CLIENT_WRITE_FAILED",
-                                    request.body().length,
-                                    responseToClient.content().readableBytes());
-                            gatewayMetricsService.onInboundComplete(
-                                    route.routeId(),
-                                    request.method().name(),
-                                    HttpResponseStatus.BAD_GATEWAY.code(),
-                                    latencyMs(request.startTimeNanos()),
-                                    false,
-                                    "CLIENT_WRITE_FAILED",
-                                    request.body().length,
-                                    responseToClient.content().readableBytes());
+                        if (!future.isSuccess()) {
+                            completeClientWriteFailure(exchange, ERROR_CODE_CLIENT_WRITE_FAILED);
+                            return;
                         }
+                        completeSuccess(exchange);
                     });
+        }
+
+        private void completeSuccess(final PendingExchange exchange) {
+            if (exchange.completed()) {
+                return;
+            }
+            exchange.markCompleted();
+
+            logAccessSuccess(
+                    exchange.request().traceId(),
+                    exchange.request().uri(),
+                    exchange.request().method().name(),
+                    exchange.upstreamStatus(),
+                    latencyMs(exchange.request().startTimeNanos()),
+                    route.routeId(),
+                    upstreamAddress);
+
+            gatewayMetricsService.onUpstreamComplete(
+                    route.routeId(),
+                    exchange.upstreamStatus(),
+                    latencyMs(exchange.upstreamStartTimeNanos()),
+                    true,
+                    "-",
+                    exchange.requestBytes(),
+                    exchange.responseBytes());
+            gatewayMetricsService.onInboundComplete(
+                    route.routeId(),
+                    exchange.request().method().name(),
+                    exchange.upstreamStatus(),
+                    latencyMs(exchange.request().startTimeNanos()),
+                    true,
+                    "-",
+                    exchange.requestBytes(),
+                    exchange.responseBytes());
+
+            if (exchange == inFlight) {
+                inFlight = null;
+            }
             drain();
         }
 
-        private void onUpstreamException(final Throwable cause) {
-            final PendingExchange exchange = inFlight;
-            inFlight = null;
-            if (exchange != null) {
-                writeMappedError(inboundContext, exchange, route.routeId(), upstreamAddress, cause);
+        private void completeClientWriteFailure(
+                final PendingExchange exchange, final String errorCode) {
+            if (exchange.completed()) {
+                return;
+            }
+            exchange.markCompleted();
+
+            logAccessFailure(
+                    exchange.request().traceId(),
+                    exchange.request().uri(),
+                    exchange.request().method().name(),
+                    HttpResponseStatus.BAD_GATEWAY.code(),
+                    latencyMs(exchange.request().startTimeNanos()),
+                    route.routeId(),
+                    upstreamAddress,
+                    errorCode);
+            gatewayMetricsService.onUpstreamComplete(
+                    route.routeId(),
+                    HttpResponseStatus.BAD_GATEWAY.code(),
+                    latencyMs(exchange.upstreamStartTimeNanos()),
+                    false,
+                    errorCode,
+                    exchange.requestBytes(),
+                    exchange.responseBytes());
+            gatewayMetricsService.onInboundComplete(
+                    route.routeId(),
+                    exchange.request().method().name(),
+                    HttpResponseStatus.BAD_GATEWAY.code(),
+                    latencyMs(exchange.request().startTimeNanos()),
+                    false,
+                    errorCode,
+                    exchange.requestBytes(),
+                    exchange.responseBytes());
+
+            if (exchange == inFlight) {
+                inFlight = null;
             }
             closeChannel();
             drain();
         }
 
+        private void emitMappedError(final PendingExchange exchange, final Throwable throwable) {
+            if (exchange.completed()) {
+                return;
+            }
+            exchange.markCompleted();
+
+            final ErrorResponse errorResponse =
+                    errorResponseMapper.map(
+                            Objects.requireNonNullElseGet(
+                                    throwable,
+                                    () -> new IllegalStateException("unknown upstream error")),
+                            exchange.request().traceId());
+            final byte[] responseBodyBytes =
+                    errorResponse.toJson().getBytes(StandardCharsets.UTF_8);
+            if (inboundContext.channel().isActive()) {
+                writeErrorResponse(inboundContext, exchange.request().keepAlive(), errorResponse);
+            }
+            logAccessFailure(
+                    exchange.request().traceId(),
+                    exchange.request().uri(),
+                    exchange.request().method().name(),
+                    errorResponse.status(),
+                    latencyMs(exchange.request().startTimeNanos()),
+                    route.routeId(),
+                    upstreamAddress,
+                    errorResponse.code());
+            gatewayMetricsService.onUpstreamComplete(
+                    route.routeId(),
+                    errorResponse.status(),
+                    latencyMs(exchange.upstreamStartTimeNanos()),
+                    false,
+                    errorResponse.code(),
+                    exchange.requestBytes(),
+                    responseBodyBytes.length);
+            gatewayMetricsService.onInboundComplete(
+                    route.routeId(),
+                    exchange.request().method().name(),
+                    errorResponse.status(),
+                    latencyMs(exchange.request().startTimeNanos()),
+                    false,
+                    errorResponse.code(),
+                    exchange.requestBytes(),
+                    responseBodyBytes.length);
+        }
+
         private void close() {
             failAllPending(new ClosedChannelException());
             if (inFlight != null) {
-                writeMappedError(
-                        inboundContext,
-                        inFlight,
-                        route.routeId(),
-                        upstreamAddress,
-                        new ClosedChannelException());
+                final PendingExchange failed = inFlight;
                 inFlight = null;
+                releaseQueuedRequestParts(failed);
+                emitMappedError(failed, new ClosedChannelException());
             }
             closeChannel();
         }
@@ -980,23 +1291,42 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
             }
         }
 
-        private static void removeHopByHopHeaders(final HttpHeaders headers) {
-            for (CharSequence header : HOP_BY_HOP_HEADERS) {
-                headers.remove(header);
-            }
-        }
-
         private void failAllPending(final Throwable cause) {
             PendingExchange exchange;
             while ((exchange = backlog.pollFirst()) != null) {
-                ReferenceCountUtil.safeRelease(exchange.outboundRequest());
-                writeMappedError(inboundContext, exchange, route.routeId(), upstreamAddress, cause);
+                releaseQueuedRequestParts(exchange);
+                emitMappedError(exchange, cause);
+            }
+        }
+
+        private void onUpstreamException(final Throwable cause) {
+            if (inFlight != null) {
+                final PendingExchange failed = inFlight;
+                inFlight = null;
+                releaseQueuedRequestParts(failed);
+                emitMappedError(failed, cause);
+            }
+            closeChannel();
+            failAllPending(cause);
+            drain();
+        }
+
+        private void releaseQueuedRequestParts(final PendingExchange exchange) {
+            HttpObject pending;
+            while ((pending = exchange.pollRequestPart()) != null) {
+                ReferenceCountUtil.safeRelease(pending);
+            }
+        }
+
+        private void removeHopByHopHeaders(final HttpHeaders headers) {
+            for (CharSequence header : HOP_BY_HOP_HEADERS) {
+                headers.remove(header);
             }
         }
     }
 
     private static final class ReusableUpstreamResponseHandler
-            extends SimpleChannelInboundHandler<FullHttpResponse> {
+            extends SimpleChannelInboundHandler<HttpObject> {
 
         private final UpstreamRouteClient routeClient;
 
@@ -1006,9 +1336,8 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
 
         @Override
         protected void channelRead0(
-                final ChannelHandlerContext upstreamContext,
-                final FullHttpResponse upstreamResponse) {
-            routeClient.onUpstreamResponse(upstreamResponse);
+                final ChannelHandlerContext upstreamContext, final HttpObject upstreamObject) {
+            routeClient.onUpstreamObject(upstreamObject);
         }
 
         @Override
@@ -1018,24 +1347,265 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
         }
     }
 
-    private record ProxyRequest(
+    private record RequestContext(
             HttpMethod method,
             String uri,
             HttpHeaders headers,
-            byte[] body,
             boolean keepAlive,
             String clientIp,
             String traceId,
             long startTimeNanos) {
-        private ProxyRequest {
+        private RequestContext {
             // no-op
         }
     }
 
-    private record PendingExchange(
-            ProxyRequest request, FullHttpRequest outboundRequest, long upstreamStartTimeNanos) {
-        private PendingExchange {
-            // no-op
+    private static final class InboundRequestState {
+
+        private final RequestContext request;
+        private final RequestDispatchTarget target;
+        private final RouteConfig route;
+        private final UpstreamRouteClient routeClient;
+        private final PendingExchange pendingExchange;
+        private final RequestBodyMode bodyMode;
+        private final ByteArrayOutputStream requestBodyBuffer;
+        private final boolean backlogRejected;
+
+        private long requestBytes;
+
+        private InboundRequestState(
+                final RequestContext request,
+                final RequestDispatchTarget target,
+                final RouteConfig route,
+                final UpstreamRouteClient routeClient,
+                final PendingExchange pendingExchange,
+                final RequestBodyMode bodyMode,
+                final ByteArrayOutputStream requestBodyBuffer,
+                final boolean backlogRejected) {
+            this.request = request;
+            this.target = target;
+            this.route = route;
+            this.routeClient = routeClient;
+            this.pendingExchange = pendingExchange;
+            this.bodyMode = bodyMode;
+            this.requestBodyBuffer = requestBodyBuffer;
+            this.backlogRejected = backlogRejected;
+            this.requestBytes = 0;
+        }
+
+        private static InboundRequestState aggregate(
+                final RequestContext request,
+                final RouteConfig route,
+                final UpstreamRouteClient routeClient,
+                final PendingExchange pendingExchange) {
+            return new InboundRequestState(
+                    request,
+                    new RoutedTarget(route),
+                    route,
+                    routeClient,
+                    pendingExchange,
+                    RequestBodyMode.AGGREGATE,
+                    createBodyBufferForAggregateRequest(request),
+                    false);
+        }
+
+        private static InboundRequestState stream(
+                final RequestContext request,
+                final RouteConfig route,
+                final UpstreamRouteClient routeClient,
+                final PendingExchange pendingExchange) {
+            return new InboundRequestState(
+                    request,
+                    new RoutedTarget(route),
+                    route,
+                    routeClient,
+                    pendingExchange,
+                    RequestBodyMode.STREAM,
+                    null,
+                    false);
+        }
+
+        private static InboundRequestState discardForLocalTarget(
+                final RequestContext request, final RequestDispatchTarget target) {
+            return new InboundRequestState(
+                    request, target, null, null, null, RequestBodyMode.DISCARD, null, false);
+        }
+
+        private static InboundRequestState discardForBacklogOverflow(
+                final RequestContext request,
+                final RouteConfig route,
+                final UpstreamRouteClient routeClient) {
+            return new InboundRequestState(
+                    request,
+                    new RoutedTarget(route),
+                    route,
+                    routeClient,
+                    null,
+                    RequestBodyMode.DISCARD,
+                    null,
+                    true);
+        }
+
+        private static ByteArrayOutputStream createBodyBufferForAggregateRequest(
+                final RequestContext request) {
+            final long contentLength = parseContentLength(request.headers());
+            if (contentLength > 0L && contentLength <= Integer.MAX_VALUE) {
+                return new ByteArrayOutputStream((int) contentLength);
+            }
+            return new ByteArrayOutputStream(256);
+        }
+
+        private static long parseContentLength(final HttpHeaders headers) {
+            final String value = headers.get(HttpHeaderNames.CONTENT_LENGTH);
+            if (value == null || value.isBlank()) {
+                return -1L;
+            }
+            try {
+                return Long.parseLong(value.trim());
+            } catch (NumberFormatException ignored) {
+                return -1L;
+            }
+        }
+
+        private boolean isRouted() {
+            return route != null;
+        }
+
+        private RequestContext request() {
+            return request;
+        }
+
+        private RequestDispatchTarget target() {
+            return target;
+        }
+
+        private RouteConfig route() {
+            return route;
+        }
+
+        private UpstreamRouteClient routeClient() {
+            return routeClient;
+        }
+
+        private PendingExchange pendingExchange() {
+            return pendingExchange;
+        }
+
+        private RequestBodyMode bodyMode() {
+            return bodyMode;
+        }
+
+        private ByteArrayOutputStream requestBodyBuffer() {
+            return requestBodyBuffer;
+        }
+
+        private boolean backlogRejected() {
+            return backlogRejected;
+        }
+
+        private long requestBytes() {
+            return requestBytes;
+        }
+    }
+
+    private static final class PendingExchange {
+
+        private final RequestContext request;
+        private final Deque<HttpObject> requestParts;
+        private final long upstreamStartTimeNanos;
+
+        private boolean completed;
+        private long requestBytes;
+        private long responseBytes;
+        private int upstreamStatus;
+        private ResponseBodyMode responseMode;
+        private HttpHeaders upstreamResponseHeaders;
+        private ByteArrayOutputStream responseBodyBuffer;
+
+        private PendingExchange(final RequestContext request, final long upstreamStartTimeNanos) {
+            this.request = request;
+            this.requestParts = new ArrayDeque<>();
+            this.upstreamStartTimeNanos = upstreamStartTimeNanos;
+            this.completed = false;
+            this.requestBytes = 0;
+            this.responseBytes = 0;
+            this.upstreamStatus = HttpResponseStatus.BAD_GATEWAY.code();
+            this.responseMode = null;
+            this.upstreamResponseHeaders = null;
+            this.responseBodyBuffer = null;
+        }
+
+        private RequestContext request() {
+            return request;
+        }
+
+        private long upstreamStartTimeNanos() {
+            return upstreamStartTimeNanos;
+        }
+
+        private void enqueueRequestPart(final HttpObject requestPart, final long bodyBytes) {
+            requestParts.addLast(requestPart);
+            requestBytes += Math.max(bodyBytes, 0);
+        }
+
+        private HttpObject pollRequestPart() {
+            return requestParts.pollFirst();
+        }
+
+        private void markCompleted() {
+            this.completed = true;
+        }
+
+        private boolean completed() {
+            return completed;
+        }
+
+        private void setRequestBytes(final long requestBytes) {
+            this.requestBytes = Math.max(requestBytes, 0);
+        }
+
+        private long requestBytes() {
+            return requestBytes;
+        }
+
+        private void addResponseBytes(final long responseBytes) {
+            this.responseBytes += Math.max(responseBytes, 0);
+        }
+
+        private long responseBytes() {
+            return responseBytes;
+        }
+
+        private void setUpstreamStatus(final int upstreamStatus) {
+            this.upstreamStatus = upstreamStatus;
+        }
+
+        private int upstreamStatus() {
+            return upstreamStatus;
+        }
+
+        private void setResponseMode(final ResponseBodyMode responseMode) {
+            this.responseMode = responseMode;
+        }
+
+        private ResponseBodyMode responseMode() {
+            return responseMode;
+        }
+
+        private void setUpstreamResponseHeaders(final HttpHeaders upstreamResponseHeaders) {
+            this.upstreamResponseHeaders = upstreamResponseHeaders;
+        }
+
+        private HttpHeaders upstreamResponseHeaders() {
+            return upstreamResponseHeaders;
+        }
+
+        private void setResponseBodyBuffer(final ByteArrayOutputStream responseBodyBuffer) {
+            this.responseBodyBuffer = responseBodyBuffer;
+        }
+
+        private ByteArrayOutputStream responseBodyBuffer() {
+            return responseBodyBuffer;
         }
     }
 }
