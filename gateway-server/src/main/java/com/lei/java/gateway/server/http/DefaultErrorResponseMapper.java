@@ -45,31 +45,31 @@ public final class DefaultErrorResponseMapper implements ErrorResponseMapper {
         if (containsCause(throwable, DefaultErrorResponseMapper::isBadRequestCause)) {
             return build(
                     normalizedTraceId,
-                    "GATEWAY_ERROR",
-                    "BAD_REQUEST",
+                    ErrorCategory.GATEWAY_ERROR.name(),
+                    ErrorCode.BAD_REQUEST.name(),
                     "bad request",
                     STATUS_BAD_REQUEST);
         }
         if (containsCause(throwable, DefaultErrorResponseMapper::isTimeoutCause)) {
             return build(
                     normalizedTraceId,
-                    "UPSTREAM_ERROR",
-                    "UPSTREAM_TIMEOUT",
+                    ErrorCategory.UPSTREAM_ERROR.name(),
+                    ErrorCode.UPSTREAM_TIMEOUT.name(),
                     "upstream timeout",
                     STATUS_GATEWAY_TIMEOUT);
         }
         if (containsCause(throwable, DefaultErrorResponseMapper::isUpstreamUnavailableCause)) {
             return build(
                     normalizedTraceId,
-                    "UPSTREAM_ERROR",
-                    "UPSTREAM_UNAVAILABLE",
+                    ErrorCategory.UPSTREAM_ERROR.name(),
+                    ErrorCode.UPSTREAM_UNAVAILABLE.name(),
                     "upstream unavailable",
                     STATUS_BAD_GATEWAY);
         }
         return build(
                 normalizedTraceId,
-                "GATEWAY_ERROR",
-                "GATEWAY_INTERNAL_ERROR",
+                ErrorCategory.GATEWAY_ERROR.name(),
+                ErrorCode.GATEWAY_INTERNAL_ERROR.name(),
                 "gateway internal error",
                 STATUS_INTERNAL_SERVER_ERROR);
     }

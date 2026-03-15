@@ -15,7 +15,6 @@
  */
 package com.lei.java.gateway.server.http;
 
-import java.util.List;
 import java.util.Objects;
 
 import com.lei.java.gateway.server.config.HostRewriteMode;
@@ -24,28 +23,9 @@ import com.lei.java.gateway.server.config.RouteConfig;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpHeaders;
-import io.netty.util.AsciiString;
 
 /** 阶段 1 默认请求头处理策略。 */
 public final class DefaultHeaderPolicyService implements HeaderPolicyService {
-
-    private static final CharSequence TRACE_ID_HEADER = "X-Trace-Id";
-    private static final CharSequence X_FORWARDED_FOR = "X-Forwarded-For";
-    private static final CharSequence X_FORWARDED_PROTO = "X-Forwarded-Proto";
-    private static final CharSequence X_FORWARDED_HOST = "X-Forwarded-Host";
-    private static final CharSequence KEEP_ALIVE_HEADER = AsciiString.cached("Keep-Alive");
-
-    /** Hop-by-hop 请求头（仅对当前一跳连接生效），网关转发到上游前必须移除，避免把连接级语义错误透传到下一跳。 */
-    private static final List<CharSequence> HOP_BY_HOP_HEADERS =
-            List.of(
-                    HttpHeaderNames.CONNECTION,
-                    KEEP_ALIVE_HEADER,
-                    HttpHeaderNames.TE,
-                    HttpHeaderNames.TRAILER,
-                    HttpHeaderNames.UPGRADE,
-                    "Proxy-Authenticate",
-                    "Proxy-Authorization",
-                    HttpHeaderNames.TRANSFER_ENCODING);
 
     /**
      * 应用阶段 1 请求头策略。
@@ -74,11 +54,13 @@ public final class DefaultHeaderPolicyService implements HeaderPolicyService {
 
         final String originalHost = inboundRequestHeaders.get(HttpHeaderNames.HOST);
         appendForwardedFor(outboundRequestHeaders, clientIp);
-        outboundRequestHeaders.set(X_FORWARDED_PROTO, "http");
+        outboundRequestHeaders.set(
+                HttpHeaderConstants.X_FORWARDED_PROTO, HttpHeaderConstants.FORWARDED_PROTO_HTTP);
         if (originalHost != null && !originalHost.isBlank()) {
-            outboundRequestHeaders.set(X_FORWARDED_HOST, originalHost);
+            outboundRequestHeaders.set(HttpHeaderConstants.X_FORWARDED_HOST, originalHost);
         } else {
-            outboundRequestHeaders.set(X_FORWARDED_HOST, buildUpstreamHost(route));
+            outboundRequestHeaders.set(
+                    HttpHeaderConstants.X_FORWARDED_HOST, buildUpstreamHost(route));
         }
 
         if (route.hostRewriteMode() == HostRewriteMode.REWRITE) {
@@ -86,23 +68,23 @@ public final class DefaultHeaderPolicyService implements HeaderPolicyService {
         } else if (originalHost != null && !originalHost.isBlank()) {
             outboundRequestHeaders.set(HttpHeaderNames.HOST, originalHost);
         }
-        outboundRequestHeaders.set(TRACE_ID_HEADER, traceId);
+        outboundRequestHeaders.set(HttpHeaderConstants.TRACE_ID_HEADER, traceId);
         outboundRequestHeaders.set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
     }
 
     private static void removeHopByHopHeaders(final HttpHeaders headers) {
-        for (CharSequence header : HOP_BY_HOP_HEADERS) {
+        for (CharSequence header : HttpHeaderConstants.HOP_BY_HOP_HEADERS) {
             headers.remove(header);
         }
     }
 
     private static void appendForwardedFor(final HttpHeaders headers, final String clientIp) {
-        final String current = headers.get(X_FORWARDED_FOR);
+        final String current = headers.get(HttpHeaderConstants.X_FORWARDED_FOR);
         if (current == null || current.isBlank()) {
-            headers.set(X_FORWARDED_FOR, clientIp);
+            headers.set(HttpHeaderConstants.X_FORWARDED_FOR, clientIp);
             return;
         }
-        headers.set(X_FORWARDED_FOR, current + ", " + clientIp);
+        headers.set(HttpHeaderConstants.X_FORWARDED_FOR, current + ", " + clientIp);
     }
 
     private static String buildUpstreamHost(final RouteConfig route) {

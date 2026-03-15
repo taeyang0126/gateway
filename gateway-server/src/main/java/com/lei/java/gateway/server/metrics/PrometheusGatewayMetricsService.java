@@ -233,21 +233,21 @@ public final class PrometheusGatewayMetricsService implements GatewayMetricsServ
 
     private static String normalizeMethod(final String method) {
         if (method == null || method.isBlank()) {
-            return "UNKNOWN";
+            return MetricsCommonConstants.UNKNOWN;
         }
         return method.trim().toUpperCase(Locale.ROOT);
     }
 
     private static String normalizeErrorCode(final String errorCode) {
         if (errorCode == null || errorCode.isBlank()) {
-            return "-";
+            return MetricsCommonConstants.NOT_AVAILABLE;
         }
         return errorCode.trim().toUpperCase(Locale.ROOT);
     }
 
     private static String normalize(final String value) {
         if (value == null || value.isBlank()) {
-            return "-";
+            return MetricsCommonConstants.NOT_AVAILABLE;
         }
         return value.trim();
     }

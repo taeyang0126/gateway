@@ -37,14 +37,19 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.lei.java.gateway.server.config.GatewayServerConfig;
 import com.lei.java.gateway.server.config.RouteConfig;
 import com.lei.java.gateway.server.config.UpstreamConfig;
 import com.lei.java.gateway.server.http.DefaultErrorResponseMapper;
 import com.lei.java.gateway.server.http.DefaultHeaderPolicyService;
+import com.lei.java.gateway.server.http.ErrorCategory;
+import com.lei.java.gateway.server.http.ErrorCode;
 import com.lei.java.gateway.server.http.ErrorResponse;
 import com.lei.java.gateway.server.http.ErrorResponseMapper;
 import com.lei.java.gateway.server.http.HeaderPolicyService;
+import com.lei.java.gateway.server.http.HttpHeaderConstants;
 import com.lei.java.gateway.server.metrics.GatewayMetricsService;
+import com.lei.java.gateway.server.metrics.MetricsCommonConstants;
 import com.lei.java.gateway.server.metrics.NoopGatewayMetricsService;
 import com.lei.java.gateway.server.proxy.DefaultTimeoutPolicy;
 import com.lei.java.gateway.server.proxy.TimeoutPolicy;
@@ -93,7 +98,6 @@ import io.netty.util.ReferenceCountUtil;
 final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObject> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultHttpServerHandler.class);
-    private static final CharSequence TRACE_ID_HEADER = "X-Trace-Id";
     private static final String HEALTH_PATH = "/health";
     private static final String METRICS_PATH = "/metrics/prometheus";
     private static final String CONTENT_TYPE_TEXT = "text/plain; charset=UTF-8";
@@ -104,21 +108,6 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
     private static final String ROUTE_ID_LOCAL_METRICS = "local_metrics";
     private static final String ROUTE_ID_LOCAL_HEALTH = "local_health";
     private static final String ROUTE_ID_ROUTE_NOT_FOUND = "route_not_found";
-    private static final String ERROR_CODE_MANAGEMENT_ENDPOINT_FORBIDDEN =
-            "MANAGEMENT_ENDPOINT_FORBIDDEN";
-    private static final String ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW = "UPSTREAM_BACKLOG_OVERFLOW";
-    private static final String ERROR_CODE_CLIENT_CHANNEL_INACTIVE = "CLIENT_CHANNEL_INACTIVE";
-    private static final String ERROR_CODE_CLIENT_WRITE_FAILED = "CLIENT_WRITE_FAILED";
-    private static final List<CharSequence> HOP_BY_HOP_HEADERS =
-            List.of(
-                    HttpHeaderNames.CONNECTION,
-                    "Keep-Alive",
-                    HttpHeaderNames.TE,
-                    HttpHeaderNames.TRAILER,
-                    HttpHeaderNames.UPGRADE,
-                    "Proxy-Authenticate",
-                    "Proxy-Authorization",
-                    HttpHeaderNames.TRANSFER_ENCODING);
 
     private final int maxContentLength;
     private final List<RouteConfig> routes;
@@ -146,8 +135,8 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                 new NoopGatewayMetricsService(),
                 true,
                 true,
-                List.of("127.0.0.1", "::1", "0:0:0:0:0:0:0:1"),
-                1024);
+                GatewayServerConfig.DEFAULT_MANAGEMENT_ALLOWED_CLIENT_IPS,
+                GatewayServerConfig.DEFAULT_MAX_PENDING_PER_ROUTE);
     }
 
     DefaultHttpServerHandler(
@@ -200,16 +189,16 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
         writeErrorResponse(context, false, errorResponse);
         logAccessFailure(
                 traceId,
-                "-",
-                "UNKNOWN",
+                MetricsCommonConstants.NOT_AVAILABLE,
+                MetricsCommonConstants.UNKNOWN,
                 errorResponse.status(),
                 0,
                 "internal_error",
-                "-",
+                MetricsCommonConstants.NOT_AVAILABLE,
                 errorResponse.code());
         gatewayMetricsService.onInboundComplete(
                 "internal_error",
-                "UNKNOWN",
+                MetricsCommonConstants.UNKNOWN,
                 errorResponse.status(),
                 0,
                 false,
@@ -363,7 +352,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                 HttpResponseStatus.OK.code(),
                 latencyMs(request.startTimeNanos()),
                 true,
-                "-",
+                MetricsCommonConstants.NOT_AVAILABLE,
                 requestBytes,
                 body.length);
     }
@@ -393,7 +382,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                 HttpResponseStatus.OK.code(),
                 latencyMs(request.startTimeNanos()),
                 true,
-                "-",
+                MetricsCommonConstants.NOT_AVAILABLE,
                 requestBytes,
                 HEALTH_BODY.length);
     }
@@ -407,8 +396,8 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                 new ErrorResponse(
                         OffsetDateTime.now(ZoneOffset.UTC).toString(),
                         request.traceId(),
-                        "GATEWAY_ERROR",
-                        ERROR_CODE_MANAGEMENT_ENDPOINT_FORBIDDEN,
+                        ErrorCategory.GATEWAY_ERROR.name(),
+                        ErrorCode.MANAGEMENT_ENDPOINT_FORBIDDEN.name(),
                         "management endpoint forbidden",
                         HttpResponseStatus.FORBIDDEN.code());
         final byte[] responseBodyBytes = errorResponse.toJson().getBytes(StandardCharsets.UTF_8);
@@ -421,14 +410,14 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                 latencyMs(request.startTimeNanos()),
                 routeId,
                 "local://management",
-                ERROR_CODE_MANAGEMENT_ENDPOINT_FORBIDDEN);
+                ErrorCode.MANAGEMENT_ENDPOINT_FORBIDDEN.name());
         gatewayMetricsService.onInboundComplete(
                 routeId,
                 request.method().name(),
                 HttpResponseStatus.FORBIDDEN.code(),
                 latencyMs(request.startTimeNanos()),
                 false,
-                ERROR_CODE_MANAGEMENT_ENDPOINT_FORBIDDEN,
+                ErrorCode.MANAGEMENT_ENDPOINT_FORBIDDEN.name(),
                 requestBytes,
                 responseBodyBytes.length);
     }
@@ -441,8 +430,8 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                 new ErrorResponse(
                         OffsetDateTime.now(ZoneOffset.UTC).toString(),
                         request.traceId(),
-                        "GATEWAY_ERROR",
-                        "ROUTE_NOT_FOUND",
+                        ErrorCategory.GATEWAY_ERROR.name(),
+                        ErrorCode.ROUTE_NOT_FOUND.name(),
                         "route not found",
                         HttpResponseStatus.NOT_FOUND.code());
         final byte[] responseBodyBytes = errorResponse.toJson().getBytes(StandardCharsets.UTF_8);
@@ -454,15 +443,15 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                 HttpResponseStatus.NOT_FOUND.code(),
                 latencyMs(request.startTimeNanos()),
                 ROUTE_ID_ROUTE_NOT_FOUND,
-                "-",
-                "ROUTE_NOT_FOUND");
+                MetricsCommonConstants.NOT_AVAILABLE,
+                ErrorCode.ROUTE_NOT_FOUND.name());
         gatewayMetricsService.onInboundComplete(
                 ROUTE_ID_ROUTE_NOT_FOUND,
                 request.method().name(),
                 HttpResponseStatus.NOT_FOUND.code(),
                 latencyMs(request.startTimeNanos()),
                 false,
-                "ROUTE_NOT_FOUND",
+                ErrorCode.ROUTE_NOT_FOUND.name(),
                 requestBytes,
                 responseBodyBytes.length);
     }
@@ -475,8 +464,8 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                 new ErrorResponse(
                         OffsetDateTime.now(ZoneOffset.UTC).toString(),
                         request.traceId(),
-                        "GATEWAY_ERROR",
-                        ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW,
+                        ErrorCategory.GATEWAY_ERROR.name(),
+                        ErrorCode.UPSTREAM_BACKLOG_OVERFLOW.name(),
                         "upstream backlog overflow",
                         HttpResponseStatus.SERVICE_UNAVAILABLE.code());
         final byte[] responseBodyBytes = errorResponse.toJson().getBytes(StandardCharsets.UTF_8);
@@ -491,14 +480,14 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                 latencyMs(request.startTimeNanos()),
                 route.routeId(),
                 buildUpstreamAddress(route),
-                ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW);
+                ErrorCode.UPSTREAM_BACKLOG_OVERFLOW.name());
         gatewayMetricsService.onInboundComplete(
                 route.routeId(),
                 request.method().name(),
                 HttpResponseStatus.SERVICE_UNAVAILABLE.code(),
                 latencyMs(request.startTimeNanos()),
                 false,
-                ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW,
+                ErrorCode.UPSTREAM_BACKLOG_OVERFLOW.name(),
                 state.requestBytes(),
                 responseBodyBytes.length);
     }
@@ -685,7 +674,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
 
     private static void writeTraceId(final HttpHeaders headers, final String traceId) {
         if (traceId != null && !traceId.isBlank()) {
-            headers.set(TRACE_ID_HEADER, traceId);
+            headers.set(HttpHeaderConstants.TRACE_ID_HEADER, traceId);
         }
     }
 
@@ -710,7 +699,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                 latencyMs,
                 routeId,
                 upstream,
-                "-");
+                MetricsCommonConstants.NOT_AVAILABLE);
     }
 
     private static void logAccessFailure(
@@ -752,7 +741,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
     }
 
     private static String resolveTraceId(final HttpHeaders headers) {
-        final String existed = headers.get(TRACE_ID_HEADER);
+        final String existed = headers.get(HttpHeaderConstants.TRACE_ID_HEADER);
         if (existed != null && !existed.isBlank()) {
             return existed;
         }
@@ -968,7 +957,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                                             route.routeId(),
                                             latencyMs(connectStartTimeNanos),
                                             false,
-                                            "UPSTREAM_CONNECT_FAILED");
+                                            ErrorCode.UPSTREAM_CONNECT_FAILED.name());
                                     failAllPending(connectFuture.cause());
                                     return;
                                 }
@@ -976,7 +965,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                                         route.routeId(),
                                         latencyMs(connectStartTimeNanos),
                                         true,
-                                        "-");
+                                        MetricsCommonConstants.NOT_AVAILABLE);
                                 final Channel connectedChannel = connectFuture.channel();
                                 upstreamChannel = connectedChannel;
                                 connectedChannel
@@ -1052,7 +1041,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
             }
 
             if (!inboundContext.channel().isActive()) {
-                completeClientWriteFailure(exchange, ERROR_CODE_CLIENT_CHANNEL_INACTIVE);
+                completeClientWriteFailure(exchange, ErrorCode.CLIENT_CHANNEL_INACTIVE.name());
                 return;
             }
 
@@ -1062,7 +1051,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                             (ChannelFuture writeFuture) -> {
                                 if (!writeFuture.isSuccess()) {
                                     completeClientWriteFailure(
-                                            exchange, ERROR_CODE_CLIENT_WRITE_FAILED);
+                                            exchange, ErrorCode.CLIENT_WRITE_FAILED.name());
                                 }
                             });
         }
@@ -1085,7 +1074,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
             final HttpContent contentToClient = duplicateHttpContent(upstreamContent);
             if (!inboundContext.channel().isActive()) {
                 ReferenceCountUtil.safeRelease(contentToClient);
-                completeClientWriteFailure(exchange, ERROR_CODE_CLIENT_CHANNEL_INACTIVE);
+                completeClientWriteFailure(exchange, ErrorCode.CLIENT_CHANNEL_INACTIVE.name());
                 return;
             }
 
@@ -1097,7 +1086,8 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
             writeFuture.addListener(
                     (ChannelFuture future) -> {
                         if (!future.isSuccess()) {
-                            completeClientWriteFailure(exchange, ERROR_CODE_CLIENT_WRITE_FAILED);
+                            completeClientWriteFailure(
+                                    exchange, ErrorCode.CLIENT_WRITE_FAILED.name());
                             return;
                         }
                         if (last) {
@@ -1130,7 +1120,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
 
             if (!inboundContext.channel().isActive()) {
                 ReferenceCountUtil.safeRelease(responseToClient);
-                completeClientWriteFailure(exchange, ERROR_CODE_CLIENT_CHANNEL_INACTIVE);
+                completeClientWriteFailure(exchange, ErrorCode.CLIENT_CHANNEL_INACTIVE.name());
                 return;
             }
 
@@ -1141,7 +1131,8 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
             writeFuture.addListener(
                     (ChannelFuture future) -> {
                         if (!future.isSuccess()) {
-                            completeClientWriteFailure(exchange, ERROR_CODE_CLIENT_WRITE_FAILED);
+                            completeClientWriteFailure(
+                                    exchange, ErrorCode.CLIENT_WRITE_FAILED.name());
                             return;
                         }
                         completeSuccess(exchange);
@@ -1168,7 +1159,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                     exchange.upstreamStatus(),
                     latencyMs(exchange.upstreamStartTimeNanos()),
                     true,
-                    "-",
+                    MetricsCommonConstants.NOT_AVAILABLE,
                     exchange.requestBytes(),
                     exchange.responseBytes());
             gatewayMetricsService.onInboundComplete(
@@ -1177,7 +1168,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
                     exchange.upstreamStatus(),
                     latencyMs(exchange.request().startTimeNanos()),
                     true,
-                    "-",
+                    MetricsCommonConstants.NOT_AVAILABLE,
                     exchange.requestBytes(),
                     exchange.responseBytes());
 
@@ -1319,7 +1310,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<HttpObj
         }
 
         private void removeHopByHopHeaders(final HttpHeaders headers) {
-            for (CharSequence header : HOP_BY_HOP_HEADERS) {
+            for (CharSequence header : HttpHeaderConstants.HOP_BY_HOP_HEADERS) {
                 headers.remove(header);
             }
         }
