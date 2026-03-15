@@ -19,13 +19,17 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -88,7 +92,21 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
     private static final String CONTENT_TYPE_PROMETHEUS =
             "text/plain; version=0.0.4; charset=UTF-8";
     private static final byte[] HEALTH_BODY = "OK".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] NOT_FOUND_BODY = "Not Found".getBytes(StandardCharsets.UTF_8);
+    private static final String ROUTE_ID_LOCAL_METRICS = "local_metrics";
+    private static final String ROUTE_ID_LOCAL_HEALTH = "local_health";
+    private static final String ERROR_CODE_MANAGEMENT_ENDPOINT_FORBIDDEN =
+            "MANAGEMENT_ENDPOINT_FORBIDDEN";
+    private static final String ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW = "UPSTREAM_BACKLOG_OVERFLOW";
+    private static final List<CharSequence> HOP_BY_HOP_HEADERS =
+            List.of(
+                    HttpHeaderNames.CONNECTION,
+                    "Keep-Alive",
+                    HttpHeaderNames.TE,
+                    HttpHeaderNames.TRAILER,
+                    HttpHeaderNames.UPGRADE,
+                    "Proxy-Authenticate",
+                    "Proxy-Authorization",
+                    HttpHeaderNames.TRANSFER_ENCODING);
 
     private final int maxContentLength;
     private final List<RouteConfig> routes;
@@ -97,6 +115,10 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
     private final TimeoutPolicy timeoutPolicy;
     private final ErrorResponseMapper errorResponseMapper;
     private final GatewayMetricsService gatewayMetricsService;
+    private final boolean healthEndpointEnabled;
+    private final boolean metricsEndpointEnabled;
+    private final Set<String> managementAllowedClientIps;
+    private final int maxPendingPerRoute;
     private final Map<String, UpstreamRouteClient> upstreamClients;
 
     DefaultHttpServerHandler(final int maxContentLength, final List<RouteConfig> routes) {
@@ -107,7 +129,11 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
                 new DefaultHeaderPolicyService(),
                 new DefaultTimeoutPolicy(),
                 new DefaultErrorResponseMapper(),
-                new NoopGatewayMetricsService());
+                new NoopGatewayMetricsService(),
+                true,
+                true,
+                List.of("127.0.0.1", "::1", "0:0:0:0:0:0:0:1"),
+                1024);
     }
 
     DefaultHttpServerHandler(
@@ -117,7 +143,11 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
             final HeaderPolicyService headerPolicyService,
             final TimeoutPolicy timeoutPolicy,
             final ErrorResponseMapper errorResponseMapper,
-            final GatewayMetricsService gatewayMetricsService) {
+            final GatewayMetricsService gatewayMetricsService,
+            final boolean healthEndpointEnabled,
+            final boolean metricsEndpointEnabled,
+            final List<String> managementAllowedClientIps,
+            final int maxPendingPerRoute) {
         this.maxContentLength = maxContentLength;
         this.routes = List.copyOf(Objects.requireNonNull(routes, "routes must not be null"));
         this.routeService = Objects.requireNonNull(routeService, "routeService must not be null");
@@ -130,6 +160,11 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
         this.gatewayMetricsService =
                 Objects.requireNonNull(
                         gatewayMetricsService, "gatewayMetricsService must not be null");
+        this.healthEndpointEnabled = healthEndpointEnabled;
+        this.metricsEndpointEnabled = metricsEndpointEnabled;
+        this.managementAllowedClientIps =
+                normalizeManagementAllowedClientIps(managementAllowedClientIps);
+        this.maxPendingPerRoute = maxPendingPerRoute;
         this.upstreamClients = new HashMap<>();
     }
 
@@ -146,8 +181,20 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
         final String requestPath = decoder.path();
         final RequestDispatchTarget target = resolveDispatchTarget(requestPath);
         switch (target) {
-            case MetricsTarget ignored -> handleMetricsRequest(context, proxyRequest);
-            case HealthTarget ignored -> handleHealthRequest(context, proxyRequest);
+            case MetricsTarget ignored -> {
+                if (!isManagementClientAllowed(proxyRequest.clientIp())) {
+                    handleManagementForbiddenRequest(context, proxyRequest, ROUTE_ID_LOCAL_METRICS);
+                    return;
+                }
+                handleMetricsRequest(context, proxyRequest);
+            }
+            case HealthTarget ignored -> {
+                if (!isManagementClientAllowed(proxyRequest.clientIp())) {
+                    handleManagementForbiddenRequest(context, proxyRequest, ROUTE_ID_LOCAL_HEALTH);
+                    return;
+                }
+                handleHealthRequest(context, proxyRequest);
+            }
             case NotFoundTarget ignored -> handleNotFoundRequest(context, proxyRequest);
             case RoutedTarget routedTarget ->
                     forwardRequest(context, proxyRequest, routedTarget.route());
@@ -210,7 +257,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
                 proxyRequest.traceId(),
                 CONTENT_TYPE_PROMETHEUS);
         gatewayMetricsService.onInboundComplete(
-                "local_metrics",
+                ROUTE_ID_LOCAL_METRICS,
                 proxyRequest.method().name(),
                 HttpResponseStatus.OK.code(),
                 latencyMs(proxyRequest.startTimeNanos()),
@@ -235,10 +282,10 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
                 proxyRequest.method().name(),
                 HttpResponseStatus.OK.code(),
                 latencyMs(proxyRequest.startTimeNanos()),
-                "local_health",
+                ROUTE_ID_LOCAL_HEALTH,
                 "local://health");
         gatewayMetricsService.onInboundComplete(
-                "local_health",
+                ROUTE_ID_LOCAL_HEALTH,
                 proxyRequest.method().name(),
                 HttpResponseStatus.OK.code(),
                 latencyMs(proxyRequest.startTimeNanos()),
@@ -248,15 +295,52 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
                 HEALTH_BODY.length);
     }
 
+    private void handleManagementForbiddenRequest(
+            final ChannelHandlerContext context,
+            final ProxyRequest proxyRequest,
+            final String routeId) {
+        final ErrorResponse errorResponse =
+                new ErrorResponse(
+                        OffsetDateTime.now(ZoneOffset.UTC).toString(),
+                        proxyRequest.traceId(),
+                        "GATEWAY_ERROR",
+                        ERROR_CODE_MANAGEMENT_ENDPOINT_FORBIDDEN,
+                        "management endpoint forbidden",
+                        HttpResponseStatus.FORBIDDEN.code());
+        final byte[] responseBodyBytes = errorResponse.toJson().getBytes(StandardCharsets.UTF_8);
+        writeErrorResponse(context, proxyRequest.keepAlive(), errorResponse);
+        logAccessFailure(
+                proxyRequest.traceId(),
+                proxyRequest.uri(),
+                proxyRequest.method().name(),
+                HttpResponseStatus.FORBIDDEN.code(),
+                latencyMs(proxyRequest.startTimeNanos()),
+                routeId,
+                "local://management",
+                ERROR_CODE_MANAGEMENT_ENDPOINT_FORBIDDEN);
+        gatewayMetricsService.onInboundComplete(
+                routeId,
+                proxyRequest.method().name(),
+                HttpResponseStatus.FORBIDDEN.code(),
+                latencyMs(proxyRequest.startTimeNanos()),
+                false,
+                ERROR_CODE_MANAGEMENT_ENDPOINT_FORBIDDEN,
+                proxyRequest.body().length,
+                responseBodyBytes.length);
+    }
+
     private void handleNotFoundRequest(
             final ChannelHandlerContext context, final ProxyRequest proxyRequest) {
-        writePlainTextResponse(
-                context,
-                proxyRequest.keepAlive(),
-                HttpResponseStatus.NOT_FOUND,
-                NOT_FOUND_BODY,
-                proxyRequest.traceId(),
-                CONTENT_TYPE_TEXT);
+        final ErrorResponse errorResponse =
+                new ErrorResponse(
+                        OffsetDateTime.now(ZoneOffset.UTC).toString(),
+                        proxyRequest.traceId(),
+                        "GATEWAY_ERROR",
+                        "ROUTE_NOT_FOUND",
+                        "route not found",
+                        HttpResponseStatus.NOT_FOUND.code());
+        final byte[] responseBodyBytes = errorResponse.toJson().getBytes(StandardCharsets.UTF_8);
+        writeErrorResponse(context, proxyRequest.keepAlive(), errorResponse);
         logAccessFailure(
                 proxyRequest.traceId(),
                 proxyRequest.uri(),
@@ -274,18 +358,35 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
                 false,
                 "ROUTE_NOT_FOUND",
                 proxyRequest.body().length,
-                NOT_FOUND_BODY.length);
+                responseBodyBytes.length);
     }
 
     private RequestDispatchTarget resolveDispatchTarget(final String requestPath) {
-        if (METRICS_PATH.equals(requestPath)) {
+        if (metricsEndpointEnabled && METRICS_PATH.equals(requestPath)) {
             return new MetricsTarget();
         }
-        if (HEALTH_PATH.equals(requestPath)) {
+        if (healthEndpointEnabled && HEALTH_PATH.equals(requestPath)) {
             return new HealthTarget();
         }
         final Optional<RouteConfig> route = routeService.select(requestPath, routes);
         return route.<RequestDispatchTarget>map(RoutedTarget::new).orElseGet(NotFoundTarget::new);
+    }
+
+    private static Set<String> normalizeManagementAllowedClientIps(final List<String> clientIps) {
+        final List<String> nonNullClientIps =
+                Objects.requireNonNull(clientIps, "managementAllowedClientIps must not be null");
+        final Set<String> normalized = new HashSet<>();
+        for (String clientIp : nonNullClientIps) {
+            if (clientIp != null && !clientIp.isBlank()) {
+                normalized.add(clientIp.trim());
+            }
+        }
+        return Set.copyOf(normalized);
+    }
+
+    private boolean isManagementClientAllowed(final String clientIp) {
+        return managementAllowedClientIps.contains("*")
+                || managementAllowedClientIps.contains(clientIp);
     }
 
     private FullHttpRequest buildOutboundRequest(
@@ -557,10 +658,52 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
         }
 
         private void submit(final ProxyRequest request) {
+            if (pendingRequestCount() >= maxPendingPerRoute) {
+                rejectForBacklogOverflow(request);
+                return;
+            }
             final FullHttpRequest outboundRequest = buildOutboundRequest(request, route);
             gatewayMetricsService.onUpstreamStart();
             backlog.addLast(new PendingExchange(request, outboundRequest, System.nanoTime()));
             drain();
+        }
+
+        private int pendingRequestCount() {
+            return backlog.size() + (inFlight == null ? 0 : 1);
+        }
+
+        private void rejectForBacklogOverflow(final ProxyRequest request) {
+            final ErrorResponse errorResponse =
+                    new ErrorResponse(
+                            OffsetDateTime.now(ZoneOffset.UTC).toString(),
+                            request.traceId(),
+                            "GATEWAY_ERROR",
+                            ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW,
+                            "upstream backlog overflow",
+                            HttpResponseStatus.SERVICE_UNAVAILABLE.code());
+            final byte[] responseBodyBytes =
+                    errorResponse.toJson().getBytes(StandardCharsets.UTF_8);
+            if (inboundContext.channel().isActive()) {
+                writeErrorResponse(inboundContext, request.keepAlive(), errorResponse);
+            }
+            logAccessFailure(
+                    request.traceId(),
+                    request.uri(),
+                    request.method().name(),
+                    HttpResponseStatus.SERVICE_UNAVAILABLE.code(),
+                    latencyMs(request.startTimeNanos()),
+                    route.routeId(),
+                    upstreamAddress,
+                    ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW);
+            gatewayMetricsService.onInboundComplete(
+                    route.routeId(),
+                    request.method().name(),
+                    HttpResponseStatus.SERVICE_UNAVAILABLE.code(),
+                    latencyMs(request.startTimeNanos()),
+                    false,
+                    ERROR_CODE_UPSTREAM_BACKLOG_OVERFLOW,
+                    request.body().length,
+                    responseBodyBytes.length);
         }
 
         private void drain() {
@@ -709,7 +852,7 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
                             upstreamResponse.status(),
                             upstreamResponse.content().copy());
             responseToClient.headers().set(upstreamResponse.headers());
-            responseToClient.headers().remove(HttpHeaderNames.TRANSFER_ENCODING);
+            removeHopByHopHeaders(responseToClient.headers());
             HttpUtil.setContentLength(responseToClient, responseToClient.content().readableBytes());
             writeTraceId(responseToClient.headers(), request.traceId());
 
@@ -721,6 +864,23 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
 
             if (!inboundContext.channel().isActive()) {
                 ReferenceCountUtil.safeRelease(responseToClient);
+                gatewayMetricsService.onUpstreamComplete(
+                        route.routeId(),
+                        HttpResponseStatus.BAD_GATEWAY.code(),
+                        upstreamLatencyMs,
+                        false,
+                        "CLIENT_CHANNEL_INACTIVE",
+                        request.body().length,
+                        upstreamResponse.content().readableBytes());
+                gatewayMetricsService.onInboundComplete(
+                        route.routeId(),
+                        request.method().name(),
+                        HttpResponseStatus.BAD_GATEWAY.code(),
+                        latencyMs(request.startTimeNanos()),
+                        false,
+                        "CLIENT_CHANNEL_INACTIVE",
+                        request.body().length,
+                        upstreamResponse.content().readableBytes());
                 closeChannel();
                 return;
             }
@@ -767,6 +927,14 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
                                     route.routeId(),
                                     upstreamAddress,
                                     "CLIENT_WRITE_FAILED");
+                            gatewayMetricsService.onUpstreamComplete(
+                                    route.routeId(),
+                                    HttpResponseStatus.BAD_GATEWAY.code(),
+                                    upstreamLatencyMs,
+                                    false,
+                                    "CLIENT_WRITE_FAILED",
+                                    request.body().length,
+                                    responseToClient.content().readableBytes());
                             gatewayMetricsService.onInboundComplete(
                                     route.routeId(),
                                     request.method().name(),
@@ -809,6 +977,12 @@ final class DefaultHttpServerHandler extends SimpleChannelInboundHandler<FullHtt
             if (upstreamChannel != null) {
                 upstreamChannel.close();
                 upstreamChannel = null;
+            }
+        }
+
+        private static void removeHopByHopHeaders(final HttpHeaders headers) {
+            for (CharSequence header : HOP_BY_HOP_HEADERS) {
+                headers.remove(header);
             }
         }
 

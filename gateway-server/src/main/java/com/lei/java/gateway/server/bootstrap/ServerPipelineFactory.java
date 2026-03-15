@@ -86,6 +86,10 @@ final class ServerPipelineFactory {
                         headerPolicyService,
                         timeoutPolicy,
                         errorResponseMapper,
-                        gatewayMetricsService));
+                        gatewayMetricsService,
+                        config.healthEndpointEnabled(),
+                        config.metricsEndpointEnabled(),
+                        config.managementAllowedClientIps(),
+                        config.maxPendingPerRoute()));
     }
 }

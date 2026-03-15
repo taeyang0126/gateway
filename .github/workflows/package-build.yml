@@ -27,6 +27,40 @@ jobs:
       - name: Package
         run: ./mvnw -B -ntp -pl gateway-server -am -DskipTests package
 
+      - name: Smoke Run Fat Jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar_path="$(ls -1 gateway-server/target/gateway-server-*.jar | head -n 1)"
+          java -Xms256m -Xmx256m -jar "${jar_path}" > gateway-server-smoke.log 2>&1 &
+          pid="$!"
+          cleanup() {
+            kill "${pid}" >/dev/null 2>&1 || true
+            wait "${pid}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          health_code="000"
+          for _ in {1..60}; do
+            health_code="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/health || true)"
+            if [[ "${health_code}" == "200" ]]; then
+              break
+            fi
+            sleep 1
+          done
+          if [[ "${health_code}" != "200" ]]; then
+            echo "[ERROR] health endpoint not ready, code=${health_code}"
+            tail -n 200 gateway-server-smoke.log || true
+            exit 1
+          fi
+
+          metrics_code="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/metrics/prometheus || true)"
+          if [[ "${metrics_code}" != "200" ]]; then
+            echo "[ERROR] metrics endpoint check failed, code=${metrics_code}"
+            tail -n 200 gateway-server-smoke.log || true
+            exit 1
+          fi
+
       - name: Upload Gateway Artifact
         uses: actions/upload-artifact@v6
         with:

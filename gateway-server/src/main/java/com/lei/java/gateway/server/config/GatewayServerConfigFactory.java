@@ -30,7 +30,11 @@ public final class GatewayServerConfigFactory {
                 nonNullProperties.getPort(),
                 nonNullProperties.getMaxContentLength(),
                 nonNullProperties.isPooledAllocatorEnabled(),
-                routes);
+                routes,
+                nonNullProperties.isHealthEndpointEnabled(),
+                nonNullProperties.isMetricsEndpointEnabled(),
+                nonNullProperties.getManagementAllowedClientIps(),
+                nonNullProperties.getMaxPendingPerRoute());
     }
 
     private RouteConfig toRouteConfig(
@@ -42,7 +46,8 @@ public final class GatewayServerConfigFactory {
                         nonNullRoute.getUpstream(), "route upstream must not be null");
         final UpstreamConfig upstreamConfig =
                 new UpstreamConfig(
-                        requiredText(upstreamProperties.getScheme(), "upstream.scheme"),
+                        normalizeAndValidateScheme(
+                                requiredText(upstreamProperties.getScheme(), "upstream.scheme")),
                         requiredText(upstreamProperties.getHost(), "upstream.host"),
                         upstreamProperties.getPort(),
                         upstreamProperties.getConnectTimeoutMs(),
@@ -65,5 +70,14 @@ public final class GatewayServerConfigFactory {
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
         return value.trim();
+    }
+
+    private static String normalizeAndValidateScheme(final String scheme) {
+        final String normalized = scheme.toLowerCase(java.util.Locale.ROOT);
+        if (!"http".equals(normalized)) {
+            throw new IllegalArgumentException(
+                    "upstream.scheme only supports http in stage1, actual=" + scheme);
+        }
+        return normalized;
     }
 }

@@ -4,7 +4,7 @@
 - 阶段：1
 - 责任人：lei
 - 计划完成时间：2026-03-14
-- 实际完成时间：2026-03-14
+- 实际完成时间：2026-03-15
 - GateStatus：`PASS`
 
 ## 2. 通过条件
@@ -15,11 +15,11 @@
 - [x] 追踪矩阵与设计文档已同步。
 
 ## 3. 阻断项
-- `-Pquality verify` 在 JDK24 下受 PMD 工具链兼容性影响（`Unsupported class file major version 68`），待工具链策略收敛。
+- 无（2026-03-15 已完成 `run-quality.sh`、`verify-stage --strict` 与阶段 1 回归测试）。
 
 ## 4. 证据链接
 - 追踪矩阵：`docs/requirements/traceability/阶段1-需求追踪矩阵.tsv`
-- 测试报告：`./mvnw -pl gateway-server -am test`
+- 测试报告：`./mvnw -pl gateway-server -am verify`
 - 测试摘要落盘：`reports/tests/stage1-unit-tests-summary.txt`
 - 压测报告（Gatling）：`docs/requirements/evidence/stage1/T1-206-压测与稳定性报告.md`
 - 压测脚本：`scripts/perf/stage1/run-stage1-ac4.sh`
@@ -28,4 +28,4 @@
 
 ## 5. Gate 结论
 - 结论：`PASS`
-- 备注：阶段 1 已满足串行推进条件，可进入下一阶段设计/开发。
+- 备注：阶段 1 已完成文档/实现/测试与可视化看板同步，可进入下一阶段设计/开发。

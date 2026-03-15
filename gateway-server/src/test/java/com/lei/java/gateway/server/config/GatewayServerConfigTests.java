@@ -16,7 +16,11 @@
 package com.lei.java.gateway.server.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -29,6 +33,19 @@ class GatewayServerConfigTests {
         assertEquals(8080, config.port());
         assertEquals(1024 * 1024, config.maxContentLength());
         assertTrue(config.pooledAllocatorEnabled());
+        assertTrue(config.healthEndpointEnabled());
+        assertTrue(config.metricsEndpointEnabled());
+        assertFalse(config.managementAllowedClientIps().isEmpty());
+        assertTrue(config.maxPendingPerRoute() > 0);
         assertTrue(config.routes().isEmpty());
+    }
+
+    @Test
+    void shouldRejectWhenMaxPendingPerRouteIsNonPositive() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new GatewayServerConfig(
+                                8080, 1024 * 1024, true, List.of(), true, true, List.of("*"), 0));
     }
 }

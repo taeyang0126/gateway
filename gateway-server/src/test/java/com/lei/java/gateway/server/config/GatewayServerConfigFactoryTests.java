@@ -18,6 +18,7 @@ package com.lei.java.gateway.server.config;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 
@@ -31,6 +32,10 @@ class GatewayServerConfigFactoryTests {
         properties.setPort(18080);
         properties.setMaxContentLength(2048);
         properties.setPooledAllocatorEnabled(false);
+        properties.setHealthEndpointEnabled(true);
+        properties.setMetricsEndpointEnabled(true);
+        properties.setManagementAllowedClientIps(List.of("127.0.0.1", "::1"));
+        properties.setMaxPendingPerRoute(16);
 
         final GatewayServerProperties.RouteProperties route =
                 new GatewayServerProperties.RouteProperties();
@@ -62,6 +67,10 @@ class GatewayServerConfigFactoryTests {
         assertEquals("route-1", config.routes().get(0).routeId());
         assertEquals("/api/ping", config.routes().get(0).path());
         assertEquals(9002, config.routes().get(0).upstream().port());
+        assertTrue(config.healthEndpointEnabled());
+        assertTrue(config.metricsEndpointEnabled());
+        assertEquals(List.of("127.0.0.1", "::1"), config.managementAllowedClientIps());
+        assertEquals(16, config.maxPendingPerRoute());
     }
 
     @Test
@@ -70,6 +79,23 @@ class GatewayServerConfigFactoryTests {
         final GatewayServerProperties.RouteProperties route =
                 new GatewayServerProperties.RouteProperties();
         route.setRouteId(" ");
+        properties.setRoutes(List.of(route));
+
+        final GatewayServerConfigFactory factory = new GatewayServerConfigFactory();
+        assertThrows(IllegalArgumentException.class, () -> factory.create(properties));
+    }
+
+    @Test
+    void shouldThrowWhenUpstreamSchemeIsNotHttp() {
+        final GatewayServerProperties properties = new GatewayServerProperties();
+        final GatewayServerProperties.RouteProperties route =
+                new GatewayServerProperties.RouteProperties();
+        route.setRouteId("route-https");
+        route.setPath("/api/");
+        final GatewayServerProperties.UpstreamProperties upstream =
+                new GatewayServerProperties.UpstreamProperties();
+        upstream.setScheme("https");
+        route.setUpstream(upstream);
         properties.setRoutes(List.of(route));
 
         final GatewayServerConfigFactory factory = new GatewayServerConfigFactory();

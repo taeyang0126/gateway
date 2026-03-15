@@ -16,6 +16,7 @@
 package com.lei.java.gateway.server.bootstrap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -36,7 +37,54 @@ import com.lei.java.gateway.server.config.RouteConfig;
 import com.lei.java.gateway.server.config.UpstreamConfig;
 import com.sun.net.httpserver.HttpServer;
 
-class RequestForwardingTests {
+class HttpProxyIT {
+
+    @Test
+    void shouldReturn200WhenGetApiPing() throws Exception {
+        final AtomicReference<String> methodRef = new AtomicReference<>();
+        final AtomicReference<String> pathRef = new AtomicReference<>();
+        final AtomicReference<String> queryRef = new AtomicReference<>();
+        final AtomicReference<String> bodyRef = new AtomicReference<>();
+
+        final HttpServer upstreamServer =
+                startUpstreamServer(methodRef, pathRef, queryRef, bodyRef);
+        final GatewayBootstrap gatewayBootstrap = new GatewayBootstrap();
+        try {
+            final int upstreamPort = upstreamServer.getAddress().getPort();
+            final RouteConfig route =
+                    new RouteConfig(
+                            "route-api",
+                            100,
+                            MatchType.PREFIX,
+                            "/api/",
+                            HostRewriteMode.REWRITE,
+                            new UpstreamConfig(
+                                    "http", "127.0.0.1", upstreamPort, 1000, 1000, 1000));
+            gatewayBootstrap.start(new GatewayServerConfig(0, 1024 * 1024, true, List.of(route)));
+
+            final HttpClient client = HttpClient.newHttpClient();
+            final HttpRequest request =
+                    HttpRequest.newBuilder(
+                                    URI.create(
+                                            "http://127.0.0.1:"
+                                                    + gatewayBootstrap.boundPort()
+                                                    + "/api/ping"))
+                            .GET()
+                            .build();
+            final HttpResponse<String> response =
+                    client.send(
+                            request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+            assertEquals(200, response.statusCode());
+            assertEquals("upstream-ping", response.body());
+            assertEquals("GET", methodRef.get());
+            assertEquals("/api/ping", pathRef.get());
+            assertNull(queryRef.get());
+        } finally {
+            gatewayBootstrap.stop();
+            upstreamServer.stop(0);
+        }
+    }
 
     @Test
     void shouldForwardMethodPathQueryAndBodyToUpstream() throws Exception {
@@ -108,9 +156,17 @@ class RequestForwardingTests {
                             new String(
                                     exchange.getRequestBody().readAllBytes(),
                                     StandardCharsets.UTF_8));
-                    final byte[] response = "upstream-ok".getBytes(StandardCharsets.UTF_8);
+                    final byte[] response;
+                    final int statusCode;
+                    if ("/api/ping".equals(exchange.getRequestURI().getPath())) {
+                        response = "upstream-ping".getBytes(StandardCharsets.UTF_8);
+                        statusCode = 200;
+                    } else {
+                        response = "upstream-ok".getBytes(StandardCharsets.UTF_8);
+                        statusCode = 201;
+                    }
                     exchange.getResponseHeaders().add("X-Upstream-Result", "ok");
-                    exchange.sendResponseHeaders(201, response.length);
+                    exchange.sendResponseHeaders(statusCode, response.length);
                     exchange.getResponseBody().write(response);
                     exchange.close();
                 });

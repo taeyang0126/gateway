@@ -37,7 +37,7 @@ import com.lei.java.gateway.server.routing.StaticRouteService;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 
-class PrometheusEndpointTests {
+class PrometheusEndpointIT {
 
     @Test
     void shouldExposePrometheusMetricsWhenRequestMetricsPath() throws Exception {
@@ -82,6 +82,57 @@ class PrometheusEndpointTests {
             assertTrue(metricsResponse.body().contains("gateway_http_request_duration_seconds"));
             assertTrue(metricsResponse.body().contains("gateway_http_inflight_requests"));
             assertTrue(metricsResponse.body().contains("route_id=\"local_health\""));
+        } finally {
+            bootstrap.stop();
+            meterRegistry.close();
+        }
+    }
+
+    @Test
+    void shouldReturn403WhenClientIpNotInManagementAllowList() throws Exception {
+        final PrometheusMeterRegistry meterRegistry =
+                new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        final GatewayBootstrap bootstrap =
+                new GatewayBootstrap(
+                        new StaticRouteService(),
+                        new DefaultHeaderPolicyService(),
+                        new DefaultTimeoutPolicy(),
+                        new DefaultErrorResponseMapper(),
+                        new PrometheusGatewayMetricsService(meterRegistry));
+        bootstrap.start(
+                new GatewayServerConfig(
+                        0, 1024 * 1024, true, List.of(), true, true, List.of("10.0.0.1"), 1024));
+
+        try {
+            final HttpClient client = HttpClient.newHttpClient();
+            final HttpResponse<String> healthResponse =
+                    client.send(
+                            HttpRequest.newBuilder(
+                                            URI.create(
+                                                    "http://127.0.0.1:"
+                                                            + bootstrap.boundPort()
+                                                            + "/health"))
+                                    .GET()
+                                    .build(),
+                            HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            assertEquals(403, healthResponse.statusCode());
+            assertTrue(
+                    healthResponse.body().contains("\"code\":\"MANAGEMENT_ENDPOINT_FORBIDDEN\""));
+
+            final HttpResponse<String> metricsResponse =
+                    client.send(
+                            HttpRequest.newBuilder(
+                                            URI.create(
+                                                    "http://127.0.0.1:"
+                                                            + bootstrap.boundPort()
+                                                            + "/metrics/prometheus"))
+                                    .GET()
+                                    .build(),
+                            HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+            assertEquals(403, metricsResponse.statusCode());
+            assertTrue(
+                    metricsResponse.body().contains("\"code\":\"MANAGEMENT_ENDPOINT_FORBIDDEN\""));
         } finally {
             bootstrap.stop();
             meterRegistry.close();

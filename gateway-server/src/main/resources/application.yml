@@ -6,6 +6,12 @@ gateway:
   port: 8080
   max-content-length: 1048576
   pooled-allocator-enabled: true
+  health-endpoint-enabled: true
+  metrics-endpoint-enabled: true
+  management-allowed-client-ips:
+    - 127.0.0.1
+    - ::1
+  max-pending-per-route: 1024
   routes:
     - route-id: route-main
       priority: 100

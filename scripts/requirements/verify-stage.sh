@@ -9,6 +9,12 @@ is_placeholder_or_empty() {
   [[ -z "${trimmed}" || "${trimmed}" == "待补充" ]]
 }
 
+path_token_exists() {
+  local token="$1"
+  local normalized="${token#./}"
+  [[ -e "${normalized}" ]]
+}
+
 usage() {
   cat <<'EOF'
 用法:
@@ -111,12 +117,32 @@ if [[ "$strict" == "true" ]]; then
 
     if is_placeholder_or_empty "${code}"; then
       row_errors+=("代码位置为空/待补充")
+    else
+      IFS=';' read -r -a code_tokens <<< "${code}"
+      for token in "${code_tokens[@]}"; do
+        trimmed_token="$(echo "${token}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        [[ -z "${trimmed_token}" ]] && continue
+        if ! path_token_exists "${trimmed_token}"; then
+          row_errors+=("代码位置不存在(${trimmed_token})")
+          break
+        fi
+      done
     fi
     if is_placeholder_or_empty "${test}"; then
       row_errors+=("测试用例为空/待补充")
     fi
     if is_placeholder_or_empty "${evidence}"; then
       row_errors+=("证据为空/待补充")
+    else
+      IFS=';' read -r -a evidence_tokens <<< "${evidence}"
+      for token in "${evidence_tokens[@]}"; do
+        trimmed_token="$(echo "${token}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        [[ -z "${trimmed_token}" ]] && continue
+        if ! path_token_exists "${trimmed_token}"; then
+          row_errors+=("证据不存在(${trimmed_token})")
+          break
+        fi
+      done
     fi
 
     if [[ ${#row_errors[@]} -gt 0 ]]; then

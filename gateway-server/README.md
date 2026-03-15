@@ -49,6 +49,13 @@ java -jar gateway-server/target/gateway-server-2.0.0-SNAPSHOT.jar \
 - 配置入口：
   - 默认配置：`gateway-server/src/main/resources/application.yml`
   - 支持外置文件覆盖 `gateway.*`（含 routes/upstream/timeout）。
+  - 阶段 1 约束：`upstream.scheme` 仅支持 `http`，配置 `https` 会在启动阶段直接失败。
+- 管理端点安全：
+  - 默认白名单仅允许本机访问（`127.0.0.1` / `::1`）。
+  - 可通过 `gateway.management-allowed-client-ips` 配置放行来源 IP（支持 `*` 放开全部，不建议生产使用）。
+  - 可通过 `gateway.health-endpoint-enabled` / `gateway.metrics-endpoint-enabled` 开关管理端点。
+- 转发保护：
+  - `gateway.max-pending-per-route` 控制单路由待转发请求上限，溢出返回 `503 UPSTREAM_BACKLOG_OVERFLOW`。
 - 可观测性入口：
   - 健康检查：`GET /health`
   - Prometheus 指标：`GET /metrics/prometheus`
@@ -74,6 +81,13 @@ GATLING_HOME=/tmp/gatling-dist/gatling-charts-highcharts-bundle-3.15.0 \
   --output-dir reports/stage1/ac4-final
 ```
 - 网关压测启动 JVM 默认参数：`-Xms2g -Xmx2g`（可用 `GATEWAY_JVM_XMS`/`GATEWAY_JVM_XMX` 覆盖）。
+
+## 6. 试运行上线检查清单
+- 网络边界：禁止公网直接暴露管理端点，至少在入口层限制来源 IP。
+- 配置审计：确认 `upstream.scheme=http`，避免误配置导致启动失败。
+- 容量保护：根据上游能力设置 `max-pending-per-route`，避免堆积放大。
+- 可观测性：确保 `/metrics/prometheus` 可被监控系统采集且非公开暴露。
+- 冒烟验证：发布前验证 fat-jar 启动后 `/health` 与 `/metrics/prometheus` 均可访问。
 
 ## 5. 压测证据位置
 - `reports/stage1/ac4-final/runtime-metrics.csv`

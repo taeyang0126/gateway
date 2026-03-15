@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 
 import com.lei.java.gateway.server.config.GatewayServerConfig;
 
-class HealthEndpointTests {
+class HealthEndpointIT {
 
     @Test
     void shouldReturnOkWhenRequestHealth() throws Exception {

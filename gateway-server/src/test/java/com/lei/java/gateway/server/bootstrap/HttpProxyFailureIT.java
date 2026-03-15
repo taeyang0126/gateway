@@ -26,6 +26,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 import org.junit.jupiter.api.Test;
 
@@ -36,7 +38,7 @@ import com.lei.java.gateway.server.config.RouteConfig;
 import com.lei.java.gateway.server.config.UpstreamConfig;
 import com.sun.net.httpserver.HttpServer;
 
-class HttpProxyFailureTests {
+class HttpProxyFailureIT {
 
     @Test
     void shouldReturn502WhenUpstreamUnavailable() throws Exception {
@@ -84,6 +86,46 @@ class HttpProxyFailureTests {
         }
     }
 
+    @Test
+    void shouldPassThroughUpstream5xxResponse() throws Exception {
+        final HttpServer upstreamServer = startFixedStatusServer(503, "upstream-unavailable");
+        final GatewayBootstrap gatewayBootstrap = new GatewayBootstrap();
+        try {
+            final int upstreamPort = upstreamServer.getAddress().getPort();
+            final RouteConfig route =
+                    buildRoute(
+                            new UpstreamConfig(
+                                    "http", "127.0.0.1", upstreamPort, 1000, 1000, 1000));
+            gatewayBootstrap.start(new GatewayServerConfig(0, 1024 * 1024, true, List.of(route)));
+
+            final HttpResponse<String> response =
+                    sendGet(gatewayBootstrap.boundPort(), "/api/upstream-503");
+            assertEquals(503, response.statusCode());
+            assertEquals("upstream-unavailable", response.body());
+        } finally {
+            gatewayBootstrap.stop();
+            upstreamServer.stop(0);
+        }
+    }
+
+    @Test
+    void shouldReturnUnified404WhenRouteNotMatched() throws Exception {
+        final int unreachablePort = findUnusedPort();
+        final GatewayBootstrap gatewayBootstrap = new GatewayBootstrap();
+        final RouteConfig route =
+                buildRoute(new UpstreamConfig("http", "127.0.0.1", unreachablePort, 500, 500, 500));
+        gatewayBootstrap.start(new GatewayServerConfig(0, 1024 * 1024, true, List.of(route)));
+        try {
+            final HttpResponse<String> response = sendGet(gatewayBootstrap.boundPort(), "/unknown");
+            assertEquals(404, response.statusCode());
+            assertTrue(response.body().contains("\"category\":\"GATEWAY_ERROR\""));
+            assertTrue(response.body().contains("\"code\":\"ROUTE_NOT_FOUND\""));
+            assertTrue(response.body().contains("\"traceId\":\""));
+        } finally {
+            gatewayBootstrap.stop();
+        }
+    }
+
     private static RouteConfig buildRoute(final UpstreamConfig upstreamConfig) {
         return new RouteConfig(
                 "route-failure",
@@ -110,12 +152,23 @@ class HttpProxyFailureTests {
         server.createContext(
                 "/",
                 exchange -> {
-                    try {
-                        Thread.sleep(delayMs);
-                    } catch (InterruptedException exception) {
-                        Thread.currentThread().interrupt();
-                    }
+                    LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(delayMs));
                     final byte[] response = "slow-upstream".getBytes(StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(statusCode, response.length);
+                    exchange.getResponseBody().write(response);
+                    exchange.close();
+                });
+        server.start();
+        return server;
+    }
+
+    private static HttpServer startFixedStatusServer(final int statusCode, final String bodyText)
+            throws IOException {
+        final HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext(
+                "/",
+                exchange -> {
+                    final byte[] response = bodyText.getBytes(StandardCharsets.UTF_8);
                     exchange.sendResponseHeaders(statusCode, response.length);
                     exchange.getResponseBody().write(response);
                     exchange.close();

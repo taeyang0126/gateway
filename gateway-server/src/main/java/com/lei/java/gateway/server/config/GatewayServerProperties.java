@@ -28,6 +28,11 @@ public final class GatewayServerProperties {
     private int port = GatewayServerConfig.DEFAULT_PORT;
     private int maxContentLength = GatewayServerConfig.DEFAULT_MAX_CONTENT_LENGTH;
     private boolean pooledAllocatorEnabled = true;
+    private boolean healthEndpointEnabled = true;
+    private boolean metricsEndpointEnabled = true;
+    private int maxPendingPerRoute = GatewayServerConfig.DEFAULT_MAX_PENDING_PER_ROUTE;
+    private List<String> managementAllowedClientIps =
+            new ArrayList<>(GatewayServerConfig.DEFAULT_MANAGEMENT_ALLOWED_CLIENT_IPS);
     private List<RouteProperties> routes = new ArrayList<>();
 
     public int getPort() {
@@ -52,6 +57,42 @@ public final class GatewayServerProperties {
 
     public void setPooledAllocatorEnabled(final boolean pooledAllocatorEnabled) {
         this.pooledAllocatorEnabled = pooledAllocatorEnabled;
+    }
+
+    public boolean isHealthEndpointEnabled() {
+        return healthEndpointEnabled;
+    }
+
+    public void setHealthEndpointEnabled(final boolean healthEndpointEnabled) {
+        this.healthEndpointEnabled = healthEndpointEnabled;
+    }
+
+    public boolean isMetricsEndpointEnabled() {
+        return metricsEndpointEnabled;
+    }
+
+    public void setMetricsEndpointEnabled(final boolean metricsEndpointEnabled) {
+        this.metricsEndpointEnabled = metricsEndpointEnabled;
+    }
+
+    public int getMaxPendingPerRoute() {
+        return maxPendingPerRoute;
+    }
+
+    public void setMaxPendingPerRoute(final int maxPendingPerRoute) {
+        this.maxPendingPerRoute = maxPendingPerRoute;
+    }
+
+    public List<String> getManagementAllowedClientIps() {
+        return List.copyOf(managementAllowedClientIps);
+    }
+
+    public void setManagementAllowedClientIps(final List<String> managementAllowedClientIps) {
+        if (managementAllowedClientIps == null) {
+            this.managementAllowedClientIps = new ArrayList<>();
+            return;
+        }
+        this.managementAllowedClientIps = new ArrayList<>(managementAllowedClientIps);
     }
 
     public List<RouteProperties> getRoutes() {

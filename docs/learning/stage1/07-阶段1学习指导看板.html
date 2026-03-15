@@ -1,0 +1,1375 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>阶段1学习指导看板</title>
+  <style>
+    :root {
+      --bg: #eef5f4;
+      --panel: #ffffff;
+      --ink: #13242a;
+      --subtle: #4d636b;
+      --line: #c8d7d3;
+      --primary: #0f766e;
+      --primary-2: #155e75;
+      --accent: #b45309;
+      --ok: #15803d;
+      --warn: #b45309;
+      --shadow: 0 12px 26px rgba(19, 36, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      line-height: 1.45;
+      background:
+        radial-gradient(circle at 8% 2%, #def7ec 0, transparent 32%),
+        radial-gradient(circle at 92% 0%, #dbeafe 0, transparent 34%),
+        var(--bg);
+    }
+
+    .container {
+      width: min(1220px, 92vw);
+      margin: 26px auto 56px;
+    }
+
+    .hero {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: linear-gradient(135deg, #fdfffe 0%, #f8fbff 100%);
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.55rem, 2.7vw, 2.3rem);
+      letter-spacing: 0.2px;
+    }
+
+    .hero p {
+      margin: 10px 0 0;
+      color: var(--subtle);
+    }
+
+    .quick-nav {
+      margin-top: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .nav-btn {
+      border: 1px solid #9ac4de;
+      border-radius: 999px;
+      background: #ebf6ff;
+      color: #124468;
+      font-size: 0.81rem;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+
+    .nav-btn:hover {
+      background: #ddf0ff;
+    }
+
+    .kpis {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .kpi {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      padding: 11px 13px;
+    }
+
+    .kpi .label {
+      font-size: 0.81rem;
+      color: var(--subtle);
+    }
+
+    .kpi .value {
+      margin-top: 6px;
+      font-size: 1.2rem;
+      font-weight: 650;
+      color: var(--primary-2);
+    }
+
+    section {
+      margin-top: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    section h2 {
+      margin: 0 0 10px;
+      font-size: 1.12rem;
+      color: #113740;
+    }
+
+    .hint {
+      color: var(--subtle);
+      font-size: 0.84rem;
+      margin: 0;
+    }
+
+    .mermaid-wrap {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfffd;
+      padding: 10px;
+      overflow: auto;
+      margin-top: 10px;
+    }
+
+    .diagram-tools {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .source-details {
+      margin-top: 8px;
+      border: 1px dashed #d7c8ae;
+      border-radius: 10px;
+      background: #fff9ef;
+      padding: 6px 10px;
+    }
+
+    .source-details > summary {
+      cursor: pointer;
+      color: #6a4318;
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
+
+    .mermaid-source {
+      margin-top: 8px;
+      border: 1px solid #ead9bf;
+      border-radius: 8px;
+      background: #fffdf8;
+      padding: 8px 10px;
+      color: #684017;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+    }
+
+    .roadmap {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .road-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fdfffe;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .road-id {
+      width: fit-content;
+      border-radius: 999px;
+      padding: 2px 9px;
+      color: #fff;
+      font-size: 0.76rem;
+      background: linear-gradient(90deg, var(--primary), var(--primary-2));
+    }
+
+    .road-card h3 {
+      margin: 0;
+      font-size: 0.96rem;
+    }
+
+    .road-card p {
+      margin: 0;
+      color: var(--subtle);
+      font-size: 0.84rem;
+      min-height: 44px;
+    }
+
+    .mini-btn {
+      border: 1px solid #b8d6eb;
+      border-radius: 999px;
+      background: #edf8ff;
+      color: #13496f;
+      font-size: 0.78rem;
+      padding: 4px 10px;
+      width: fit-content;
+      cursor: pointer;
+    }
+
+    .mini-btn:hover {
+      background: #dff2ff;
+    }
+
+    .topic-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .topic-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+    }
+
+    .topic-card.focus {
+      border-color: #0ea5a0;
+      box-shadow: 0 0 0 2px rgba(14, 165, 160, 0.22);
+      background: #f6fffd;
+    }
+
+    .topic-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .topic-title {
+      margin: 0;
+      font-size: 0.98rem;
+    }
+
+    .tag {
+      border: 1px solid #e3cfa9;
+      border-radius: 999px;
+      background: #fff4e0;
+      color: #704215;
+      font-size: 0.74rem;
+      padding: 2px 8px;
+    }
+
+    .topic-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 10px;
+    }
+
+    .box {
+      border: 1px solid #dde9e6;
+      border-radius: 10px;
+      background: #fcfffe;
+      padding: 9px 10px;
+    }
+
+    .box h4 {
+      margin: 0 0 6px;
+      font-size: 0.86rem;
+      color: #16434d;
+    }
+
+    .plain-list {
+      margin: 0;
+      padding-left: 16px;
+      font-size: 0.82rem;
+      color: #24434c;
+    }
+
+    .plain-list li {
+      margin: 4px 0;
+      word-break: break-all;
+    }
+
+    .doc-path {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin: 4px 0;
+      font-size: 0.81rem;
+      color: #35545d;
+      word-break: break-all;
+    }
+
+    code {
+      background: #f4efe6;
+      border: 1px solid #e8dbc9;
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-family: "IBM Plex Mono", Menlo, Consolas, monospace;
+      font-size: 0.79rem;
+    }
+
+    .copy-btn {
+      border: 1px solid #9ec7e5;
+      border-radius: 999px;
+      background: #ebf6ff;
+      color: #154c72;
+      font-size: 0.74rem;
+      padding: 2px 8px;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+
+    .copy-btn:hover {
+      background: #def0ff;
+    }
+
+    .filter-row {
+      display: grid;
+      grid-template-columns: 1fr 170px;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    input,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 0.9rem;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    .table-wrap {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: auto;
+      background: #fff;
+      max-height: 520px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 860px;
+      font-size: 0.84rem;
+    }
+
+    th,
+    td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #e8efec;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f7fcfa;
+      color: #2d4b53;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+    }
+
+    .panel h3 {
+      margin: 0 0 8px;
+      font-size: 0.96rem;
+      color: #133d48;
+    }
+
+    .check-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 8px;
+    }
+
+    .check-item {
+      border: 1px solid #dde8e5;
+      border-radius: 10px;
+      background: #fcfffe;
+      padding: 8px 10px;
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 8px;
+      align-items: start;
+    }
+
+    .check-item input {
+      margin-top: 3px;
+      accent-color: var(--primary);
+    }
+
+    .check-item strong {
+      font-size: 0.86rem;
+      color: #11404b;
+      display: block;
+    }
+
+    .check-item span {
+      color: var(--subtle);
+      font-size: 0.82rem;
+      display: block;
+    }
+
+    .cmd-row {
+      border: 1px dashed #c4d9ee;
+      border-radius: 10px;
+      background: #f7fbff;
+      padding: 8px 10px;
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .schedule-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .schedule-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .mini-btn.active {
+      background: #cde9ff;
+      border-color: #73add6;
+      color: #0f3f63;
+      font-weight: 700;
+    }
+
+    .schedule-grid {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .day-card {
+      border: 1px solid #d5e4df;
+      border-radius: 10px;
+      background: #fbfffd;
+      padding: 8px 10px;
+    }
+
+    .day-card h4 {
+      margin: 0 0 6px;
+      font-size: 0.86rem;
+      color: #15424b;
+    }
+
+    .day-list {
+      margin: 0;
+      padding-left: 16px;
+      font-size: 0.8rem;
+      color: #2a4c55;
+    }
+
+    .day-list li {
+      margin: 3px 0;
+    }
+
+    .op-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .cmd-title {
+      font-size: 0.82rem;
+      color: #234f6a;
+    }
+
+    .done {
+      color: var(--ok);
+      font-weight: 700;
+    }
+
+    .pending {
+      color: var(--warn);
+      font-weight: 700;
+    }
+
+    .tips {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .tip {
+      border: 1px solid #f3ddbf;
+      border-radius: 10px;
+      background: #fff8ef;
+      color: #6f4213;
+      padding: 9px 10px;
+      font-size: 0.82rem;
+    }
+
+    @media (max-width: 980px) {
+      .kpis {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .roadmap,
+      .topic-grid,
+      .split,
+      .tips,
+      .schedule-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .filter-row {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        min-width: 700px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header class="hero">
+      <h1>阶段1学习指导看板</h1>
+      <p>学习优先看“本页主题摘要 + 代码定位 + 测试定位”，不再直接跳本地 Markdown 文件。</p>
+      <div class="quick-nav">
+        <button class="nav-btn" type="button" data-target="architecture">架构图</button>
+        <button class="nav-btn" type="button" data-target="roadmap">学习路径</button>
+        <button class="nav-btn" type="button" data-target="topics">主题详解</button>
+        <button class="nav-btn" type="button" data-target="code-map">代码地图</button>
+        <button class="nav-btn" type="button" data-target="practice">实操与验收</button>
+      </div>
+      <div class="kpis" id="kpis"></div>
+    </header>
+
+    <section id="architecture">
+      <h2>整体架构（Mermaid）</h2>
+      <p class="hint">若未渲染图形，可展开下方源码区复制到支持 Mermaid 的编辑器查看。</p>
+      <div class="diagram-tools">
+        <div class="op-group">
+          <button type="button" class="mini-btn" id="diagramZoomOut">缩小</button>
+          <button type="button" class="mini-btn" id="diagramZoomReset">100%</button>
+          <button type="button" class="mini-btn" id="diagramZoomIn">放大</button>
+        </div>
+        <div class="op-group" id="quickZoomGroup">
+          <button type="button" class="mini-btn quick-zoom-btn" data-scale="0.8">80%</button>
+          <button type="button" class="mini-btn quick-zoom-btn" data-scale="1">100%</button>
+          <button type="button" class="mini-btn quick-zoom-btn" data-scale="1.2">120%</button>
+          <button type="button" class="mini-btn quick-zoom-btn" data-scale="1.5">150%</button>
+        </div>
+        <span class="hint" id="zoomValue">缩放 100%</span>
+      </div>
+      <div class="mermaid-wrap">
+        <pre class="mermaid" id="mermaidDiagram">
+flowchart LR
+  A[Client Request] --> B[GatewayBootstrap.start]
+  B --> C[ServerPipelineFactory.configure]
+  C --> D[DefaultHttpServerHandler.channelRead0]
+
+  D --> E{路径分流}
+  E -->|/health| F[handleHealthRequest]
+  E -->|/metrics/prometheus| G[handleMetricsRequest]
+  E -->|业务路径| H[StaticRouteService.select]
+
+  H --> I[buildOutboundRequest]
+  I --> J[DefaultHeaderPolicyService.applyRequestHeaders]
+  I --> K[DefaultTimeoutPolicy]
+  K --> L[Upstream Service]
+
+  L --> M[响应回传]
+  L -.异常.-> N[DefaultErrorResponseMapper.map]
+  N --> O[ErrorResponse.toJson]
+  O --> M
+
+  D --> P[GatewayMetricsService]
+  M --> Q[Client Response]
+  P --> Q
+        </pre>
+      </div>
+      <details class="source-details">
+        <summary>查看/折叠 Mermaid 源码</summary>
+        <pre class="mermaid-source" id="mermaidSource"></pre>
+      </details>
+    </section>
+
+    <section id="roadmap">
+      <h2>学习路径（页内跳转）</h2>
+      <div class="roadmap" id="roadmapCards"></div>
+    </section>
+
+    <section id="topics">
+      <h2>主题详解（含代码位置）</h2>
+      <div class="topic-list" id="topicList"></div>
+    </section>
+
+    <section id="code-map">
+      <h2>代码地图（可搜索）</h2>
+      <div class="filter-row">
+        <input id="codeSearch" placeholder="搜索主题/类名/文件/关键词，例如 DefaultHttpServerHandler 或 超时">
+        <select id="codeTypeFilter">
+          <option value="ALL">全部类型</option>
+          <option value="代码">代码</option>
+          <option value="测试">测试</option>
+          <option value="脚本">脚本</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>学习主题</th>
+              <th>类型</th>
+              <th>定位</th>
+              <th>关键点</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="codeRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="practice">
+      <h2>实操与验收</h2>
+      <div class="panel" style="margin-bottom:10px;">
+        <div class="schedule-head">
+          <h3 style="margin:0;">学习节奏生成</h3>
+          <div class="schedule-actions" id="scheduleActions">
+            <button type="button" class="mini-btn plan-btn" data-days="3">生成3天计划</button>
+            <button type="button" class="mini-btn plan-btn" data-days="7">生成7天计划</button>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:6px;">点击计划条目可直接跳到对应主题并高亮。</p>
+        <div class="schedule-grid" id="scheduleGrid"></div>
+      </div>
+
+      <div class="split">
+        <div class="panel">
+          <h3>学习任务清单（本地勾选）</h3>
+          <ul class="check-list" id="checklist"></ul>
+        </div>
+        <div class="panel">
+          <h3>必跑命令</h3>
+          <div id="commands"></div>
+          <div class="tips">
+            <div class="tip">先跑质量再跑 strict，能更快定位失败边界。</div>
+            <div class="tip">压测结论必须结合稳定性阈值，不只看 RPS。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:10px;">
+        <h3>学习验收矩阵</h3>
+        <div class="table-wrap" style="max-height:320px;">
+          <table>
+            <thead>
+              <tr>
+                <th>验收项</th>
+                <th>完成定义</th>
+                <th>推荐证据</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody id="acceptanceRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script>
+    const STORAGE_KEY = "gateway_stage1_learning_board_v2";
+
+    const topics = [
+      {
+        id: "topic-arch",
+        order: "S1-01",
+        title: "项目全景与主链路",
+        summary: "先建立请求流转全景：启动、Pipeline、分流、转发、异常映射、响应回写。",
+        tag: "架构",
+        docPaths: [
+          "docs/learning/stage1/01-项目全景与架构.md",
+          "gateway-server/README.md"
+        ],
+        points: [
+          "识别请求从入口到上游再返回的完整路径。",
+          "区分业务路径与管理端点路径（/health、/metrics/prometheus）。",
+          "理解指标采集在主链路中的位置。"
+        ],
+        refs: [
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/bootstrap/GatewayBootstrap.java:104", note: "服务启动与绑定端口" },
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/bootstrap/ServerPipelineFactory.java:76", note: "Pipeline 组装入口" },
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/bootstrap/DefaultHttpServerHandler.java:147", note: "请求入口 channelRead0" },
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/bootstrap/DefaultHttpServerHandler.java:294", note: "路径分流 resolveDispatchTarget" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/bootstrap/GatewayBootstrapTests.java:27", note: "启动生命周期回归" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/bootstrap/HttpProxyIT.java:40", note: "主链路集成验证" }
+        ]
+      },
+      {
+        id: "topic-route",
+        order: "S1-02",
+        title: "路由匹配与配置模型",
+        summary: "理解路由如何命中，以及配置对象如何约束参数合法性。",
+        tag: "路由",
+        docPaths: [
+          "docs/learning/stage1/01-项目全景与架构.md",
+          "docs/learning/stage1/02-代码与规范实战.md"
+        ],
+        points: [
+          "掌握 priority -> EXACT -> PREFIX -> 声明顺序 的决策逻辑。",
+          "理解 RouteConfig/GatewayServerConfig 的构造校验边界。",
+          "知道路由配置与运行行为的直接映射关系。"
+        ],
+        refs: [
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/routing/StaticRouteService.java:49", note: "路由选择主逻辑 select" },
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/config/RouteConfig.java:30", note: "路由配置模型与校验" },
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/config/GatewayServerConfig.java:33", note: "服务配置模型与默认值" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/routing/StaticRouteServiceTests.java:31", note: "路由选择单测" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/config/GatewayServerConfigTests.java:23", note: "配置校验单测" }
+        ]
+      },
+      {
+        id: "topic-header",
+        order: "S1-03",
+        title: "Header 策略与 TraceId",
+        summary: "重点理解 Hop-by-Hop 移除、X-Forwarded-* 补齐、Host 策略与 TraceId 透传。",
+        tag: "协议处理",
+        docPaths: [
+          "docs/learning/stage1/02-代码与规范实战.md"
+        ],
+        points: [
+          "先删 Hop-by-Hop 再补 Forwarded 头，避免语义冲突。",
+          "区分 REWRITE 与 PRESERVE 的 Host 行为差异。",
+          "TraceId 在入站、转发、日志、错误响应中的一致性。"
+        ],
+        refs: [
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/http/DefaultHeaderPolicyService.java:59", note: "请求头策略 applyRequestHeaders" },
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/bootstrap/DefaultHttpServerHandler.java:305", note: "构建出站请求 buildOutboundRequest" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/http/DefaultHeaderPolicyServiceTests.java:35", note: "Header 策略单测" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/bootstrap/HttpProxyIT.java:40", note: "转发链路集成验证" }
+        ]
+      },
+      {
+        id: "topic-error",
+        order: "S1-04",
+        title: "超时控制与错误映射",
+        summary: "把“错误类型 -> 统一响应”映射链路吃透，能快速定位 502/504 等问题来源。",
+        tag: "稳定性",
+        docPaths: [
+          "docs/learning/stage1/03-压测与稳定性实战.md"
+        ],
+        points: [
+          "连接/读取/写入超时都由 TimeoutPolicy 驱动。",
+          "错误映射区分 BAD_REQUEST、UPSTREAM_TIMEOUT、UPSTREAM_UNAVAILABLE。",
+          "统一错误响应结构由 ErrorResponse 输出 JSON。"
+        ],
+        refs: [
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/proxy/DefaultTimeoutPolicy.java:26", note: "连接超时读取 connectTimeoutMs" },
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/http/DefaultErrorResponseMapper.java:41", note: "异常映射主逻辑 map" },
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/http/ErrorResponse.java:41", note: "统一错误响应 JSON 编码" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/proxy/DefaultTimeoutPolicyTests.java:28", note: "超时策略单测" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/http/DefaultErrorResponseMapperTests.java:26", note: "错误映射单测" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/bootstrap/HttpProxyFailureIT.java:41", note: "失败场景集成验证" }
+        ]
+      },
+      {
+        id: "topic-observability",
+        order: "S1-05",
+        title: "管理端点与可观测性",
+        summary: "掌握 /health 与 /metrics/prometheus 的处理路径和访问限制思路。",
+        tag: "可观测",
+        docPaths: [
+          "docs/learning/stage1/03-压测与稳定性实战.md"
+        ],
+        points: [
+          "健康检查与指标端点在同一处理器内分流。",
+          "管理端点可结合白名单与配置进行限制。",
+          "观察指标不是独立系统，而是主链路的一部分。"
+        ],
+        refs: [
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/bootstrap/DefaultHttpServerHandler.java:213", note: "指标端点 handleMetricsRequest" },
+          { type: "代码", location: "gateway-server/src/main/java/com/lei/java/gateway/server/bootstrap/DefaultHttpServerHandler.java:234", note: "健康端点 handleHealthRequest" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/bootstrap/HealthEndpointIT.java:31", note: "健康端点集成测试" },
+          { type: "测试", location: "gateway-server/src/test/java/com/lei/java/gateway/server/bootstrap/PrometheusEndpointIT.java:40", note: "Prometheus 端点集成测试" }
+        ]
+      },
+      {
+        id: "topic-perf",
+        order: "S1-06",
+        title: "压测执行与阈值评估",
+        summary: "压测关注的不只是吞吐，还要验证稳定性阈值是否持续达标。",
+        tag: "压测",
+        docPaths: [
+          "docs/learning/stage1/03-压测与稳定性实战.md",
+          "docs/requirements/evidence/stage1/T1-206-压测与稳定性报告.md"
+        ],
+        points: [
+          "本地 AC-1-4 脚本会自动拉起上游、网关并执行 Gatling。",
+          "压测结束后要看 runtime-metrics 与 stability-summary。",
+          "阈值评估脚本输出 overall PASS/FAIL 是阶段证据关键部分。"
+        ],
+        refs: [
+          { type: "脚本", location: "scripts/perf/stage1/run-stage1-ac4-local.sh:145", note: "网关 JVM 参数与启动" },
+          { type: "脚本", location: "scripts/perf/stage1/run-stage1-ac4-local.sh:175", note: "调用 AC-1-4 主脚本" },
+          { type: "脚本", location: "scripts/perf/stage1/run-stage1-ac4.sh:132", note: "运行时采样启动" },
+          { type: "脚本", location: "scripts/perf/stage1/run-stage1-ac4.sh:197", note: "阈值评估调用" },
+          { type: "脚本", location: "scripts/perf/stage1/evaluate-stability-thresholds.sh:164", note: "阈值 PASS/FAIL 判定" },
+          { type: "脚本", location: "scripts/perf/stage1/gatling/Stage1ProxySimulation.java:36", note: "压测场景定义" }
+        ]
+      },
+      {
+        id: "topic-process",
+        order: "S1-07",
+        title: "追踪矩阵、Gate 与 CI 闭环",
+        summary: "形成“需求 -> 代码 -> 测试 -> 证据 -> Gate -> 校验”可审计闭环。",
+        tag: "流程",
+        docPaths: [
+          "docs/learning/stage1/04-需求追踪与阶段Gate.md",
+          "docs/learning/stage1/05-CI与打包流水线.md",
+          "docs/requirements/traceability/阶段1-需求追踪矩阵.tsv",
+          "docs/requirements/stage-gates/阶段1-Gate.md"
+        ],
+        points: [
+          "strict 模式要求 GateStatus=PASS 且矩阵关键列不可空。",
+          "质量门禁与流程门禁是两条并行放行条件。",
+          "学习者应能随机抽需求并回溯到代码、测试和证据。"
+        ],
+        refs: [
+          { type: "脚本", location: "scripts/requirements/verify-stage.sh:65", note: "strict 下 GateStatus=PASS 校验" },
+          { type: "脚本", location: "scripts/requirements/verify-stage.sh:101", note: "矩阵逐行严格校验" },
+          { type: "脚本", location: "scripts/ci/run-quality.sh:8", note: "质量门禁入口" }
+        ]
+      }
+    ];
+
+    const checklistItems = [
+      {
+        id: "L1",
+        title: "画出主链路并能口述每一跳",
+        detail: "至少包含入口、分流、路由、Header、超时、错误映射、响应回写。"
+      },
+      {
+        id: "L2",
+        title: "完成路由与配置模型阅读",
+        detail: "能解释为什么 priority/EXACT/PREFIX 会影响命中结果。"
+      },
+      {
+        id: "L3",
+        title: "完成 Header 与 TraceId 演练",
+        detail: "能复述先删 Hop-by-Hop 再补 Forwarded 的原因。"
+      },
+      {
+        id: "L4",
+        title: "完成超时与错误映射演练",
+        detail: "能说清 400/502/504 是如何被映射出来的。"
+      },
+      {
+        id: "L5",
+        title: "完成一次 AC-1-4 本地压测",
+        detail: "至少能解释 runtime-metrics 与 stability-summary 的结论。"
+      },
+      {
+        id: "L6",
+        title: "完成双校验并解释失败边界",
+        detail: "区分 run-quality 失败和 verify-stage strict 失败。"
+      }
+    ];
+
+    const commands = [
+      {
+        title: "代码质量门禁",
+        cmd: "./scripts/ci/run-quality.sh"
+      },
+      {
+        title: "模块测试",
+        cmd: "./mvnw -pl gateway-server -am test"
+      },
+      {
+        title: "阶段 strict 校验",
+        cmd: "./scripts/requirements/verify-stage.sh 1 --strict"
+      },
+      {
+        title: "本地 AC-1-4 压测",
+        cmd: "./scripts/perf/stage1/run-stage1-ac4-local.sh --duration-minutes 10 --rps 2000 --body-bytes 1024"
+      }
+    ];
+
+    const acceptanceItems = [
+      {
+        id: "A1",
+        goal: "能解释关键设计与主要权衡",
+        evidence: "主题 S1-01~S1-04 的口述 + 代码位置定位",
+        linkTaskId: "L1"
+      },
+      {
+        id: "A2",
+        goal: "能独立执行质量/测试/压测并解释结果",
+        evidence: "命令输出摘要 + 压测稳定性结论",
+        linkTaskId: "L5"
+      },
+      {
+        id: "A3",
+        goal: "能完成需求到代码测试证据回溯",
+        evidence: "随机 3 条需求的回溯记录",
+        linkTaskId: "L6"
+      }
+    ];
+
+    const state = loadState();
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          return { done: {}, planDays: 3, diagramScale: 1 };
+        }
+        const parsed = JSON.parse(raw);
+        const parsedScale = Number(parsed.diagramScale);
+        return {
+          done: parsed.done || {},
+          planDays: parsed.planDays === 7 ? 7 : 3,
+          diagramScale: Number.isFinite(parsedScale)
+            ? Math.min(2, Math.max(0.6, parsedScale))
+            : 1
+        };
+      } catch {
+        return { done: {}, planDays: 3, diagramScale: 1 };
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function scrollToSection(id) {
+      const node = document.getElementById(id);
+      if (node) {
+        node.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+
+    function focusTopicCard(topicId) {
+      document.querySelectorAll(".topic-card.focus").forEach(node => {
+        node.classList.remove("focus");
+      });
+      const topicNode = document.getElementById(topicId);
+      if (!topicNode) {
+        return;
+      }
+      topicNode.classList.add("focus");
+      topicNode.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function copyText(text, button) {
+      navigator.clipboard.writeText(text).then(() => {
+        const old = button.textContent;
+        button.textContent = "已复制";
+        setTimeout(() => {
+          button.textContent = old;
+        }, 1200);
+      }).catch(() => {
+        const old = button.textContent;
+        button.textContent = "复制失败";
+        setTimeout(() => {
+          button.textContent = old;
+        }, 1200);
+      });
+    }
+
+    function normalizeDiagramScale(scale) {
+      return Math.min(2, Math.max(0.6, Math.round(scale * 100) / 100));
+    }
+
+    function applyDiagramScale(scale, persist = true) {
+      const normalized = normalizeDiagramScale(scale);
+      state.diagramScale = normalized;
+      const zoomLabel = document.getElementById("zoomValue");
+      if (zoomLabel) {
+        zoomLabel.textContent = `缩放 ${Math.round(normalized * 100)}%`;
+      }
+
+      document.querySelectorAll(".quick-zoom-btn").forEach(btn => {
+        const target = Number(btn.dataset.scale || 1);
+        btn.classList.toggle("active", Math.abs(target - normalized) < 0.001);
+      });
+
+      const svg = document.querySelector("#mermaidDiagram svg");
+      if (svg) {
+        svg.style.width = `${Math.round(normalized * 100)}%`;
+        svg.style.maxWidth = "none";
+        svg.style.height = "auto";
+      }
+
+      if (persist) {
+        saveState();
+      }
+    }
+
+    function bindDiagramZoomButtons() {
+      const zoomOut = document.getElementById("diagramZoomOut");
+      const zoomReset = document.getElementById("diagramZoomReset");
+      const zoomIn = document.getElementById("diagramZoomIn");
+
+      if (zoomOut) {
+        zoomOut.addEventListener("click", () => applyDiagramScale(state.diagramScale - 0.1));
+      }
+      if (zoomReset) {
+        zoomReset.addEventListener("click", () => applyDiagramScale(1));
+      }
+      if (zoomIn) {
+        zoomIn.addEventListener("click", () => applyDiagramScale(state.diagramScale + 0.1));
+      }
+
+      document.querySelectorAll(".quick-zoom-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          applyDiagramScale(Number(btn.dataset.scale || 1));
+        });
+      });
+
+      applyDiagramScale(state.diagramScale, false);
+    }
+
+    function renderRoadmap() {
+      const el = document.getElementById("roadmapCards");
+      el.innerHTML = topics.map(topic => `
+        <article class="road-card">
+          <span class="road-id">${escapeHtml(topic.order)}</span>
+          <h3>${escapeHtml(topic.title)}</h3>
+          <p>${escapeHtml(topic.summary)}</p>
+          <button type="button" class="mini-btn goto-topic" data-target="${escapeHtml(topic.id)}">跳到主题详解</button>
+        </article>
+      `).join("");
+
+      el.querySelectorAll(".goto-topic").forEach(btn => {
+        btn.addEventListener("click", () => {
+          focusTopicCard(btn.dataset.target);
+        });
+      });
+    }
+
+    function renderTopics() {
+      const el = document.getElementById("topicList");
+      el.innerHTML = topics.map(topic => `
+        <article class="topic-card" id="${escapeHtml(topic.id)}">
+          <div class="topic-head">
+            <span class="road-id">${escapeHtml(topic.order)}</span>
+            <h3 class="topic-title">${escapeHtml(topic.title)}</h3>
+            <span class="tag">${escapeHtml(topic.tag)}</span>
+          </div>
+
+          <p class="hint" style="margin-bottom:8px;">${escapeHtml(topic.summary)}</p>
+
+          <div class="topic-grid">
+            <div class="box">
+              <h4>学习重点</h4>
+              <ul class="plain-list">
+                ${topic.points.map(point => `<li>${escapeHtml(point)}</li>`).join("")}
+              </ul>
+            </div>
+            <div class="box">
+              <h4>关联文档路径（复制后在 IDE 打开）</h4>
+              ${topic.docPaths.map(path => `
+                <div class="doc-path">
+                  <code>${escapeHtml(path)}</code>
+                  <button type="button" class="copy-btn copy-path" data-text="${escapeHtml(path)}">复制路径</button>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+
+          <div class="box" style="margin-top:8px;">
+            <h4>代码与测试定位</h4>
+            <ul class="plain-list">
+              ${topic.refs.map(ref => `<li><strong>${escapeHtml(ref.type)}</strong> · <code>${escapeHtml(ref.location)}</code> · ${escapeHtml(ref.note)}</li>`).join("")}
+            </ul>
+          </div>
+        </article>
+      `).join("");
+
+      el.querySelectorAll(".copy-path").forEach(btn => {
+        btn.addEventListener("click", () => copyText(btn.dataset.text || "", btn));
+      });
+    }
+
+    function buildCodeRows() {
+      const rows = [];
+      topics.forEach(topic => {
+        topic.refs.forEach(ref => {
+          rows.push({
+            topicId: topic.id,
+            topicOrder: topic.order,
+            topicTitle: topic.title,
+            type: ref.type,
+            location: ref.location,
+            note: ref.note,
+            keywords: `${topic.title} ${topic.tag} ${ref.location} ${ref.note}`.toLowerCase()
+          });
+        });
+      });
+      return rows;
+    }
+
+    const allCodeRows = buildCodeRows();
+
+    function renderCodeRows() {
+      const keyword = document.getElementById("codeSearch").value.trim().toLowerCase();
+      const typeFilter = document.getElementById("codeTypeFilter").value;
+      const tbody = document.getElementById("codeRows");
+
+      const filtered = allCodeRows.filter(row => {
+        if (typeFilter !== "ALL" && row.type !== typeFilter) {
+          return false;
+        }
+        if (!keyword) {
+          return true;
+        }
+        return row.keywords.includes(keyword);
+      });
+
+      tbody.innerHTML = filtered.map(row => `
+        <tr>
+          <td><code>${escapeHtml(row.topicOrder)}</code> ${escapeHtml(row.topicTitle)}</td>
+          <td>${escapeHtml(row.type)}</td>
+          <td><code>${escapeHtml(row.location)}</code></td>
+          <td>${escapeHtml(row.note)}</td>
+          <td>
+            <div class="op-group">
+              <button type="button" class="copy-btn copy-loc" data-text="${escapeHtml(row.location)}">复制定位</button>
+              <button type="button" class="copy-btn goto-topic-from-map" data-topic-id="${escapeHtml(row.topicId)}">定位主题</button>
+            </div>
+          </td>
+        </tr>
+      `).join("");
+
+      tbody.querySelectorAll(".copy-loc").forEach(btn => {
+        btn.addEventListener("click", () => copyText(btn.dataset.text || "", btn));
+      });
+
+      tbody.querySelectorAll(".goto-topic-from-map").forEach(btn => {
+        btn.addEventListener("click", () => {
+          focusTopicCard(btn.dataset.topicId || "");
+        });
+      });
+
+      renderKpis(filtered.length);
+    }
+
+    function splitTopicsByDays(days) {
+      const result = [];
+      let index = 0;
+      for (let day = 1; day <= days; day++) {
+        const remainTopics = topics.length - index;
+        const remainDays = days - day + 1;
+        const size = Math.ceil(remainTopics / remainDays);
+        const items = topics.slice(index, index + size);
+        index += size;
+        result.push({ day, items });
+      }
+      return result;
+    }
+
+    function renderSchedule() {
+      const days = state.planDays;
+      const grid = document.getElementById("scheduleGrid");
+      const plan = splitTopicsByDays(days);
+      grid.innerHTML = plan.map(part => `
+        <article class="day-card">
+          <h4>Day ${part.day}</h4>
+          <ul class="day-list">
+            ${part.items.map(item => `
+              <li>
+                <button type="button" class="mini-btn goto-from-plan" data-topic-id="${escapeHtml(item.id)}">
+                  ${escapeHtml(item.order)} ${escapeHtml(item.title)}
+                </button>
+              </li>
+            `).join("")}
+          </ul>
+        </article>
+      `).join("");
+
+      grid.querySelectorAll(".goto-from-plan").forEach(btn => {
+        btn.addEventListener("click", () => {
+          focusTopicCard(btn.dataset.topicId || "");
+        });
+      });
+
+      document.querySelectorAll(".plan-btn").forEach(btn => {
+        const daysValue = Number(btn.dataset.days || 3);
+        btn.classList.toggle("active", daysValue === days);
+      });
+    }
+
+    function renderChecklist() {
+      const ul = document.getElementById("checklist");
+      ul.innerHTML = checklistItems.map(item => `
+        <li class="check-item">
+          <input type="checkbox" class="check-task" data-id="${escapeHtml(item.id)}" ${state.done[item.id] ? "checked" : ""}>
+          <div>
+            <strong>${escapeHtml(item.id)} ${escapeHtml(item.title)}</strong>
+            <span>${escapeHtml(item.detail)}</span>
+          </div>
+        </li>
+      `).join("");
+
+      ul.querySelectorAll(".check-task").forEach(node => {
+        node.addEventListener("change", () => {
+          state.done[node.dataset.id] = node.checked;
+          saveState();
+          renderAcceptance();
+          renderKpis();
+        });
+      });
+    }
+
+    function renderCommands() {
+      const el = document.getElementById("commands");
+      el.innerHTML = commands.map((item, index) => `
+        <div class="cmd-row">
+          <div class="cmd-title">${index + 1}. ${escapeHtml(item.title)}</div>
+          <code>${escapeHtml(item.cmd)}</code>
+          <button type="button" class="copy-btn copy-cmd" data-text="${escapeHtml(item.cmd)}">复制命令</button>
+        </div>
+      `).join("");
+
+      el.querySelectorAll(".copy-cmd").forEach(btn => {
+        btn.addEventListener("click", () => copyText(btn.dataset.text || "", btn));
+      });
+    }
+
+    function renderAcceptance() {
+      const tbody = document.getElementById("acceptanceRows");
+      tbody.innerHTML = acceptanceItems.map(item => {
+        const done = Boolean(state.done[item.linkTaskId]);
+        return `
+          <tr>
+            <td><code>${escapeHtml(item.id)}</code></td>
+            <td>${escapeHtml(item.goal)}</td>
+            <td>${escapeHtml(item.evidence)}</td>
+            <td class="${done ? "done" : "pending"}">${done ? "已完成" : "待完成"}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function renderKpis(filteredCodeRowsCount) {
+      const totalRefs = allCodeRows.length;
+      const totalTests = allCodeRows.filter(row => row.type === "测试").length;
+      const done = checklistItems.filter(item => state.done[item.id]).length;
+      const progress = Math.round((done / checklistItems.length) * 100);
+
+      const cards = [
+        { label: "学习主题数", value: topics.length },
+        { label: "代码/脚本定位点", value: totalRefs },
+        { label: "测试定位点", value: totalTests },
+        { label: "任务进度", value: `${done}/${checklistItems.length} (${progress}%)` }
+      ];
+
+      if (typeof filteredCodeRowsCount === "number") {
+        cards[1].value = `${filteredCodeRowsCount}/${totalRefs}`;
+      }
+
+      const el = document.getElementById("kpis");
+      el.innerHTML = cards.map(card => `
+        <div class="kpi">
+          <div class="label">${escapeHtml(card.label)}</div>
+          <div class="value">${escapeHtml(card.value)}</div>
+        </div>
+      `).join("");
+    }
+
+    function bindQuickNav() {
+      document.querySelectorAll(".nav-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          scrollToSection(btn.dataset.target);
+        });
+      });
+    }
+
+    function bindPlanButtons() {
+      document.querySelectorAll(".plan-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const days = Number(btn.dataset.days || 3);
+          state.planDays = days === 7 ? 7 : 3;
+          saveState();
+          renderSchedule();
+        });
+      });
+    }
+
+    function initMermaid() {
+      const source = document.getElementById("mermaidDiagram").textContent.trim();
+      document.getElementById("mermaidSource").textContent = source;
+      if (window.mermaid) {
+        window.mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "loose",
+          flowchart: {
+            useMaxWidth: true,
+            htmlLabels: true
+          }
+        });
+        window.mermaid.run({ querySelector: ".mermaid" })
+          .then(() => {
+            applyDiagramScale(state.diagramScale, false);
+          })
+          .catch(() => {
+            applyDiagramScale(state.diagramScale, false);
+          });
+      }
+    }
+
+    function bootstrap() {
+      bindQuickNav();
+      bindDiagramZoomButtons();
+      renderRoadmap();
+      renderTopics();
+      bindPlanButtons();
+      renderSchedule();
+      renderChecklist();
+      renderCommands();
+      renderAcceptance();
+      renderCodeRows();
+      initMermaid();
+
+      document.getElementById("codeSearch").addEventListener("input", renderCodeRows);
+      document.getElementById("codeTypeFilter").addEventListener("change", renderCodeRows);
+    }
+
+    bootstrap();
+  </script>
+</body>
+</html>
