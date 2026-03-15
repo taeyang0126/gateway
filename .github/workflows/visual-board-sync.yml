@@ -39,7 +39,9 @@ jobs:
             base_sha="$(git rev-list --max-parents=0 HEAD)"
           fi
 
-          changed_files="$(git diff --name-only "${base_sha}" "${head_sha}" || true)"
+          changed_files="$(
+            git -c core.quotepath=off diff --name-only "${base_sha}" "${head_sha}" || true
+          )"
           echo "Changed files between ${base_sha}..${head_sha}:"
           echo "${changed_files}"
 
@@ -48,11 +50,16 @@ jobs:
             exit 0
           fi
 
+          trigger_files="$(
+            echo "${changed_files}" | grep -E \
+              '^(docs/requirements/|docs/design/|gateway-[^/]+/src/|scripts/perf/)' || true
+          )"
           requires_board_sync=false
-          if echo "${changed_files}" | grep -Eq \
-            '^(docs/requirements/|docs/design/|gateway-[^/]+/src/|scripts/perf/)'; then
+          if [[ -n "${trigger_files}" ]]; then
             requires_board_sync=true
           fi
+          echo "Files that require board sync:"
+          echo "${trigger_files:-<none>}"
 
           dev_board_updated=false
           if echo "${changed_files}" | grep -Eq \
@@ -69,12 +76,16 @@ jobs:
           if [[ "${requires_board_sync}" == "true" && "${dev_board_updated}" != "true" ]]; then
             echo "[FAIL] 检测到需求/设计/实现相关变更，但未同步开发流程看板。"
             echo "请至少更新一个文件：docs/learning/stageX/06-*.html"
+            echo "触发文件如下："
+            echo "${trigger_files}"
             exit 1
           fi
 
           if [[ "${requires_board_sync}" == "true" && "${learning_board_updated}" != "true" ]]; then
             echo "[FAIL] 检测到需求/设计/实现相关变更，但未同步学习指导看板。"
             echo "请至少更新一个文件：docs/learning/stageX/07-*.html"
+            echo "触发文件如下："
+            echo "${trigger_files}"
             exit 1
           fi
 
