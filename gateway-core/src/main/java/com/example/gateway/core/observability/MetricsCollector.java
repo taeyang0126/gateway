@@ -1,0 +1,214 @@
+package com.example.gateway.core.observability;
+
+import com.example.gateway.core.config.ObservabilityProperties;
+import com.example.gateway.pool.ConcurrentPool;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
+import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
+import io.micrometer.core.instrument.binder.jvm.JvmThreadMetrics;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.ByteBufAllocatorMetric;
+import io.netty.buffer.ByteBufAllocatorMetricProvider;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.SingleThreadEventLoop;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.stereotype.Component;
+
+/**
+ * 指标采集器，封装 Micrometer MeterRegistry 的指标注册和记录。
+ *
+ * <p>指标设计参考 RED method（Rate、Errors、Duration）。
+ * 当 {@code metricsEnabled=false} 时所有 record 方法为空操作。
+ */
+@Component
+public class MetricsCollector {
+
+    private final MeterRegistry meterRegistry;
+    private final ObservabilityProperties config;
+
+    /** 创建指标采集器。 */
+    public MetricsCollector(MeterRegistry meterRegistry, ObservabilityProperties config) {
+        this.meterRegistry = meterRegistry;
+        this.config = config;
+    }
+
+    /**
+     * 记录一次代理请求的指标。
+     *
+     * @param method        HTTP 方法
+     * @param path          请求路径
+     * @param statusCode    HTTP 状态码
+     * @param durationNanos 响应耗时（纳秒）
+     */
+    public void recordRequest(String method, String path, int statusCode,
+            long durationNanos) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+
+        Counter.builder("gateway.requests.total")
+                .tag("method", method)
+                .tag("path", path)
+                .tag("status", String.valueOf(statusCode))
+                .register(meterRegistry)
+                .increment();
+
+        Timer.builder("gateway.requests.duration")
+                .tag("method", method)
+                .tag("path", path)
+                .register(meterRegistry)
+                .record(durationNanos, TimeUnit.NANOSECONDS);
+
+        String statusClass = statusCode >= 500 ? "5xx" : (statusCode >= 400 ? "4xx" : null);
+        if (statusClass != null) {
+            Counter.builder("gateway.requests.errors")
+                    .tag("status_class", statusClass)
+                    .register(meterRegistry)
+                    .increment();
+        }
+    }
+
+    /**
+     * 记录一次 upstream 连接建立的耗时。
+     *
+     * @param upstream      upstream 地址标识
+     * @param durationNanos 连接建立耗时（纳秒）
+     * @param success       连接是否成功
+     * @param slowThresholdMillis 慢连接阈值（毫秒）
+     */
+    public void recordUpstreamConnect(String upstream, long durationNanos,
+            boolean success, int slowThresholdMillis) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+
+        Timer.builder("gateway.upstream.connect.duration")
+                .tag("upstream", upstream)
+                .register(meterRegistry)
+                .record(durationNanos, TimeUnit.NANOSECONDS);
+
+        if (!success) {
+            Counter.builder("gateway.upstream.connect.failures")
+                    .tag("upstream", upstream)
+                    .register(meterRegistry)
+                    .increment();
+        }
+
+        long durationMillis = TimeUnit.NANOSECONDS.toMillis(durationNanos);
+        if (durationMillis > slowThresholdMillis) {
+            Counter.builder("gateway.upstream.connect.slow")
+                    .tag("upstream", upstream)
+                    .register(meterRegistry)
+                    .increment();
+        }
+    }
+
+    /**
+     * 记录一次连接池借用失败。
+     *
+     * @param upstream upstream 地址标识
+     */
+    public void recordPoolBorrowFailure(String upstream) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+
+        Counter.builder("gateway.pool.borrow.failures")
+                .tag("upstream", upstream)
+                .register(meterRegistry)
+                .increment();
+    }
+
+    /**
+     * 注册活跃连接数 gauge。
+     *
+     * @param activeConnections 活跃连接数原子计数器
+     */
+    public void registerActiveConnections(AtomicInteger activeConnections) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+
+        meterRegistry.gauge("gateway.connections.active", activeConnections,
+                AtomicInteger::get);
+    }
+
+    /**
+     * 注册连接池指标 gauge（每个 host:port 一组）。
+     *
+     * @param hostPort upstream 的 host:port 标识
+     * @param pool     对应的连接池实例
+     */
+    public void registerPoolMetrics(String hostPort, ConcurrentPool<?> pool) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+
+        meterRegistry.gauge("gateway.pool.active", Tags.of(
+                "upstream", hostPort), pool, ConcurrentPool::getActiveCount);
+        meterRegistry.gauge("gateway.pool.idle", Tags.of(
+                "upstream", hostPort), pool, ConcurrentPool::getIdleCount);
+        meterRegistry.gauge("gateway.pool.total", Tags.of(
+                "upstream", hostPort), pool, ConcurrentPool::getTotalCount);
+    }
+
+    /** 注册 JVM 指标（JvmMemoryMetrics、JvmGcMetrics、JvmThreadMetrics）。 */
+    @SuppressWarnings("resource")
+    public void registerJvmMetrics() {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+
+        new JvmMemoryMetrics().bindTo(meterRegistry);
+        // JvmGcMetrics 实现了 AutoCloseable，但其生命周期与应用一致，无需手动关闭
+        new JvmGcMetrics().bindTo(meterRegistry);
+        new JvmThreadMetrics().bindTo(meterRegistry);
+    }
+
+    /**
+     * 注册 Netty 运行时指标。
+     *
+     * @param workerGroup Netty worker EventLoopGroup
+     * @param allocator   ByteBuf allocator
+     */
+    public void registerNettyMetrics(EventLoopGroup workerGroup, ByteBufAllocator allocator) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+
+        meterRegistry.gauge("netty.eventloop.pending.tasks", workerGroup, group -> {
+            int total = 0;
+            for (var eventLoop : group) {
+                if (eventLoop instanceof SingleThreadEventLoop singleLoop) {
+                    total += singleLoop.pendingTasks();
+                }
+            }
+            return total;
+        });
+
+        if (allocator instanceof ByteBufAllocatorMetricProvider metricProvider) {
+            ByteBufAllocatorMetric metric = metricProvider.metric();
+            meterRegistry.gauge("netty.allocator.used.direct.memory", metric,
+                    ByteBufAllocatorMetric::usedDirectMemory);
+            meterRegistry.gauge("netty.allocator.used.heap.memory", metric,
+                    ByteBufAllocatorMetric::usedHeapMemory);
+        }
+    }
+
+    /**
+     * 输出 Prometheus 格式文本（供 /metrics 端点使用）。
+     *
+     * @return Prometheus 格式的指标文本
+     */
+    public String scrape() {
+        if (meterRegistry instanceof PrometheusMeterRegistry prometheusRegistry) {
+            return prometheusRegistry.scrape();
+        }
+        return "";
+    }
+}

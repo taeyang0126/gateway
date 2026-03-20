@@ -1,0 +1,19 @@
+gateway:
+  port: 18080
+  routes:
+    - id: test-service
+      path-prefix: /api/test
+      upstream: http://localhost:19999
+  request-limit:
+    max-request-size: 52428800
+    timeout-seconds: 60
+  connection-pool:
+    max-connections-per-host: 5
+    max-idle-time-seconds: 30
+    slow-connect-threshold-millis: 50
+    connect-timeout-millis: 500
+  observability:
+    metrics-enabled: true
+    access-log-enabled: true
+    access-log-level: WARN
+    tracing-enabled: true

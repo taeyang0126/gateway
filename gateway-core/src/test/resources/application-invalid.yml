@@ -1,0 +1,6 @@
+gateway:
+  port: 8080
+  routes:
+    - id: ""
+      path-prefix: ""
+      upstream: ""

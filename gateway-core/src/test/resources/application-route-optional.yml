@@ -1,0 +1,11 @@
+gateway:
+  port: 8080
+  routes:
+    - id: with-timeout
+      path-prefix: /api/slow
+      upstream: http://localhost:8082
+      timeout-seconds: 120
+      max-request-size: 104857600
+    - id: without-timeout
+      path-prefix: /api/fast
+      upstream: http://localhost:8083

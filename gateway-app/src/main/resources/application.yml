@@ -1,0 +1,19 @@
+gateway:
+  port: 8080
+  routes:
+    - id: example-service
+      path-prefix: /api/example
+      upstream: http://localhost:8081
+  request-limit:
+    max-request-size: 52428800   # 50MB
+    timeout-seconds: 60
+  connection-pool:
+    max-connections-per-host: 50
+    max-idle-time-seconds: 60
+    slow-connect-threshold-millis: 50
+    connect-timeout-millis: 500
+  observability:
+    metrics-enabled: true
+    access-log-enabled: true
+    access-log-level: WARN
+    tracing-enabled: true

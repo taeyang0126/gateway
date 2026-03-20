@@ -1,0 +1,27 @@
+gateway:
+  port: 0
+  routes:
+    - id: example-service
+      path-prefix: /api/example
+      upstream: http://localhost:${upstream.port}
+    - id: limited-service
+      path-prefix: /api/limited
+      upstream: http://localhost:${upstream.port}
+      max-request-size: 512
+    - id: slow-timeout-service
+      path-prefix: /api/slow
+      upstream: http://localhost:${upstream.port}
+      timeout-seconds: 2
+  request-limit:
+    max-request-size: 10240
+    timeout-seconds: 5
+  connection-pool:
+    max-connections-per-host: 5
+    max-idle-time-seconds: 30
+    slow-connect-threshold-millis: 50
+    connect-timeout-millis: 2000
+  observability:
+    metrics-enabled: true
+    access-log-enabled: true
+    access-log-level: INFO
+    tracing-enabled: true
