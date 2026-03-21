@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, rewrite/** ]
+  pull_request:
+    branches: [ main, rewrite/** ]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Checkstyle + Test + Coverage
+        run: mvn clean verify -B
+
+      - name: Upload JaCoCo Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-reports
+          path: '**/target/site/jacoco/'
+          retention-days: 7

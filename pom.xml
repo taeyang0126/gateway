@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.example</groupId>
+    <groupId>com.lei</groupId>
     <artifactId>netty-gateway</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
@@ -35,6 +35,7 @@
         <checkstyle.version>10.21.4</checkstyle.version>
         <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
         <spotbugs-maven-plugin.version>4.9.3.0</spotbugs-maven-plugin.version>
+        <spotbugs-annotations.version>4.9.3</spotbugs-annotations.version>
         <jacoco-maven-plugin.version>0.8.14</jacoco-maven-plugin.version>
     </properties>
 
@@ -60,12 +61,12 @@
 
             <!-- Internal modules -->
             <dependency>
-                <groupId>com.example</groupId>
+                <groupId>com.lei</groupId>
                 <artifactId>gateway-pool</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.example</groupId>
+                <groupId>com.lei</groupId>
                 <artifactId>gateway-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -108,6 +109,12 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.5.2</version>
+                    <configuration>
+                        <!-- 并行跑测试类，最多 4 个线程 -->
+                        <parallel>classes</parallel>
+                        <threadCount>4</threadCount>
+                        <perCoreThreadCount>false</perCoreThreadCount>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.springframework.boot</groupId>
@@ -151,6 +158,7 @@
                         <effort>Max</effort>
                         <threshold>Medium</threshold>
                         <failOnError>true</failOnError>
+                        <excludeFilterFile>config/spotbugs/spotbugs-exclude.xml</excludeFilterFile>
                     </configuration>
                     <executions>
                         <execution>

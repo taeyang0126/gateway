@@ -1,0 +1,39 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, rewrite/** ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Package (skip tests)
+        run: mvn clean package -pl gateway-app -am -DskipTests -B
+
+      - name: Prepare distribution
+        run: |
+          mkdir -p dist/config
+          cp gateway-app/target/gateway-app-*.jar dist/gateway-app.jar
+          cp gateway-app/src/main/resources/application.yml dist/config/application.yml
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-app
+          path: dist/
+          retention-days: 30

@@ -78,6 +78,67 @@ Pipeline 组成（5 个 Handler）：
 - 本网关参考 Envoy / Spring Cloud Gateway 的做法，所有请求体都逐块转发
 - 这意味着 ProxyHandler 处理的是 HttpRequest + N 个 HttpContent + LastHttpContent，而非 FullHttpRequest
 
+**请求处理流程（RoutingHandler → ProxyHandler → UpstreamResponseHandler）**
+
+```mermaid
+flowchart TD
+    A[Client 发送 HttpRequest] --> B[RoutingHandler.channelRead]
+    B --> C{路径匹配}
+    C -- /health --> D[返回健康信息 200]
+    C -- /metrics --> E[返回 Prometheus 指标]
+    C -- 未匹配 --> F[返回 404]
+    C -- 匹配路由 --> G[new ProxyHandler\naddAfter routing proxy\nfireChannelRead]
+
+    G --> H[ProxyHandler.handleHttpRequest]
+    H --> H1[Content-Length 预检\n超限返回 413]
+    H1 --> H2[connectingToUpstream = true\n标记缓冲模式]
+    H2 --> H3[connectionPool.acquire 异步]
+
+    H3 -- 连接失败 --> ERR1[返回 502/503]
+    H3 -- 连接成功 --> I[onAcquireComplete]
+
+    I --> I1[upstreamChannel.pipeline\n.addLast upstreamHandler\nnew UpstreamResponseHandler]
+    I1 --> I2[write 请求头\nnot flush yet]
+    I2 --> I3{pendingContent\n有缓冲内容?}
+    I3 -- 有 --> I4[write 每个缓冲 chunk\n最后 LastHttpContent writeAndFlush]
+    I3 -- 无 --> I5[等待后续 HttpContent]
+    I4 --> WAIT[等待 upstream 响应]
+    I5 --> WAIT
+
+    subgraph 并发缓冲窗口
+        J[ProxyHandler.handleHttpContent\n连接建立期间到达的 chunk]
+        J --> J1{connectingToUpstream?}
+        J1 -- true --> J2[pendingContent.add\ncontent.retain 缓冲]
+        J1 -- false --> J3{是 LastHttpContent?}
+        J3 -- 否 --> J4[upstreamChannel.write]
+        J3 -- 是 --> J5[upstreamChannel.writeAndFlush]
+    end
+
+    WAIT --> K[UpstreamResponseHandler.channelRead]
+    K --> K1{消息类型}
+    K1 -- HttpResponse --> K2[proxyHandler.handleUpstreamResponse\nclientCtx.write 响应头]
+    K1 -- HttpContent --> K3[proxyHandler.handleUpstreamContent\nclientCtx.writeAndFlush chunk]
+    K1 -- LastHttpContent --> K4[clientCtx.writeAndFlush\n触发 completeRequest]
+
+    K4 --> L[completeRequest]
+    L --> L1[记录指标 MetricsCollector]
+    L1 --> L2[输出访问日志 AccessLogWriter]
+    L2 --> L3[releaseUpstream true\n归还连接池]
+    L3 --> L4[RoutingHandler.onProxyComplete\npipeline.remove proxy]
+    L4 --> L5{Connection: close?}
+    L5 -- 是 --> L6[ctx.close]
+    L5 -- 否 --> L7[保持连接\n等待下一个请求]
+
+    subgraph 异常路径
+        ERR2[channelInactive\nClient 断开]
+        ERR2 --> ERR3[releaseUpstream false\nupstreamChannel.close\n不归还连接池]
+        ERR4[exceptionCaught]
+        ERR4 --> ERR5[releaseUpstream false\n返回 500]
+        ERR6[IdleStateEvent 超时]
+        ERR6 --> ERR7[返回 504\nsendErrorAndCleanup]
+    end
+```
+
 ### 请求转发流程
 
 ```mermaid
