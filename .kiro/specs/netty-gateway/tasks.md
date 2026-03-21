@@ -2,7 +2,7 @@
 
 ## 概述
 
-基于 JDK 21、Netty 4.2.x 和 Spring Boot 构建 HTTP 反向代理网关。采用 Maven 多模块结构（gateway-pool、gateway-core、gateway-example），按模块自底向上实现：先完成泛型连接池，再构建网关核心，最后集成可观测性和示例服务。
+基于 JDK 21、Netty 4.2.x 和 Spring Boot 构建 HTTP 反向代理网关。采用 Maven 多模块结构（gateway-pool、gateway-core、gateway-app、gateway-example），按模块自底向上实现：先完成泛型连接池，再构建网关核心，最后集成可观测性和示例服务。
 
 ## 任务
 
@@ -10,6 +10,7 @@
   - 创建父 POM（netty-gateway），定义 JDK 21、Netty 4.2.x、Spring Boot、Micrometer、jqwik 等依赖版本管理
   - 创建 gateway-pool 子模块 POM（纯 Java，不依赖 Netty/Spring）
   - 创建 gateway-core 子模块 POM（依赖 gateway-pool、Netty、Spring Boot、Micrometer）
+  - 创建 gateway-app 子模块 POM（依赖 gateway-core，包含 Spring Boot Maven Plugin 打可执行 jar）
   - 创建 gateway-example 子模块 POM（Spring Boot Web）
   - 在父 POM 中配置代码质量插件：Checkstyle（Google Java Style，validate 阶段）、SpotBugs（verify 阶段）、JaCoCo（测试覆盖率报告），所有模块统一继承
   - 在 gateway-core 中创建 `application.yml`，包含网关端口、路由规则、请求限制、连接池和可观测性配置
@@ -26,6 +27,7 @@
   - [x] 2.2 实现 ConcurrentPool 核心池化容器
     - 实现三级获取策略：ThreadLocal 快速路径 → CopyOnWriteArrayList CAS 扫描 → SynchronousQueue handoff
     - 实现 `borrow(timeout, unit)`、`requite(entry)`、`remove(entry)`、`close()`
+    - requite 时优先通知异步等待者（`LinkedBlockingDeque<PendingBorrow>`，CAS 失败时 `offerFirst` 插回队头保证 FIFO）；无等待者时尝试 handoff，handoff 失败则加回当前线程 ThreadLocal 列表
     - 实现 `getActiveCount()`、`getIdleCount()`、`getTotalCount()` 查询方法（供指标暴露）
     - _需求: 9.1, 9.3, 9.4, 10.3_
 
@@ -38,6 +40,7 @@
     - 测试池满时 borrow 超时
     - 测试 borrow 后条目状态为 STATE_IN_USE，requite 后为 STATE_NOT_IN_USE
     - 测试 IdleEvictor：空闲条目被清理、未超时条目不被清理
+    - 测试 borrowAsync：池有空闲时立即返回、池空时创建新条目、池满等待归还后完成、超时、池已关闭、等待中池关闭
     - _需求: 9.1, 9.3, 9.4, 9.5_
 
   - [x] 2.5 编写 gateway-pool 属性测试

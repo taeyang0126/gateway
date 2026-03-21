@@ -12,6 +12,7 @@ public class ConnectionPoolProperties {
     private int maxIdleTimeSeconds = 60;
     private int slowConnectThresholdMillis = 50;
     private int connectTimeoutMillis = 500;
+    private int threadLocalCacheSize = 32;
 
     public int getMaxConnectionsPerHost() {
         return maxConnectionsPerHost;
@@ -43,5 +44,13 @@ public class ConnectionPoolProperties {
 
     public void setConnectTimeoutMillis(int connectTimeoutMillis) {
         this.connectTimeoutMillis = connectTimeoutMillis;
+    }
+
+    public int getThreadLocalCacheSize() {
+        return threadLocalCacheSize;
+    }
+
+    public void setThreadLocalCacheSize(int threadLocalCacheSize) {
+        this.threadLocalCacheSize = threadLocalCacheSize;
     }
 }

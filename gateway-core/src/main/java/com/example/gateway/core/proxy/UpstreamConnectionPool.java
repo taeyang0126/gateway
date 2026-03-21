@@ -119,6 +119,7 @@ public class UpstreamConnectionPool {
         config.setMaxPoolSize(properties.getMaxConnectionsPerHost());
         config.setMaxIdleTimeSeconds(properties.getMaxIdleTimeSeconds());
         config.setConnectionTimeoutMillis(properties.getConnectTimeoutMillis());
+        config.setThreadLocalCacheSize(properties.getThreadLocalCacheSize());
         return config;
     }
 }

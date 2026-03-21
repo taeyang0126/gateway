@@ -1,7 +1,10 @@
 package com.example.gateway.pool;
 
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -35,9 +38,19 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
     private final PoolEntryFactory<T> factory;
     private final CopyOnWriteArrayList<T> sharedList;
     private final SynchronousQueue<T> handoffQueue;
-    private final ThreadLocal<T> threadLocal;
+    // 参考 HikariCP：ThreadLocal 存列表而非单个引用，requite 时加回列表，borrow 时从列表尾部取出并移除。
+    // 用列表而非单个引用的性能原因：同一线程可能并发持有多个连接，单个引用每次 set 都覆盖，
+    // 只缓存最后一个，其他归还的连接下次 borrow 时只能走第二级共享列表 CAS 扫描（有竞争开销）。
+    // 列表可缓存该线程归还的所有连接，borrow 时直接从尾部取，完全无锁，快速路径命中率更高。
+    // 使用 WeakReference 包装有两个原因：
+    // 1. 防止跨线程 PoolEntry 泄露：remove(entry) 只能清理当前线程的列表，其他线程列表里可能还持有
+    //    已 close 的 entry 的引用。WeakReference 确保 sharedList 移除后无强引用，GC 可直接回收，
+    //    其他线程列表里的 WeakRef 自然变 null，borrow 时跳过即可。
+    // 2. 防止自定义 ClassLoader 泄露：容器环境（Tomcat/OSGi）下，强引用会形成
+    //    线程 → ThreadLocal → entry → ClassLoader 的引用链，导致 ClassLoader 无法卸载。
+    private final ThreadLocal<List<WeakReference<T>>> threadLocalList;
     private final AtomicInteger totalEntries;
-    private final ConcurrentLinkedQueue<PendingBorrow<T>> pendingBorrows;
+    private final LinkedBlockingDeque<PendingBorrow<T>> pendingBorrows;
     private final ScheduledExecutorService scheduler;
     private volatile boolean closed;
 
@@ -52,9 +65,9 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
         this.factory = factory;
         this.sharedList = new CopyOnWriteArrayList<>();
         this.handoffQueue = new SynchronousQueue<>(true);
-        this.threadLocal = new ThreadLocal<>();
+        this.threadLocalList = ThreadLocal.withInitial(() -> new ArrayList<>(config.getThreadLocalCacheSize()));
         this.totalEntries = new AtomicInteger(0);
-        this.pendingBorrows = new ConcurrentLinkedQueue<>();
+        this.pendingBorrows = new LinkedBlockingDeque<>();
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "pool-timeout-scheduler");
             t.setDaemon(true);
@@ -80,12 +93,15 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             throw new IllegalStateException("Pool is closed");
         }
 
-        // 第一级：ThreadLocal 快速路径
-        T entry = threadLocal.get();
-        if (entry != null && entry.getState() == PoolEntry.STATE_NOT_IN_USE
-                && entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
-            entry.setLastAccessTime(System.nanoTime());
-            return entry;
+        // 第一级：ThreadLocal 快速路径（从列表尾部取，取出后从列表移除）
+        List<WeakReference<T>> localList = threadLocalList.get();
+        for (int i = localList.size() - 1; i >= 0; i--) {
+            T entry = localList.remove(i).get();
+            if (entry != null && entry.getState() == PoolEntry.STATE_NOT_IN_USE
+                    && entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
+                entry.setLastAccessTime(System.nanoTime());
+                return entry;
+            }
         }
 
         // 第二级：共享列表 CAS 扫描
@@ -93,7 +109,6 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             if (candidate.getState() == PoolEntry.STATE_NOT_IN_USE
                     && candidate.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
                 candidate.setLastAccessTime(System.nanoTime());
-                threadLocal.set(candidate);
                 return candidate;
             }
         }
@@ -116,7 +131,6 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             if (handed != null
                     && handed.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
                 handed.setLastAccessTime(System.nanoTime());
-                threadLocal.set(handed);
                 return handed;
             }
         } while (!closed);
@@ -127,8 +141,8 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
     /**
      * 异步从池中借用一个条目，不阻塞调用线程。
      *
-     * <p>优先尝试共享列表 CAS 扫描和创建新条目。如果池满且无空闲条目，
-     * 将等待者放入队列，归还时通过回调通知。
+     * <p>获取策略：ThreadLocal 快速路径 → 共享列表 CAS 扫描 → 异步创建新条目 → 等待队列。
+     * ThreadLocal 快速路径适用于 Netty EventLoop 等固定线程模型（borrowAsync 与 requite 在同一线程）。
      *
      * @param timeout 最大等待时间
      * @param unit 时间单位
@@ -140,7 +154,18 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
                     new IllegalStateException("Pool is closed"));
         }
 
-        // 第一级：共享列表 CAS 扫描（异步版不用 ThreadLocal，因为可能在任意线程回调）
+        // 第一级：ThreadLocal 快速路径（borrowAsync 由 EventLoop 线程调用，requite 也在同一线程，ThreadLocal 有效）
+        List<WeakReference<T>> localList = threadLocalList.get();
+        for (int i = localList.size() - 1; i >= 0; i--) {
+            T entry = localList.remove(i).get();
+            if (entry != null && entry.getState() == PoolEntry.STATE_NOT_IN_USE
+                    && entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
+                entry.setLastAccessTime(System.nanoTime());
+                return CompletableFuture.completedFuture(entry);
+            }
+        }
+
+        // 第二级：共享列表 CAS 扫描
         for (T candidate : sharedList) {
             if (candidate.getState() == PoolEntry.STATE_NOT_IN_USE
                     && candidate.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
@@ -222,7 +247,6 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE);
             entry.setLastAccessTime(System.nanoTime());
             sharedList.add(entry);
-            threadLocal.set(entry);
             return entry;
         } catch (Exception e) {
             totalEntries.decrementAndGet();
@@ -247,15 +271,19 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
                     // 该等待者已超时，归还条目继续尝试下一个
                     entry.compareAndSet(PoolEntry.STATE_IN_USE, PoolEntry.STATE_NOT_IN_USE);
                 } else {
-                    // 条目被其他线程抢走了，放回等待者
-                    pendingBorrows.add(pending);
+                    // 条目被其他线程抢走，插回队头保证 FIFO
+                    pendingBorrows.offerFirst(pending);
                     return;
                 }
             }
 
             // 无异步等待者，尝试 handoff 给同步等待者
             if (!handoffQueue.offer(entry)) {
-                threadLocal.set(entry);
+                // 无同步等待者，加回当前线程的 ThreadLocal 列表（上限由 PoolConfig.threadLocalCacheSize 控制）
+                List<WeakReference<T>> localList = threadLocalList.get();
+                if (localList.size() < config.getThreadLocalCacheSize()) {
+                    localList.add(new WeakReference<>(entry));
+                }
             }
         }
     }
@@ -273,6 +301,8 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
         }
         sharedList.remove(entry);
         totalEntries.decrementAndGet();
+        // 清理当前线程 ThreadLocal 列表里对该条目的引用（参考 HikariCP remove 实现）
+        threadLocalList.get().removeIf(ref -> ref.get() == entry);
         entry.close();
     }
 
@@ -329,8 +359,8 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
         // 关闭超时调度器
         scheduler.shutdownNow();
 
-        // 清理 ThreadLocal 防止内存泄漏
-        threadLocal.remove();
+        // 清理当前线程的 ThreadLocal 列表
+        threadLocalList.remove();
 
         for (T entry : sharedList) {
             entry.close();

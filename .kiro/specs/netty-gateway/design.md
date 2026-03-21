@@ -26,12 +26,15 @@ netty-gateway/                  (父 POM)
 ├── gateway-pool/               (泛型资源连接池，纯 Java，不依赖 Netty)
 ├── gateway-core/               (网关核心，依赖 gateway-pool)
 │   └── src/main/java/...
+├── gateway-app/                (网关启动入口，依赖 gateway-core)
+│   └── src/main/java/...
 └── gateway-example/            (测试用上游服务示例)
     └── src/main/java/...
 ```
 
 - **gateway-pool**：泛型资源连接池模块，参考 HikariCP ConcurrentBag 设计。纯 Java 实现，不依赖 Netty 或 Spring，可独立复用
-- **gateway-core**：网关核心模块，依赖 gateway-pool，包含 Netty 服务、路由匹配、流式请求转发，通过 ChannelPoolEntry 适配器将 Netty Channel 接入泛型连接池
+- **gateway-core**：网关核心模块，依赖 gateway-pool，包含 Netty 服务、路由匹配、流式请求转发，通过 ChannelPoolEntry 适配器将 Netty Channel 接入泛型连接池。`GatewayAutoConfiguration` 负责注册 `PrometheusMeterRegistry` bean（`@ConditionalOnMissingBean`，兼容引入 actuator 的场景）
+- **gateway-app**：网关启动入口模块，仅包含 `GatewayApplication`（`@SpringBootApplication`），依赖 gateway-core，通过 Spring Boot Maven Plugin 打可执行 jar
 - **gateway-example**：基于 Spring Boot Web 的 mock 上游服务，包含普通 REST 接口（GET/POST）、文件上传接口和大文件下载接口，用于开发和测试时验证网关功能
 
 ## 架构
@@ -331,7 +334,7 @@ public class ConcurrentPool<T extends PoolEntry> {
 ```
 
 三级获取策略（参考 HikariCP）：
-1. **ThreadLocal 快速路径** — 优先从当前线程上次归还的条目中获取（无锁，CAS 切换 STATE_NOT_IN_USE → STATE_IN_USE）
+1. **ThreadLocal 快速路径** — 优先从当前线程的本地列表（`ThreadLocal<List<WeakReference<T>>>`）中获取，borrow 时从列表尾部取出并移除，requite 时加回列表（上限 16 个）。使用 WeakReference 包装防止自定义 ClassLoader 场景下的 ClassLoader 泄露。CAS 切换 STATE_NOT_IN_USE → STATE_IN_USE
 2. **共享列表 CAS 扫描** — ThreadLocal 没有时，遍历 CopyOnWriteArrayList，用 CAS 标记 STATE_NOT_IN_USE → STATE_IN_USE
 3. **SynchronousQueue handoff** — 前两级都没有时，等待其他线程归还或工厂创建新条目
 
@@ -667,6 +670,7 @@ JSON 输出示例：
 | maxIdleTimeSeconds | int | 空闲连接最大存活时间，默认 60 秒，映射到 PoolConfig.maxIdleTimeSeconds |
 | slowConnectThresholdMillis | int | 慢连接监控阈值，默认 50ms，超过此值记录指标/日志 |
 | connectTimeoutMillis | int | 建立连接硬超时，默认 500ms，映射到 PoolConfig.connectionTimeoutMillis |
+| threadLocalCacheSize | int | 每个线程 ThreadLocal 缓存的最大 upstream 连接数，默认 32，映射到 PoolConfig.threadLocalCacheSize |
 
 ### PoolConfig（泛型池配置，gateway-pool 模块）
 
@@ -675,6 +679,7 @@ JSON 输出示例：
 | maxPoolSize | int | 最大池大小，默认 50 |
 | maxIdleTimeSeconds | int | 空闲条目最大存活时间，默认 60 秒 |
 | connectionTimeoutMillis | int | 获取条目超时，默认 500ms |
+| threadLocalCacheSize | int | 每个线程 ThreadLocal 缓存的最大条目数，默认 32 |
 
 ### HealthInfo（健康信息）
 
@@ -733,6 +738,7 @@ gateway:
     max-idle-time-seconds: 60
     slow-connect-threshold-millis: 50
     connect-timeout-millis: 500
+    thread-local-cache-size: 32
   observability:
     metrics-enabled: true
     access-log-enabled: true

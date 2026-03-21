@@ -8,6 +8,7 @@ public class PoolConfig {
     private int maxPoolSize = 50;
     private int maxIdleTimeSeconds = 60;
     private int connectionTimeoutMillis = 500;
+    private int threadLocalCacheSize = 32;
 
     public int getMaxPoolSize() {
         return maxPoolSize;
@@ -31,5 +32,13 @@ public class PoolConfig {
 
     public void setConnectionTimeoutMillis(int connectionTimeoutMillis) {
         this.connectionTimeoutMillis = connectionTimeoutMillis;
+    }
+
+    public int getThreadLocalCacheSize() {
+        return threadLocalCacheSize;
+    }
+
+    public void setThreadLocalCacheSize(int threadLocalCacheSize) {
+        this.threadLocalCacheSize = threadLocalCacheSize;
     }
 }
