@@ -1,6 +1,6 @@
 # netty-gateway
 
-[![codecov](https://codecov.io/gh/taeyang0126/gateway/branch/main/graph/badge.svg)](https://codecov.io/gh/taeyang0126/gateway)
+[![codecov](https://codecov.io/gh/taeyang0126/gateway/branch/rewrite%2Fv4/graph/badge.svg)](https://codecov.io/gh/taeyang0126/gateway)
 
 基于 Netty 4.2.x + Spring Boot 的 HTTP 反向代理网关。
 

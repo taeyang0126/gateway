@@ -26,7 +26,9 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
+import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.CharsetUtil;
 import io.netty.util.ReferenceCountUtil;
 import java.util.concurrent.CompletableFuture;
@@ -212,20 +214,20 @@ class ProxyHandlerTest {
         clientChannel.writeInbound(request);
         clientChannel.runPendingTasks();
 
-        // 请求头使用 write，不会立即出现在 outbound（尚未 flush）
-        assertThat((Object) upstreamChannel.readOutbound()).isNull();
+        // 请求头已随 flush 发出
+        Object requestMsg = upstreamChannel.readOutbound();
+        assertThat(requestMsg).isNotNull();
+        ReferenceCountUtil.release(requestMsg);
 
         DefaultHttpContent chunk = new DefaultHttpContent(
                 Unpooled.copiedBuffer("abc", CharsetUtil.UTF_8));
         clientChannel.writeInbound(chunk);
 
         Object first = upstreamChannel.readOutbound();
-        Object second = upstreamChannel.readOutbound();
         assertThat(first).isNotNull();
-        assertThat(second).isInstanceOf(HttpContent.class);
+        assertThat(first).isInstanceOf(HttpContent.class);
 
         ReferenceCountUtil.release(first);
-        ReferenceCountUtil.release(second);
         clientChannel.finishAndReleaseAll();
         upstreamChannel.finishAndReleaseAll();
     }
@@ -267,5 +269,291 @@ class ProxyHandlerTest {
         route.setPathPrefix(pathPrefix);
         route.setUpstream(upstream);
         return route;
+    }
+
+    // -------------------------------------------------------------------------
+    // 无效 upstream URI → 502
+    // -------------------------------------------------------------------------
+
+    @Test
+    void invalidUpstreamUri_returns502() throws Exception {
+        Route route = createRoute("svc", "/api", "://invalid-uri");
+        ProxyHandler handler = createHandler(route);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        DefaultHttpRequest request = new DefaultHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.GET, "/api/test");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        channel.writeInbound(request);
+
+        FullHttpResponse response = channel.readOutbound();
+        assertThat(response).isNotNull();
+        assertThat(response.status()).isEqualTo(HttpResponseStatus.BAD_GATEWAY);
+        response.release();
+        channel.finish();
+    }
+
+    // -------------------------------------------------------------------------
+    // 连接池满（IllegalStateException）→ 503
+    // -------------------------------------------------------------------------
+
+    @Test
+    void connectionPoolExhausted_returns503() throws Exception {
+        Route route = createRoute("svc", "/api", "http://localhost:8081");
+        when(connectionPool.acquire("localhost", 8081))
+                .thenReturn(CompletableFuture.failedFuture(
+                        new IllegalStateException("pool exhausted")));
+        ProxyHandler handler = createHandler(route);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        DefaultHttpRequest request = new DefaultHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.GET, "/api/test");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        channel.writeInbound(request);
+        channel.runPendingTasks();
+
+        FullHttpResponse response = channel.readOutbound();
+        assertThat(response).isNotNull();
+        assertThat(response.status()).isEqualTo(HttpResponseStatus.SERVICE_UNAVAILABLE);
+        response.release();
+        channel.finish();
+    }
+
+    // -------------------------------------------------------------------------
+    // 累计 body 超限 → 413
+    // -------------------------------------------------------------------------
+
+    @Test
+    void accumulatedBodyExceedsLimit_returns413() throws Exception {
+        Route route = createRoute("svc", "/api", "http://localhost:8081");
+        EmbeddedChannel upstreamChannel = new EmbeddedChannel();
+        when(connectionPool.acquire("localhost", 8081))
+                .thenReturn(CompletableFuture.completedFuture(upstreamChannel));
+        ProxyHandler handler = createHandler(route);
+        EmbeddedChannel clientChannel = new EmbeddedChannel(handler);
+
+        // 不带 Content-Length，通过预检
+        DefaultHttpRequest request = new DefaultHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.POST, "/api/test");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        clientChannel.writeInbound(request);
+        clientChannel.runPendingTasks();
+
+        // 发送超过 1024 字节的 body
+        byte[] bigBody = new byte[1025];
+        DefaultHttpContent content = new DefaultHttpContent(
+                Unpooled.wrappedBuffer(bigBody));
+        clientChannel.writeInbound(content);
+
+        FullHttpResponse response = clientChannel.readOutbound();
+        assertThat(response).isNotNull();
+        assertThat(response.status())
+                .isEqualTo(HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE);
+        response.release();
+        clientChannel.finishAndReleaseAll();
+        upstreamChannel.finishAndReleaseAll();
+    }
+
+    // -------------------------------------------------------------------------
+    // IdleStateEvent → 504
+    // -------------------------------------------------------------------------
+
+    @Test
+    void idleStateEvent_returns504() throws Exception {
+        Route route = createRoute("svc", "/api", "http://localhost:8081");
+        ProxyHandler handler = createHandler(route);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        // 触发 IdleStateEvent
+        channel.pipeline().fireUserEventTriggered(
+                IdleStateEvent.READER_IDLE_STATE_EVENT);
+
+        FullHttpResponse response = channel.readOutbound();
+        assertThat(response).isNotNull();
+        assertThat(response.status()).isEqualTo(HttpResponseStatus.GATEWAY_TIMEOUT);
+        response.release();
+        channel.finish();
+    }
+
+    // -------------------------------------------------------------------------
+    // exceptionCaught → 500
+    // -------------------------------------------------------------------------
+
+    @Test
+    void exceptionCaught_returns500() throws Exception {
+        Route route = createRoute("svc", "/api", "http://localhost:8081");
+        ProxyHandler handler = createHandler(route);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        channel.pipeline().fireExceptionCaught(new RuntimeException("test error"));
+
+        FullHttpResponse response = channel.readOutbound();
+        assertThat(response).isNotNull();
+        assertThat(response.status())
+                .isEqualTo(HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        response.release();
+        channel.finish();
+    }
+
+    // -------------------------------------------------------------------------
+    // isNoBodyResponse 各分支
+    // -------------------------------------------------------------------------
+
+    @Test
+    void headRequest_noBodyResponse() throws Exception {
+        Route route = createRoute("svc", "/api", "http://localhost:8081");
+        EmbeddedChannel upstreamChannel = new EmbeddedChannel();
+        when(connectionPool.acquire("localhost", 8081))
+                .thenReturn(CompletableFuture.completedFuture(upstreamChannel));
+        ProxyHandler handler = createHandler(route);
+        EmbeddedChannel clientChannel = new EmbeddedChannel(handler);
+
+        // 发送 HEAD 请求
+        DefaultHttpRequest request = new DefaultHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.HEAD, "/api/test");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        clientChannel.writeInbound(request);
+        clientChannel.runPendingTasks();
+
+        // 模拟 upstream 返回 200 响应（HEAD 请求无 body）
+        DefaultHttpResponse upstreamResponse = new DefaultHttpResponse(
+                HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+        upstreamChannel.writeInbound(upstreamResponse);
+        clientChannel.runPendingTasks();
+
+        FullHttpResponse response = clientChannel.readOutbound();
+        assertThat(response).isNotNull();
+        assertThat(response.status()).isEqualTo(HttpResponseStatus.OK);
+        response.release();
+        clientChannel.finishAndReleaseAll();
+        upstreamChannel.finishAndReleaseAll();
+    }
+
+    @Test
+    void status204_noBodyResponse() throws Exception {
+        Route route = createRoute("svc", "/api", "http://localhost:8081");
+        EmbeddedChannel upstreamChannel = new EmbeddedChannel();
+        when(connectionPool.acquire("localhost", 8081))
+                .thenReturn(CompletableFuture.completedFuture(upstreamChannel));
+        ProxyHandler handler = createHandler(route);
+        EmbeddedChannel clientChannel = new EmbeddedChannel(handler);
+
+        DefaultHttpRequest request = new DefaultHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.GET, "/api/test");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        clientChannel.writeInbound(request);
+        clientChannel.runPendingTasks();
+
+        DefaultHttpResponse upstreamResponse = new DefaultHttpResponse(
+                HttpVersion.HTTP_1_1, HttpResponseStatus.NO_CONTENT);
+        upstreamChannel.writeInbound(upstreamResponse);
+        clientChannel.runPendingTasks();
+
+        FullHttpResponse response = clientChannel.readOutbound();
+        assertThat(response).isNotNull();
+        assertThat(response.status()).isEqualTo(HttpResponseStatus.NO_CONTENT);
+        response.release();
+        clientChannel.finishAndReleaseAll();
+        upstreamChannel.finishAndReleaseAll();
+    }
+
+    @Test
+    void status304_noBodyResponse() throws Exception {
+        Route route = createRoute("svc", "/api", "http://localhost:8081");
+        EmbeddedChannel upstreamChannel = new EmbeddedChannel();
+        when(connectionPool.acquire("localhost", 8081))
+                .thenReturn(CompletableFuture.completedFuture(upstreamChannel));
+        ProxyHandler handler = createHandler(route);
+        EmbeddedChannel clientChannel = new EmbeddedChannel(handler);
+
+        DefaultHttpRequest request = new DefaultHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.GET, "/api/test");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        clientChannel.writeInbound(request);
+        clientChannel.runPendingTasks();
+
+        DefaultHttpResponse upstreamResponse = new DefaultHttpResponse(
+                HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_MODIFIED);
+        upstreamChannel.writeInbound(upstreamResponse);
+        clientChannel.runPendingTasks();
+
+        FullHttpResponse response = clientChannel.readOutbound();
+        assertThat(response).isNotNull();
+        assertThat(response.status()).isEqualTo(HttpResponseStatus.NOT_MODIFIED);
+        response.release();
+        clientChannel.finishAndReleaseAll();
+        upstreamChannel.finishAndReleaseAll();
+    }
+
+    // -------------------------------------------------------------------------
+    // tracing 头注入
+    // -------------------------------------------------------------------------
+
+    @Test
+    void tracingEnabled_injectsTraceparentHeader() throws Exception {
+        Route route = createRoute("svc", "/api", "http://localhost:8081");
+        EmbeddedChannel upstreamChannel = new EmbeddedChannel();
+        when(connectionPool.acquire("localhost", 8081))
+                .thenReturn(CompletableFuture.completedFuture(upstreamChannel));
+
+        ObservabilityProperties tracingConfig = new ObservabilityProperties();
+        tracingConfig.setTracingEnabled(true);
+
+        ProxyHandler handler = new ProxyHandler(route, limitConfig, connectionPool,
+                metricsCollector, accessLogWriter, tracingConfig);
+        EmbeddedChannel clientChannel = new EmbeddedChannel(handler);
+
+        // 设置 traceparent 属性
+        clientChannel.attr(com.lei.gateway.core.observability.TraceContextHandler.TRACEPARENT_KEY)
+                .set("00-traceid-spanid-01");
+
+        DefaultHttpRequest request = new DefaultHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.GET, "/api/test");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        clientChannel.writeInbound(request);
+        clientChannel.runPendingTasks();
+
+        // 验证 upstream 收到了 traceparent 头
+        Object upstreamMsg = upstreamChannel.readOutbound();
+        assertThat(upstreamMsg).isInstanceOf(io.netty.handler.codec.http.HttpRequest.class);
+        io.netty.handler.codec.http.HttpRequest upstreamReq =
+                (io.netty.handler.codec.http.HttpRequest) upstreamMsg;
+        assertThat(upstreamReq.headers().get("traceparent"))
+                .isEqualTo("00-traceid-spanid-01");
+
+        ReferenceCountUtil.release(upstreamMsg);
+        clientChannel.finishAndReleaseAll();
+        upstreamChannel.finishAndReleaseAll();
+    }
+
+    // -------------------------------------------------------------------------
+    // 客户端在获取连接期间断开
+    // -------------------------------------------------------------------------
+
+    @Test
+    void clientDisconnectsDuringAcquire_shouldNotSendResponse() throws Exception {
+        Route route = createRoute("svc", "/api", "http://localhost:8081");
+        CompletableFuture<Channel> acquireFuture = new CompletableFuture<>();
+        when(connectionPool.acquire("localhost", 8081)).thenReturn(acquireFuture);
+        ProxyHandler handler = createHandler(route);
+        EmbeddedChannel clientChannel = new EmbeddedChannel(handler);
+
+        DefaultHttpRequest request = new DefaultHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.GET, "/api/test");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        clientChannel.writeInbound(request);
+
+        // 客户端在 acquire 完成前断开
+        clientChannel.close();
+
+        // 完成 acquire，此时客户端已断开
+        EmbeddedChannel upstreamChannel = new EmbeddedChannel();
+        acquireFuture.complete(upstreamChannel);
+        clientChannel.runPendingTasks();
+
+        // 不应有响应写出
+        assertThat((Object) clientChannel.readOutbound()).isNull();
+        clientChannel.finishAndReleaseAll();
+        upstreamChannel.finishAndReleaseAll();
     }
 }

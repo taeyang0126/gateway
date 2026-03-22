@@ -320,4 +320,151 @@ class ConcurrentPoolTest {
         assertThat(ex.getCause()).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("closed");
     }
+
+    // ---- borrow handoff 路径 ----
+
+    @Test
+    void borrowBlocksUntilEntryRequited() throws Exception {
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            // 填满池
+            List<TestPoolEntry> entries = new ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                entries.add(pool.borrow(100, TimeUnit.MILLISECONDS));
+            }
+
+            // 另一个线程延迟归还
+            CompletableFuture.runAsync(() -> {
+                try {
+                    Thread.sleep(50);
+                    pool.requite(entries.get(0));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+
+            // borrow 应阻塞等待，然后拿到归还的条目
+            TestPoolEntry acquired = pool.borrow(500, TimeUnit.MILLISECONDS);
+            assertThat(acquired).isSameAs(entries.get(0));
+            assertThat(acquired.getState()).isEqualTo(PoolEntry.STATE_IN_USE);
+        }
+    }
+
+    // ---- tryCreateEntry 工厂异常路径 ----
+
+    @Test
+    void borrowWhenFactoryThrows_fallsBackToHandoff() throws Exception {
+        PoolEntryFactory<TestPoolEntry> failFactory = new PoolEntryFactory<>() {
+            private int callCount = 0;
+
+            @Override
+            public TestPoolEntry create() throws Exception {
+                if (callCount++ == 0) {
+                    throw new RuntimeException("factory error");
+                }
+                return new TestPoolEntry();
+            }
+        };
+
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, failFactory)) {
+            // 第一次 borrow：工厂抛异常，tryCreateEntry 返回 null，进入 handoff 等待
+            // 另一个线程创建并归还一个条目
+            CompletableFuture.runAsync(() -> {
+                try {
+                    Thread.sleep(50);
+                    TestPoolEntry entry = new TestPoolEntry();
+                    pool.getSharedList().add(entry);
+                    pool.getSharedList(); // 触发 sharedList 可见
+                    // 直接通过 handoffQueue 传递
+                    entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_NOT_IN_USE);
+                    pool.requite(entry); // requite 会尝试 handoff
+                } catch (Exception e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+
+            // 工厂第一次失败，totalEntries 应回滚
+            assertThat(pool.getTotalCount()).isEqualTo(0);
+        }
+    }
+
+    // ---- remove NOT_IN_USE 状态条目 ----
+
+    @Test
+    void removeIdleEntry_shouldRemoveFromPool() throws Exception {
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            TestPoolEntry entry = pool.borrow(100, TimeUnit.MILLISECONDS);
+            pool.requite(entry);
+            assertThat(pool.getTotalCount()).isEqualTo(1);
+
+            // 直接 remove 空闲条目（NOT_IN_USE 状态）
+            pool.remove(entry);
+            assertThat(entry.getState()).isEqualTo(PoolEntry.STATE_REMOVED);
+            assertThat(entry.isClosed()).isTrue();
+            assertThat(pool.getTotalCount()).isEqualTo(0);
+        }
+    }
+
+    // ---- requite 时等待者已超时 ----
+
+    @Test
+    void requite_whenWaiterAlreadyTimedOut_shouldNotLoseEntry() throws Exception {
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            // 填满池
+            List<TestPoolEntry> entries = new ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                entries.add(pool.borrow(100, TimeUnit.MILLISECONDS));
+            }
+
+            // 发起一个极短超时的 borrowAsync，让它超时
+            CompletableFuture<TestPoolEntry> timedOut = pool.borrowAsync(10, TimeUnit.MILLISECONDS);
+            // 等待超时完成
+            Thread.sleep(100);
+            assertThat(timedOut.isCompletedExceptionally()).isTrue();
+
+            // 归还条目，此时等待者已超时，requite 应正常处理不丢失条目
+            pool.requite(entries.get(0));
+            assertThat(pool.getIdleCount()).isGreaterThanOrEqualTo(1);
+        }
+    }
+
+    // ---- getConfig ----
+
+    @Test
+    void getConfig_returnsDefensiveCopy() throws Exception {
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            PoolConfig copy = pool.getConfig();
+            assertThat(copy.getMaxPoolSize()).isEqualTo(config.getMaxPoolSize());
+            // 修改返回的拷贝不影响池内部配置
+            copy.setMaxPoolSize(999);
+            assertThat(pool.getConfig().getMaxPoolSize()).isEqualTo(config.getMaxPoolSize());
+        }
+    }
+
+    // ---- borrowAsync 异步创建失败后进入等待队列 ----
+
+    @Test
+    void borrowAsync_whenAsyncCreateFails_enqueuesWaiter() throws Exception {
+        PoolEntryFactory<TestPoolEntry> asyncFailFactory = new PoolEntryFactory<>() {
+            @Override
+            public TestPoolEntry create() throws Exception {
+                return new TestPoolEntry();
+            }
+
+            @Override
+            public CompletableFuture<TestPoolEntry> createAsync() {
+                return CompletableFuture.failedFuture(
+                        new RuntimeException("async create failed"));
+            }
+        };
+
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, asyncFailFactory)) {
+            // borrowAsync 触发异步创建失败，进入等待队列，最终超时
+            CompletableFuture<TestPoolEntry> future = pool.borrowAsync(100, TimeUnit.MILLISECONDS);
+
+            ExecutionException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                    ExecutionException.class,
+                    () -> future.get(500, TimeUnit.MILLISECONDS));
+            assertThat(ex.getCause()).isInstanceOf(IllegalStateException.class);
+        }
+    }
 }

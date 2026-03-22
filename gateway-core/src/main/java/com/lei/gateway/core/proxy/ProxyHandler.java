@@ -236,9 +236,9 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             while ((buffered = pendingContent.poll()) != null) {
                 upstreamChannel.write(buffered);
             }
-            upstreamChannel.flush();
             pendingContent = null;
         }
+        upstreamChannel.flush();
     }
 
     private void handleHttpContent(ChannelHandlerContext ctx,
@@ -283,7 +283,11 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         long contentLength = HttpUtil.getContentLength(response, -1L);
         boolean chunked = HttpUtil.isTransferEncodingChunked(response);
         if (isNoBodyResponse(response)) {
-            clientCtx.writeAndFlush(response).addListener(future -> {
+            FullHttpResponse fullResponse = new DefaultFullHttpResponse(
+                    response.protocolVersion(), response.status(),
+                    io.netty.buffer.Unpooled.EMPTY_BUFFER, response.headers(),
+                    io.netty.handler.codec.http.EmptyHttpHeaders.INSTANCE);
+            clientCtx.writeAndFlush(fullResponse).addListener(future -> {
                 if (!future.isSuccess()) {
                     log.error("写出响应头到客户端失败", future.cause());
                 }

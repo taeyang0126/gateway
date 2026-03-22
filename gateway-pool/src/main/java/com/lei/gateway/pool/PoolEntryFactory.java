@@ -25,12 +25,10 @@ public interface PoolEntryFactory<T extends PoolEntry> {
      * @return 包含新条目的 CompletableFuture
      */
     default CompletableFuture<T> createAsync() {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                return create();
-            } catch (Exception e) {
-                throw new java.util.concurrent.CompletionException(e);
-            }
-        });
+        try {
+            return CompletableFuture.completedFuture(create());
+        } catch (Exception e) {
+            return CompletableFuture.failedFuture(e);
+        }
     }
 }
