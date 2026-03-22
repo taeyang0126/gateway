@@ -10,7 +10,6 @@ public class ObservabilityProperties {
 
     private boolean metricsEnabled = true;
     private boolean accessLogEnabled = true;
-    private String accessLogLevel = "WARN";
     private boolean tracingEnabled = true;
 
     public boolean isMetricsEnabled() {
@@ -27,14 +26,6 @@ public class ObservabilityProperties {
 
     public void setAccessLogEnabled(boolean accessLogEnabled) {
         this.accessLogEnabled = accessLogEnabled;
-    }
-
-    public String getAccessLogLevel() {
-        return accessLogLevel;
-    }
-
-    public void setAccessLogLevel(String accessLogLevel) {
-        this.accessLogLevel = accessLogLevel;
     }
 
     public boolean isTracingEnabled() {

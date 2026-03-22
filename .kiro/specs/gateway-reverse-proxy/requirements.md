@@ -167,6 +167,6 @@
 #### 验收标准
 
 1. THE Build SHALL 在 validate 阶段执行 Checkstyle 检查，使用 Google Java Style 规则集，违规时构建失败
-2. THE Build SHALL 在 verify 阶段执行 SpotBugs 静态分析，检测潜在 bug（effort=Max, threshold=Medium），发现问题时构建失败
+2. THE Build SHALL 在 compile 阶段执行 forbidden-apis 检查，禁止使用 JDK 内部不安全 API、平台相关默认编码 API 和已废弃 JDK API，发现违规时构建失败
 3. THE Build SHALL 在 test 阶段通过 JaCoCo 收集测试覆盖率数据并生成报告
 4. THE Build SHALL 对所有模块（gateway-pool、gateway-core、gateway-example）统一执行上述质量检查

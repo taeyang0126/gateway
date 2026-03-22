@@ -33,6 +33,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.ArrayDeque;
 import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,6 +67,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     private Channel upstreamChannel;
     private boolean connectingToUpstream;
     private Queue<HttpContent> pendingContent;
+    private final AtomicBoolean requestCompleted = new AtomicBoolean(false);
 
     /** 创建 ProxyHandler。 */
     public ProxyHandler(Route route,
@@ -112,7 +114,10 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             clientIp = remoteAddr != null ? remoteAddr.toString() : "unknown";
         }
 
-        // 4. Content-Length 预检（路由级别 maxRequestSize 优先于全局）
+        // 4. 记录客户端是否发送了 Expect: 100-continue
+        boolean expectContinue = HttpUtil.is100ContinueExpected(request);
+
+        // 5. Content-Length 预检（路由级别 maxRequestSize 优先于全局）
         maxRequestSize = route.getMaxRequestSize() != null
                 ? route.getMaxRequestSize()
                 : limitConfig.getMaxRequestSize();
@@ -124,7 +129,14 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        // 5. 解析 upstream 地址
+        // 如果客户端带了 Expect: 100-continue，不向客户端主动回 100。
+        // 实测该交互在当前 pipeline 下可能导致客户端收不到最终 200 而卡住。
+        // 这里仅去掉转发给上游的 Expect 头，避免上游再回 100 干扰响应序列。
+        if (expectContinue) {
+            request.headers().remove(HttpHeaderNames.EXPECT);
+        }
+
+        // 6. 解析 upstream 地址
         URI upstreamUri;
         try {
             upstreamUri = URI.create(route.getUpstream());
@@ -218,17 +230,13 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         // 转发请求头到 upstream（不立即 flush，等待后续 content 一起 flush）
         upstreamChannel.write(upstreamRequest);
 
-        // flush 连接就绪前缓冲的 HttpContent
+        // flush 连接就绪前缓冲的 HttpContent（逐块 flush，避免大包长时间滞留在写缓冲）
         if (pendingContent != null) {
             HttpContent buffered;
             while ((buffered = pendingContent.poll()) != null) {
-                if (buffered instanceof LastHttpContent || pendingContent.isEmpty()) {
-                    // 最后一个 chunk 或队列已空时 flush
-                    upstreamChannel.writeAndFlush(buffered);
-                } else {
-                    upstreamChannel.write(buffered);
-                }
+                upstreamChannel.write(buffered);
             }
+            upstreamChannel.flush();
             pendingContent = null;
         }
     }
@@ -252,7 +260,8 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             if (pendingContent == null) {
                 pendingContent = new ArrayDeque<>();
             }
-            pendingContent.add(content.retain());
+            // 当前 handler 已持有 content 的所有权，直接入队即可，避免额外 retain 导致泄漏
+            pendingContent.add(content);
             return;
         }
 
@@ -261,24 +270,41 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        if (content instanceof LastHttpContent) {
-            upstreamChannel.writeAndFlush(content);
-        } else {
-            upstreamChannel.write(content);
-        }
+        // 请求体逐块 flush，保证上游及时消费，避免大文件上传卡住
+        upstreamChannel.writeAndFlush(content);
     }
 
     /**
-     * 处理 upstream 响应头，转发给 client。
+     * 处理 upstream 响应头，转发给 client（分块响应专用，不含 body）。
      */
     void handleUpstreamResponse(ChannelHandlerContext clientCtx,
             HttpResponse response) {
         responseStatusCode = response.status().code();
-        clientCtx.write(response);
+        long contentLength = HttpUtil.getContentLength(response, -1L);
+        boolean chunked = HttpUtil.isTransferEncodingChunked(response);
+        if (isNoBodyResponse(response)) {
+            clientCtx.writeAndFlush(response).addListener(future -> {
+                if (!future.isSuccess()) {
+                    log.error("写出响应头到客户端失败", future.cause());
+                }
+                completeRequest(clientCtx);
+            });
+            return;
+        }
+        // 上游要求关闭连接，或响应无明确长度边界时，响应后关闭客户端连接，避免客户端等待结束信号卡住
+        if (!HttpUtil.isKeepAlive(response)
+                || (!chunked && contentLength < 0)) {
+            response.headers().set(HttpHeaderNames.CONNECTION,
+                    HttpHeaderValues.CLOSE);
+            clientCtx.channel().attr(RoutingHandler.CONNECTION_CLOSE_KEY)
+                    .set(Boolean.TRUE);
+        }
+        // 响应头先刷新，避免客户端在等待首包时长时间挂起
+        clientCtx.writeAndFlush(response);
     }
 
     /**
-     * 处理 upstream 响应体块，逐块转发给 client。
+     * 처리 upstream 响应体块，逐块转发给 client。
      */
     void handleUpstreamContent(ChannelHandlerContext clientCtx,
             HttpContent content) {
@@ -286,6 +312,9 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
         if (content instanceof LastHttpContent) {
             clientCtx.writeAndFlush(content).addListener(future -> {
+                if (!future.isSuccess()) {
+                    log.error("写出响应到客户端失败", future.cause());
+                }
                 completeRequest(clientCtx);
             });
         } else {
@@ -294,6 +323,9 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void completeRequest(ChannelHandlerContext clientCtx) {
+        if (!requestCompleted.compareAndSet(false, true)) {
+            return;
+        }
         // 计算耗时
         long durationNanos = System.nanoTime() - startTimeNanos;
 
@@ -351,6 +383,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
     private void sendErrorAndCleanup(ChannelHandlerContext ctx,
             HttpResponseStatus status, String message) {
+        requestCompleted.set(true);
         releaseUpstream(false);
         sendError(ctx, status, message);
         RoutingHandler.onProxyComplete(ctx);
@@ -358,9 +391,9 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
     private void sendError(ChannelHandlerContext ctx,
             HttpResponseStatus status, String message) {
-        String json = String.format(
-                "{\"status\":%d,\"error\":\"%s\",\"message\":\"%s\"}",
-                status.code(), status.reasonPhrase(), escapeJson(message));
+        String json = "{\"status\":" + status.code()
+                + ",\"error\":\"" + status.reasonPhrase()
+                + "\",\"message\":\"" + escapeJson(message) + "\"}";
         ByteBuf content = Unpooled.copiedBuffer(json, CharsetUtil.UTF_8);
         FullHttpResponse response = new DefaultFullHttpResponse(
                 HttpVersion.HTTP_1_1, status, content);
@@ -409,6 +442,19 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                 .replace("\t", "\\t");
     }
 
+    private boolean isNoBodyResponse(HttpResponse response) {
+        int status = response.status().code();
+        if ("HEAD".equalsIgnoreCase(method)
+                || status == HttpResponseStatus.NO_CONTENT.code()
+                || status == HttpResponseStatus.NOT_MODIFIED.code()) {
+            return true;
+        }
+        if (HttpUtil.isTransferEncodingChunked(response)) {
+            return false;
+        }
+        return HttpUtil.getContentLength(response, -1L) == 0L;
+    }
+
     /**
      * Upstream 响应处理器，安装在 upstream channel 的 pipeline 上，
      * 将 upstream 的响应转发回 client。
@@ -432,9 +478,14 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                 return;
             }
             if (msg instanceof HttpResponse response) {
+                // 1xx 中间响应防御性丢弃（网关已自己回 100，上游不应再发）
+                if (response.status().code() < 200) {
+                    ReferenceCountUtil.release(msg);
+                    return;
+                }
+                // upstream pipeline 无 HttpObjectAggregator，响应始终为分块模式
                 proxyHandler.handleUpstreamResponse(clientCtx, response);
-            }
-            if (msg instanceof HttpContent content) {
+            } else if (msg instanceof HttpContent content) {
                 proxyHandler.handleUpstreamContent(clientCtx, content);
             }
         }
@@ -446,6 +497,8 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             if (clientCtx.channel().isActive()
                     && proxyHandler.responseStatusCode == 0) {
                 // 还没收到响应就断开了
+                log.warn("Upstream channel 提前断开，responseStatusCode=0，remoteAddr={}",
+                        ctx.channel().remoteAddress());
                 proxyHandler.sendErrorAndCleanup(clientCtx,
                         HttpResponseStatus.BAD_GATEWAY,
                         "Upstream connection closed prematurely");
@@ -456,7 +509,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx,
                 Throwable cause) {
-            log.error("Upstream 响应处理异常", cause);
+            log.error("Upstream 响应处理异常，remoteAddr={}", ctx.channel().remoteAddress(), cause);
             if (clientCtx.channel().isActive()) {
                 proxyHandler.sendErrorAndCleanup(clientCtx,
                         HttpResponseStatus.BAD_GATEWAY,

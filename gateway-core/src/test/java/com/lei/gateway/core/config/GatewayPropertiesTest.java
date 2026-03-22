@@ -61,7 +61,6 @@ class GatewayPropertiesTest {
     void observabilityBindsCorrectly() {
         assertThat(observabilityProperties.isMetricsEnabled()).isTrue();
         assertThat(observabilityProperties.isAccessLogEnabled()).isTrue();
-        assertThat(observabilityProperties.getAccessLogLevel()).isEqualTo("WARN");
         assertThat(observabilityProperties.isTracingEnabled()).isTrue();
     }
 }

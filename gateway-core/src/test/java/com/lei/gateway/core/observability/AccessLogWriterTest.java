@@ -25,7 +25,7 @@ class AccessLogWriterTest {
 
     @BeforeEach
     void setUp() {
-        logger = (Logger) LoggerFactory.getLogger(AccessLogWriter.class);
+        logger = (Logger) LoggerFactory.getLogger("access");
         listAppender = new ListAppender<>();
         listAppender.start();
         logger.addAppender(listAppender);
@@ -55,14 +55,13 @@ class AccessLogWriterTest {
     void logsJsonWithAllFields() {
         ObservabilityProperties config = new ObservabilityProperties();
         config.setAccessLogEnabled(true);
-        config.setAccessLogLevel("WARN");
         AccessLogWriter writer = new AccessLogWriter(config, OBJECT_MAPPER);
 
         writer.log(createEntry());
 
         assertThat(listAppender.list).hasSize(1);
         ILoggingEvent event = listAppender.list.get(0);
-        assertThat(event.getLevel()).isEqualTo(Level.WARN);
+        assertThat(event.getLevel()).isEqualTo(Level.INFO);
         String message = event.getFormattedMessage();
         assertThat(message).contains("\"method\":\"POST\"");
         assertThat(message).contains("\"path\":\"/api/example/echo\"");
@@ -84,44 +83,5 @@ class AccessLogWriterTest {
         writer.log(createEntry());
 
         assertThat(listAppender.list).isEmpty();
-    }
-
-    @Test
-    void respectsLogLevel_info() {
-        ObservabilityProperties config = new ObservabilityProperties();
-        config.setAccessLogEnabled(true);
-        config.setAccessLogLevel("INFO");
-        AccessLogWriter writer = new AccessLogWriter(config, OBJECT_MAPPER);
-
-        writer.log(createEntry());
-
-        assertThat(listAppender.list).hasSize(1);
-        assertThat(listAppender.list.get(0).getLevel()).isEqualTo(Level.INFO);
-    }
-
-    @Test
-    void respectsLogLevel_debug() {
-        ObservabilityProperties config = new ObservabilityProperties();
-        config.setAccessLogEnabled(true);
-        config.setAccessLogLevel("DEBUG");
-        AccessLogWriter writer = new AccessLogWriter(config, OBJECT_MAPPER);
-
-        writer.log(createEntry());
-
-        assertThat(listAppender.list).hasSize(1);
-        assertThat(listAppender.list.get(0).getLevel()).isEqualTo(Level.DEBUG);
-    }
-
-    @Test
-    void respectsLogLevel_error() {
-        ObservabilityProperties config = new ObservabilityProperties();
-        config.setAccessLogEnabled(true);
-        config.setAccessLogLevel("ERROR");
-        AccessLogWriter writer = new AccessLogWriter(config, OBJECT_MAPPER);
-
-        writer.log(createEntry());
-
-        assertThat(listAppender.list).hasSize(1);
-        assertThat(listAppender.list.get(0).getLevel()).isEqualTo(Level.ERROR);
     }
 }

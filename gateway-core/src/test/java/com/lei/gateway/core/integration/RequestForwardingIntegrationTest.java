@@ -191,7 +191,7 @@ class RequestForwardingIntegrationTest extends IntegrationTestBase {
         }
         // 继续读 body（如果有 content-length）
         String headers = sb.toString();
-        int clIdx = headers.toLowerCase()
+        int clIdx = headers.toLowerCase(java.util.Locale.ROOT)
                 .indexOf("content-length:");
         if (clIdx >= 0) {
             int nlIdx = headers.indexOf("\r\n", clIdx);

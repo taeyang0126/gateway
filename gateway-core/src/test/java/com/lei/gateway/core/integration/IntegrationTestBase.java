@@ -191,7 +191,6 @@ abstract class IntegrationTestBase {
         ObservabilityProperties props = new ObservabilityProperties();
         props.setMetricsEnabled(true);
         props.setAccessLogEnabled(true);
-        props.setAccessLogLevel("INFO");
         props.setTracingEnabled(true);
         return props;
     }

@@ -120,6 +120,7 @@ public class NettyServerBootstrap implements SmartLifecycle {
         if (serverChannel != null) {
             serverChannel.close().syncUninterruptibly();
         }
+        connectionPool.closeAll();
         if (bossGroup != null) {
             bossGroup.shutdownGracefully();
         }

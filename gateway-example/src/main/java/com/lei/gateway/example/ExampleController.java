@@ -1,9 +1,15 @@
 package com.lei.gateway.example;
 
-import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
-import java.util.stream.Collectors;
-import org.springframework.core.io.InputStreamResource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.io.PathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -17,73 +23,88 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * Mock 上游服务控制器，提供普通 REST 接口、文件上传和大文件下载端点。
+ * Mock 上游服务控制器，提供普通 REST 接口、文件上传和文件下载端点。
  */
 @RestController
 @RequestMapping("/api/example")
 public class ExampleController {
 
+    private static final Logger log = LoggerFactory.getLogger(ExampleController.class);
+
+    /**
+     * 上传文件存储目录。
+     */
+    private static final Path UPLOAD_DIR = Paths.get("gateway-example/uploads");
+
+    /**
+     * 下载的默认文件名。
+     */
+    private static final String DOWNLOAD_FILE = "testfile.bin";
+
     /**
      * 简单 GET 接口。
-     *
-     * @return 问候文本
      */
     @GetMapping("/hello")
     public ResponseEntity<String> hello() {
+        log.info("GET /hello");
         return ResponseEntity.ok("Hello from upstream!");
     }
 
     /**
      * POST echo 接口，原样返回请求体。
-     *
-     * @param body 请求体
-     * @return 请求体内容
      */
     @PostMapping("/echo")
     public ResponseEntity<String> echo(@RequestBody String body) {
+        log.info("POST /echo body.length={}", body.length());
         return ResponseEntity.ok(body);
     }
 
     /**
-     * 单文件上传接口。
-     *
-     * @param file 上传的文件
-     * @return 文件名和大小
+     * 单文件上传接口，保存到 UPLOAD_DIR。
      */
     @PostMapping("/upload")
-    public ResponseEntity<String> upload(@RequestParam("file") MultipartFile file) {
-        return ResponseEntity.ok("Uploaded: " + file.getOriginalFilename()
-                + ", size: " + file.getSize());
+    public ResponseEntity<String> upload(@RequestParam("file") MultipartFile file)
+            throws IOException {
+        String filename = file.getOriginalFilename();
+        log.info("POST /upload filename={} size={}", filename, file.getSize());
+        Path saved = saveFile(file);
+        log.info("POST /upload saved to {}", saved.toAbsolutePath());
+        return ResponseEntity.ok("Uploaded: " + filename + ", size: " + file.getSize());
     }
 
     /**
-     * 多文件上传接口。
-     *
-     * @param files 上传的文件列表
-     * @return 文件数量和各文件信息
+     * 多文件上传接口，逐个保存到 UPLOAD_DIR。
      */
     @PostMapping("/upload/multi")
-    public ResponseEntity<String> uploadMulti(
-            @RequestParam("files") List<MultipartFile> files) {
-        String result = files.stream()
-                .map(f -> f.getOriginalFilename() + " (" + f.getSize() + " bytes)")
-                .collect(Collectors.joining(", "));
-        return ResponseEntity.ok("Uploaded " + files.size() + " files: " + result);
+    public ResponseEntity<String> uploadMulti(@RequestParam("files") List<MultipartFile> files)
+            throws IOException {
+        log.info("POST /upload/multi count={}", files.size());
+        StringBuilder sb = new StringBuilder();
+        for (MultipartFile file : files) {
+            Path saved = saveFile(file);
+            log.info("POST /upload/multi saved {} -> {}", file.getOriginalFilename(),
+                    saved.toAbsolutePath());
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            sb.append(file.getOriginalFilename()).append(" (").append(file.getSize())
+                    .append(" bytes)");
+        }
+        return ResponseEntity.ok("Uploaded " + files.size() + " files: " + sb);
     }
 
     /**
-     * 文件上传 + 表单字段混合接口。
-     *
-     * @param file        上传的文件
-     * @param name        表单字段 name
-     * @param description 表单字段 description
-     * @return 文件和字段信息
+     * 文件上传 + 表单字段混合接口，保存到 UPLOAD_DIR。
      */
     @PostMapping("/upload/with-fields")
     public ResponseEntity<String> uploadWithFields(
             @RequestParam("file") MultipartFile file,
             @RequestParam("name") String name,
-            @RequestParam("description") String description) {
+            @RequestParam("description") String description) throws IOException {
+        log.info("POST /upload/with-fields filename={} size={} name={} description={}",
+                file.getOriginalFilename(), file.getSize(), name, description);
+        Path saved = saveFile(file);
+        log.info("POST /upload/with-fields saved to {}", saved.toAbsolutePath());
         return ResponseEntity.ok("Uploaded: " + file.getOriginalFilename()
                 + ", size: " + file.getSize()
                 + ", name: " + name
@@ -91,23 +112,47 @@ public class ExampleController {
     }
 
     /**
-     * 大文件下载接口，生成 1MB 测试文件。
-     *
-     * @return 二进制文件流
+     * 文件下载接口，从 UPLOAD_DIR 读取 testfile.bin；若不存在则自动生成并保存。
      */
     @GetMapping("/download")
-    public ResponseEntity<Resource> download() {
-        byte[] data = new byte[1024 * 1024];
-        for (int i = 0; i < data.length; i++) {
-            data[i] = (byte) (i % 256);
+    public ResponseEntity<Resource> download() throws IOException {
+        log.info("GET /download");
+        Path filePath = UPLOAD_DIR.resolve(DOWNLOAD_FILE);
+        if (!Files.exists(filePath)) {
+            log.info("GET /download testfile.bin not found, generating...");
+            Files.createDirectories(UPLOAD_DIR);
+            byte[] data = new byte[10 * 1024 * 1024];
+            for (int i = 0; i < data.length; i++) {
+                data[i] = (byte) (i % 256);
+            }
+            Files.write(filePath, data);
+            log.info("GET /download generated testfile.bin at {}", filePath.toAbsolutePath());
         }
-        InputStreamResource resource = new InputStreamResource(
-                new ByteArrayInputStream(data));
+        long fileSize = Files.size(filePath);
+        log.info("GET /download serving {} bytes from {}", fileSize, filePath.toAbsolutePath());
+        Resource resource = new PathResource(filePath);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"testfile.bin\"")
-                .contentLength(data.length)
+                        "attachment; filename=\"" + DOWNLOAD_FILE + "\"")
+                .contentLength(fileSize)
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(resource);
+    }
+
+    /**
+     * 将 MultipartFile 保存到 UPLOAD_DIR，文件名取 originalFilename。
+     */
+    private Path saveFile(MultipartFile file) throws IOException {
+        Files.createDirectories(UPLOAD_DIR);
+        String filename = file.getOriginalFilename();
+        if (filename == null || filename.isBlank()) {
+            filename = "upload_" + System.currentTimeMillis();
+        }
+        // 防止路径穿越
+        Path target = UPLOAD_DIR.resolve(Paths.get(filename).getFileName()).normalize();
+        try (InputStream in = file.getInputStream()) {
+            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+        return target;
     }
 }

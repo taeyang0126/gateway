@@ -15,15 +15,20 @@ import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.Channel;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.util.CharsetUtil;
+import io.netty.util.ReferenceCountUtil;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -190,6 +195,64 @@ class ProxyHandlerTest {
         assertThat(response).isNotNull();
         response.release();
         channel.finish();
+    }
+
+    @Test
+    void nonLastContentShouldFlushToUpstreamImmediately() {
+        Route route = createRoute("svc", "/api", "http://localhost:8081");
+        EmbeddedChannel upstreamChannel = new EmbeddedChannel();
+        when(connectionPool.acquire("localhost", 8081))
+                .thenReturn(CompletableFuture.completedFuture(upstreamChannel));
+        ProxyHandler handler = createHandler(route);
+        EmbeddedChannel clientChannel = new EmbeddedChannel(handler);
+
+        DefaultHttpRequest request = new DefaultHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.POST, "/api/test");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        clientChannel.writeInbound(request);
+        clientChannel.runPendingTasks();
+
+        // 请求头使用 write，不会立即出现在 outbound（尚未 flush）
+        assertThat((Object) upstreamChannel.readOutbound()).isNull();
+
+        DefaultHttpContent chunk = new DefaultHttpContent(
+                Unpooled.copiedBuffer("abc", CharsetUtil.UTF_8));
+        clientChannel.writeInbound(chunk);
+
+        Object first = upstreamChannel.readOutbound();
+        Object second = upstreamChannel.readOutbound();
+        assertThat(first).isNotNull();
+        assertThat(second).isInstanceOf(HttpContent.class);
+
+        ReferenceCountUtil.release(first);
+        ReferenceCountUtil.release(second);
+        clientChannel.finishAndReleaseAll();
+        upstreamChannel.finishAndReleaseAll();
+    }
+
+    @Test
+    void bufferingContentShouldNotRetainExtraReference() {
+        Route route = createRoute("svc", "/api", "http://localhost:8081");
+        CompletableFuture<Channel> acquireFuture = new CompletableFuture<>();
+        when(connectionPool.acquire("localhost", 8081))
+                .thenReturn(acquireFuture);
+        ProxyHandler handler = createHandler(route);
+        EmbeddedChannel clientChannel = new EmbeddedChannel(handler);
+
+        DefaultHttpRequest request = new DefaultHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.POST, "/api/test");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        clientChannel.writeInbound(request);
+
+        DefaultHttpContent chunk = new DefaultHttpContent(
+                Unpooled.copiedBuffer("abc", CharsetUtil.UTF_8));
+        assertThat(chunk.refCnt()).isEqualTo(1);
+        clientChannel.writeInbound(chunk);
+        assertThat(chunk.refCnt()).isEqualTo(1);
+
+        clientChannel.close();
+        assertThat(chunk.refCnt()).isZero();
+        clientChannel.finishAndReleaseAll();
     }
 
     private ProxyHandler createHandler(Route route) {

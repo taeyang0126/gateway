@@ -16,5 +16,4 @@ gateway:
   observability:
     metrics-enabled: true
     access-log-enabled: true
-    access-log-level: WARN
     tracing-enabled: true

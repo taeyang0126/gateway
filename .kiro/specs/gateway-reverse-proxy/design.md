@@ -514,31 +514,32 @@ public class ExampleController {
     @PostMapping("/api/example/echo")
     ResponseEntity<String> echo(@RequestBody String body);
 
-    // 单文件上传
+    // 单文件上传，保存到 gateway-example/uploads/
     @PostMapping("/api/example/upload")
     ResponseEntity<String> upload(@RequestParam("file") MultipartFile file);
 
-    // 多文件上传
+    // 多文件上传，逐个保存到 gateway-example/uploads/
     @PostMapping("/api/example/upload/multi")
     ResponseEntity<String> uploadMulti(@RequestParam("files") List<MultipartFile> files);
 
-    // 文件上传 + 表单字段混合
+    // 文件上传 + 表单字段混合，保存到 gateway-example/uploads/
     @PostMapping("/api/example/upload/with-fields")
     ResponseEntity<String> uploadWithFields(
         @RequestParam("file") MultipartFile file,
         @RequestParam("name") String name,
         @RequestParam("description") String description);
 
-    // 大文件下载（测试响应流式转发）
+    // 文件下载，从 gateway-example/uploads/testfile.bin 读取；不存在时自动生成 1MB 测试文件
     @GetMapping("/api/example/download")
     ResponseEntity<Resource> download();
 }
 ```
 
-- 监听独立端口（如 8081），作为网关的 Upstream 目标
-- 仅用于开发测试，不包含业务逻辑
-- Spring Boot 配置需设置 `spring.servlet.multipart.max-file-size` 和 `spring.servlet.multipart.max-request-size`（因为 example 是普通 Spring Boot Web 应用，需要 Spring MVC 的 multipart 配置）
-- gateway-core 不需要 multipart 配置（用 Netty 原生处理，不经过 Spring MVC）
+- 监听独立端口（8081），作为网关的 Upstream 目标
+- 所有接口打印 INFO 日志，文件接口走真实业务（上传保存到本地，下载读取本地文件）
+- `TraceIdFilter`：从 `traceparent` 请求头提取 trace-id 写入 MDC，logback pattern 通过 `%X{traceId}` 打印
+- 日志输出到 `gateway-example/logs/`，pattern 使用 logback 原生着色（`%highlight`、`%magenta`、`%cyan`）
+- Spring Boot 配置需设置 `spring.servlet.multipart.max-file-size` 和 `spring.servlet.multipart.max-request-size`
 
 ### 13. ObservabilityProperties
 
@@ -549,7 +550,6 @@ public class ExampleController {
 public class ObservabilityProperties {
     boolean metricsEnabled = true;
     boolean accessLogEnabled = true;
-    String accessLogLevel = "WARN";       // SLF4J 日志级别
     boolean tracingEnabled = true;
 }
 ```
@@ -663,7 +663,7 @@ public class AccessLogWriter {
 }
 ```
 
-使用 SLF4J Logger 输出，日志级别由 `ObservabilityProperties.accessLogLevel` 控制。当 `accessLogEnabled = false` 时为空操作。
+使用 SLF4J Logger（logger name 为 `"access"`）输出，固定使用 INFO 级别。当 `accessLogEnabled = false` 时为空操作。
 
 AccessLogEntry 数据结构：
 
@@ -756,7 +756,6 @@ JSON 输出示例：
 |------|------|------|
 | metricsEnabled | boolean | 是否启用指标采集，默认 true |
 | accessLogEnabled | boolean | 是否启用访问日志，默认 true |
-| accessLogLevel | String | 访问日志级别，默认 "WARN" |
 | tracingEnabled | boolean | 是否启用分布式追踪，默认 true |
 
 ### AccessLogEntry（访问日志条目）
@@ -803,7 +802,6 @@ gateway:
   observability:
     metrics-enabled: true
     access-log-enabled: true
-    access-log-level: WARN
     tracing-enabled: true
 ```
 
@@ -1062,12 +1060,12 @@ wrk2 -t2 -c100 -d600s -R10000 http://localhost:8080/api/example/hello
 - 违规处理：`failsOnError=true`，`violationSeverity=warning`，任何 warning 及以上违规直接 fail build
 - 覆盖范围：包含测试源码（`includeTestSourceRoots=true`）
 
-### SpotBugs（静态 bug 检测）
+### SpotBugs 替换为 forbidden-apis（禁止不安全 API）
 
-- 插件：spotbugs-maven-plugin
-- 绑定阶段：`verify`（编译和测试完成后，在字节码上分析）
-- 检测力度：`effort=Max`（最深度分析），`threshold=Medium`（中等及以上严重度的 bug 报告）
-- 违规处理：`failOnError=true`，发现 bug 直接 fail build
+- 插件：de.thetaphi:forbiddenapis
+- 绑定阶段：`compile`（check）和 `test-compile`（testCheck）
+- 检测范围：`jdk-unsafe`（JDK 内部不安全 API）、`jdk-non-portable`（平台相关默认编码 API，如 `new String(bytes)`）、`jdk-deprecated`（已废弃 JDK API）
+- 违规处理：发现违规直接 fail build
 
 ### JaCoCo（测试覆盖率）
 

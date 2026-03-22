@@ -34,9 +34,8 @@
         <!-- Code quality plugins -->
         <checkstyle.version>10.21.4</checkstyle.version>
         <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
-        <spotbugs-maven-plugin.version>4.9.3.0</spotbugs-maven-plugin.version>
-        <spotbugs-annotations.version>4.9.3</spotbugs-annotations.version>
         <jacoco-maven-plugin.version>0.8.14</jacoco-maven-plugin.version>
+        <forbiddenapis.version>3.9</forbiddenapis.version>
     </properties>
 
     <dependencyManagement>
@@ -149,27 +148,6 @@
                         </execution>
                     </executions>
                 </plugin>
-                <!-- SpotBugs: static bug detection -->
-                <plugin>
-                    <groupId>com.github.spotbugs</groupId>
-                    <artifactId>spotbugs-maven-plugin</artifactId>
-                    <version>${spotbugs-maven-plugin.version}</version>
-                    <configuration>
-                        <effort>Max</effort>
-                        <threshold>Medium</threshold>
-                        <failOnError>true</failOnError>
-                        <excludeFilterFile>config/spotbugs/spotbugs-exclude.xml</excludeFilterFile>
-                    </configuration>
-                    <executions>
-                        <execution>
-                            <id>spotbugs-check</id>
-                            <phase>verify</phase>
-                            <goals>
-                                <goal>check</goal>
-                            </goals>
-                        </execution>
-                    </executions>
-                </plugin>
                 <!-- JaCoCo: code coverage -->
                 <plugin>
                     <groupId>org.jacoco</groupId>
@@ -191,6 +169,31 @@
                         </execution>
                     </executions>
                 </plugin>
+                <!-- forbidden-apis: ban unsafe/platform-dependent API usage -->
+                <plugin>
+                    <groupId>de.thetaphi</groupId>
+                    <artifactId>forbiddenapis</artifactId>
+                    <version>${forbiddenapis.version}</version>
+                    <configuration>
+                        <failOnUnsupportedJava>false</failOnUnsupportedJava>
+                        <bundledSignatures>
+                            <!-- JDK 内部 unsafe API -->
+                            <bundledSignature>jdk-unsafe</bundledSignature>
+                            <!-- 平台相关的默认编码 API，如 new String(bytes) -->
+                            <bundledSignature>jdk-non-portable</bundledSignature>
+                            <!-- 已废弃的 JDK API -->
+                            <bundledSignature>jdk-deprecated</bundledSignature>
+                        </bundledSignatures>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>check</goal>
+                                <goal>testCheck</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
             </plugins>
         </pluginManagement>
         <!-- All modules inherit these plugins -->
@@ -200,12 +203,12 @@
                 <artifactId>maven-checkstyle-plugin</artifactId>
             </plugin>
             <plugin>
-                <groupId>com.github.spotbugs</groupId>
-                <artifactId>spotbugs-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>de.thetaphi</groupId>
+                <artifactId>forbiddenapis</artifactId>
             </plugin>
         </plugins>
     </build>

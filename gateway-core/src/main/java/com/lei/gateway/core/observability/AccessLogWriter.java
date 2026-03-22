@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class AccessLogWriter {
 
-    private static final Logger log = LoggerFactory.getLogger(AccessLogWriter.class);
+    private static final Logger log = LoggerFactory.getLogger("access");
 
     private final ObservabilityProperties config;
     private final ObjectMapper objectMapper;
@@ -45,16 +45,7 @@ public class AccessLogWriter {
             return;
         }
 
-        logAtConfiguredLevel(json);
+        log.info(json);
     }
 
-    private void logAtConfiguredLevel(String message) {
-        switch (config.getAccessLogLevel().toUpperCase()) {
-            case "TRACE" -> log.trace(message);
-            case "DEBUG" -> log.debug(message);
-            case "INFO" -> log.info(message);
-            case "ERROR" -> log.error(message);
-            default -> log.warn(message);
-        }
-    }
 }

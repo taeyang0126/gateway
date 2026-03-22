@@ -159,9 +159,9 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void handleHealth(ChannelHandlerContext ctx, HttpRequest request) {
-        String json = String.format(
-                "{\"status\":\"UP\",\"startTime\":\"%s\",\"activeConnections\":%d}",
-                startTime.toString(), activeConnections.get());
+        String json = "{\"status\":\"UP\",\"startTime\":\""
+                + startTime.toString()
+                + "\",\"activeConnections\":" + activeConnections.get() + "}";
         sendResponse(ctx, request, HttpResponseStatus.OK, json, CONTENT_TYPE_JSON);
     }
 
@@ -178,9 +178,9 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
 
     static void sendError(ChannelHandlerContext ctx, HttpRequest request,
             HttpResponseStatus status, String message) {
-        String json = String.format(
-                "{\"status\":%d,\"error\":\"%s\",\"message\":\"%s\"}",
-                status.code(), status.reasonPhrase(), escapeJson(message));
+        String json = "{\"status\":" + status.code()
+                + ",\"error\":\"" + status.reasonPhrase()
+                + "\",\"message\":\"" + escapeJson(message) + "\"}";
         sendResponse(ctx, request, status, json, CONTENT_TYPE_JSON);
     }
 

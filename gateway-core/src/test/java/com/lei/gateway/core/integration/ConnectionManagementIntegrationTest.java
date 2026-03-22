@@ -176,7 +176,7 @@ class ConnectionManagementIntegrationTest
         while ((line = readLine(in)) != null
                 && !line.isEmpty()) {
             sb.append(line).append("\r\n");
-            if (line.toLowerCase().startsWith(
+            if (line.toLowerCase(java.util.Locale.ROOT).startsWith(
                     "content-length:")) {
                 contentLength = Integer.parseInt(
                         line.substring(15).trim());

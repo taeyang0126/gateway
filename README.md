@@ -29,39 +29,13 @@ mvn spring-boot:run -pl gateway-app
 
 网关监听 `8080`，将 `/api/example/**` 路由到 `http://localhost:8081`。
 
-### 验证接口
-
-```bash
-# GET
-curl http://localhost:8080/api/example/hello
-
-# POST echo
-curl -X POST http://localhost:8080/api/example/echo \
-  -H "Content-Type: text/plain" -d "hello"
-
-# 单文件上传
-curl -X POST http://localhost:8080/api/example/upload \
-  -F "file=@/path/to/file.txt"
-
-# 多文件上传
-curl -X POST http://localhost:8080/api/example/upload/multi \
-  -F "files=@/path/to/a.txt" -F "files=@/path/to/b.txt"
-
-# 文件 + 表单字段
-curl -X POST http://localhost:8080/api/example/upload/with-fields \
-  -F "file=@/path/to/file.txt" -F "name=test" -F "description=demo"
-
-# 大文件下载（1MB）
-curl http://localhost:8080/api/example/download -o testfile.bin
-```
-
 ## 构建与测试
 
 ```bash
-# 完整构建（Checkstyle + SpotBugs + 测试 + 覆盖率）
+# 完整构建（Checkstyle + forbidden-apis + 测试 + 覆盖率）
 mvn clean verify -T 1C -U
 
-# 日常开发：跳过集成测试和 SpotBugs
+# 日常开发：跳过集成测试
 mvn clean test -Dexclude="**/*IntegrationTest.java" -T 1C
 
 # 单模块测试
@@ -73,16 +47,14 @@ mvn test -pl gateway-core
 
 ## 代码质量
 
-`mvn clean verify` 通过 = Checkstyle 零违规 + SpotBugs 零 Medium 以上 bug + 所有测试绿。
+`mvn clean verify` 通过 = Checkstyle 零违规 + forbidden-apis 零违规 + 所有测试绿。
 
 | 工具 | 触发阶段 | 说明 |
 |---|---|---|
 | Checkstyle | `validate` | Google Java Style，任何 warning 即 fail |
-| SpotBugs | `verify` | 字节码静态分析，effort=Max，threshold=Medium |
+| forbidden-apis | `compile` | 禁止不安全/平台相关/已废弃 JDK API |
 | JaCoCo | `test` | 生成覆盖率报告 |
 
 ```bash
 mvn checkstyle:check   # 仅 Checkstyle
-mvn spotbugs:check     # 仅 SpotBugs
-mvn spotbugs:gui       # SpotBugs 图形化报告
 ```

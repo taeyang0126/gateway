@@ -35,3 +35,7 @@ replay_pid*
 
 # macOS
 .DS_Store
+
+**/logs/**
+
+**/uploads/**
