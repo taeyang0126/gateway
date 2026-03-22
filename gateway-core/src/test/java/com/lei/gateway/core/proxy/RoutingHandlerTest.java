@@ -2,7 +2,9 @@ package com.lei.gateway.core.proxy;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.lei.gateway.core.config.FilterProperties;
 import com.lei.gateway.core.config.GatewayProperties;
+import com.lei.gateway.core.filter.FilterChainFactory;
 import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.Route;
@@ -23,6 +25,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.util.CharsetUtil;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -292,10 +295,14 @@ class RoutingHandlerTest {
         GatewayProperties gatewayProperties = new GatewayProperties();
         gatewayProperties.setRoutes(routes);
         RouteResolver routeResolver = new RouteResolver(gatewayProperties);
+        FilterChainFactory filterChainFactory =
+                new FilterChainFactory(new FilterProperties(), Map.of());
+        filterChainFactory.buildChains(routes);
         // connectionPool 传 null，路由匹配测试中 ProxyHandler 是占位实现不会真正使用
         return new RoutingHandler(routeResolver, requestLimitProperties,
                 null, metricsCollector, accessLogWriter,
-                observabilityProperties, activeConnections, startTime);
+                observabilityProperties, activeConnections, startTime,
+                filterChainFactory, 0L);
     }
 
     private static Route createRoute(String id, String pathPrefix,

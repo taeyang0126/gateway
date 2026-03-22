@@ -1,9 +1,11 @@
 package com.lei.gateway.core.proxy;
 
+import com.lei.gateway.core.config.FilterProperties;
 import com.lei.gateway.core.config.GatewayProperties;
 import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.RouteResolver;
+import com.lei.gateway.core.filter.FilterChainFactory;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
 import com.lei.gateway.core.observability.TraceContextHandler;
@@ -44,6 +46,8 @@ public class NettyServerBootstrap implements SmartLifecycle {
     private final AccessLogWriter accessLogWriter;
     private final ApplicationContext applicationContext;
     private final EventLoopGroup workerGroup;
+    private final FilterChainFactory filterChainFactory;
+    private final FilterProperties filterProperties;
 
     private EventLoopGroup bossGroup;
     private Channel serverChannel;
@@ -59,7 +63,9 @@ public class NettyServerBootstrap implements SmartLifecycle {
             MetricsCollector metricsCollector,
             AccessLogWriter accessLogWriter,
             ApplicationContext applicationContext,
-            EventLoopGroup workerGroup) {
+            EventLoopGroup workerGroup,
+            FilterChainFactory filterChainFactory,
+            FilterProperties filterProperties) {
         this.gatewayProperties = gatewayProperties;
         this.requestLimitProperties = requestLimitProperties;
         this.observabilityProperties = observabilityProperties;
@@ -69,6 +75,8 @@ public class NettyServerBootstrap implements SmartLifecycle {
         this.accessLogWriter = accessLogWriter;
         this.applicationContext = applicationContext;
         this.workerGroup = workerGroup;
+        this.filterChainFactory = filterChainFactory;
+        this.filterProperties = filterProperties;
     }
 
     @Override
@@ -81,7 +89,8 @@ public class NettyServerBootstrap implements SmartLifecycle {
         RoutingHandler routingHandler = new RoutingHandler(
                 routeResolver, requestLimitProperties, connectionPool,
                 metricsCollector, accessLogWriter, observabilityProperties,
-                activeConnections, serverStartTime);
+                activeConnections, serverStartTime,
+                filterChainFactory, filterProperties.getFilterChainTimeoutMs());
         GatewayChannelInitializer initializer = new GatewayChannelInitializer(
                 traceContextHandler, routingHandler, requestLimitProperties);
 

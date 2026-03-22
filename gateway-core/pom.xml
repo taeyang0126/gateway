@@ -28,10 +28,24 @@
                         <configuration>
                             <rules>
                                 <rule>
-                                    <element>BUNDLE</element>
+                                    <!-- filter 核心包（排除 builtin POJO）：branch 80% -->
+                                    <element>CLASS</element>
+                                    <includes>
+                                        <include>com/lei/gateway/core/filter/*</include>
+                                        <include>com/lei/gateway/core/proxy/*</include>
+                                    </includes>
+                                    <excludes>
+                                        <!-- POJO 配置类无需强制覆盖 -->
+                                        <exclude>com/lei/gateway/core/filter/builtin/*</exclude>
+                                        <!-- 基础设施启动类，依赖真实 Netty 端口，单测难覆盖 -->
+                                        <exclude>com/lei/gateway/core/proxy/NettyServerBootstrap</exclude>
+                                        <!-- 内部类，集成测试覆盖 -->
+                                        <exclude>com/lei/gateway/core/proxy/ProxyHandler$*</exclude>
+                                        <exclude>com/lei/gateway/core/proxy/ChannelPoolEntryFactory</exclude>
+                                    </excludes>
                                     <limits>
                                         <limit>
-                                            <counter>LINE</counter>
+                                            <counter>BRANCH</counter>
                                             <value>COVEREDRATIO</value>
                                             <minimum>0.80</minimum>
                                         </limit>

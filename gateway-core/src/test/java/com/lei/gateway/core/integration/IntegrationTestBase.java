@@ -2,11 +2,13 @@ package com.lei.gateway.core.integration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lei.gateway.core.config.ConnectionPoolProperties;
+import com.lei.gateway.core.config.FilterProperties;
 import com.lei.gateway.core.config.GatewayProperties;
 import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.Route;
 import com.lei.gateway.core.config.RouteResolver;
+import com.lei.gateway.core.filter.FilterChainFactory;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
 import com.lei.gateway.core.observability.TraceContextHandler;
@@ -130,10 +132,15 @@ abstract class IntegrationTestBase {
         Instant startTime = Instant.now();
         TraceContextHandler traceHandler =
                 new TraceContextHandler(observabilityProperties);
+        FilterProperties filterProperties = new FilterProperties();
+        FilterChainFactory filterChainFactory = new FilterChainFactory(
+                filterProperties, java.util.Map.of());
+        filterChainFactory.buildChains(gatewayProperties.getRoutes());
         RoutingHandler routingHandler = new RoutingHandler(
                 routeResolver, requestLimitProperties, connectionPool,
                 metricsCollector, accessLogWriter, observabilityProperties,
-                activeConnections, startTime);
+                activeConnections, startTime,
+                filterChainFactory, filterProperties.getFilterChainTimeoutMs());
         GatewayChannelInitializer initializer =
                 new GatewayChannelInitializer(
                         traceHandler, routingHandler,

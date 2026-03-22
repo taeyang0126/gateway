@@ -4,6 +4,8 @@ import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.Route;
 import com.lei.gateway.core.config.RouteResolver;
+import com.lei.gateway.core.filter.FilterChainFactory;
+import com.lei.gateway.core.filter.FilterChainHandler;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
 import io.netty.buffer.ByteBuf;
@@ -50,6 +52,7 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
 
     private static final String HEALTH_PATH = "/health";
     private static final String METRICS_PATH = "/metrics";
+    private static final String FILTER_CHAIN_HANDLER_NAME = "filterChain";
     private static final String PROXY_HANDLER_NAME = "proxy";
     private static final String CONTENT_TYPE_JSON = "application/json";
     private static final String CONTENT_TYPE_PROMETHEUS =
@@ -63,6 +66,8 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
     private final ObservabilityProperties observabilityProperties;
     private final AtomicInteger activeConnections;
     private final Instant startTime;
+    private final FilterChainFactory filterChainFactory;
+    private final long filterChainTimeoutMs;
 
     /** 创建 RoutingHandler。 */
     public RoutingHandler(RouteResolver routeResolver,
@@ -72,7 +77,9 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
             AccessLogWriter accessLogWriter,
             ObservabilityProperties observabilityProperties,
             AtomicInteger activeConnections,
-            Instant startTime) {
+            Instant startTime,
+            FilterChainFactory filterChainFactory,
+            long filterChainTimeoutMs) {
         this.routeResolver = routeResolver;
         this.requestLimitProperties = requestLimitProperties;
         this.connectionPool = connectionPool;
@@ -81,6 +88,8 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
         this.observabilityProperties = observabilityProperties;
         this.activeConnections = activeConnections;
         this.startTime = startTime;
+        this.filterChainFactory = filterChainFactory;
+        this.filterChainTimeoutMs = filterChainTimeoutMs;
     }
 
     @Override
@@ -129,26 +138,38 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        // 动态添加 ProxyHandler，先检查是否已存在（防止 keep-alive 连接上重复添加）
+        // 动态添加 FilterChainHandler + ProxyHandler，先检查是否已存在（防止 keep-alive 连接上重复添加）
         if (ctx.pipeline().get(PROXY_HANDLER_NAME) != null) {
             log.warn("ProxyHandler 已存在于 pipeline，忽略本次请求: {}", path);
             return;
         }
         Route route = matched.get();
+
+        // 构建过滤器链 Handler（每次请求新建，持有请求级状态）
+        FilterChainFactory.FilterChain chain = filterChainFactory.getChain(route.getId());
+        FilterChainHandler filterChainHandler = new FilterChainHandler(
+                chain.prePostFilters(), chain.wrappingFilter(), filterChainTimeoutMs);
+
         ProxyHandler proxyHandler = new ProxyHandler(route,
                 requestLimitProperties, connectionPool,
                 metricsCollector, accessLogWriter, observabilityProperties);
-        ctx.pipeline().addAfter("routing", PROXY_HANDLER_NAME, proxyHandler);
+
+        // 插入顺序：routing → filterChain → proxy
+        ctx.pipeline().addAfter("routing", FILTER_CHAIN_HANDLER_NAME, filterChainHandler);
+        ctx.pipeline().addAfter(FILTER_CHAIN_HANDLER_NAME, PROXY_HANDLER_NAME, proxyHandler);
         ctx.fireChannelRead(msg);
     }
 
     /**
-     * ProxyHandler 完成后调用此方法，从 Pipeline 移除 ProxyHandler，
+     * ProxyHandler 完成后调用此方法，从 Pipeline 移除 FilterChainHandler 和 ProxyHandler，
      * 重置状态准备处理同一连接上的下一个请求。
      *
      * @param ctx ChannelHandlerContext
      */
     public static void onProxyComplete(ChannelHandlerContext ctx) {
+        if (ctx.pipeline().get(FILTER_CHAIN_HANDLER_NAME) != null) {
+            ctx.pipeline().remove(FILTER_CHAIN_HANDLER_NAME);
+        }
         if (ctx.pipeline().get(PROXY_HANDLER_NAME) != null) {
             ctx.pipeline().remove(PROXY_HANDLER_NAME);
         }

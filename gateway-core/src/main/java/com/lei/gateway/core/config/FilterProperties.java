@@ -6,93 +6,47 @@ import com.lei.gateway.core.filter.builtin.HeaderTransformConfig;
 import com.lei.gateway.core.filter.builtin.IpAccessControlConfig;
 import com.lei.gateway.core.filter.builtin.RateLimitConfig;
 import com.lei.gateway.core.filter.builtin.RetryConfig;
-import jakarta.validation.constraints.NotBlank;
+import java.util.ArrayList;
 import java.util.List;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * 路由规则配置。
+ * 过滤器链全局配置，绑定 {@code gateway.filters} 前缀。
  */
-public class Route {
+@ConfigurationProperties(prefix = "gateway.filters")
+public class FilterProperties {
 
-    @NotBlank
-    private String id;
-    @NotBlank
-    private String pathPrefix;
-    @NotBlank
-    private String upstream;
-    private Integer timeoutSeconds;
-    private Long maxRequestSize;
-    /** 路由优先级，数字越小优先级越高，默认 0。 */
-    private int priority = 0;
+    /** 过滤器链总超时（毫秒），0 = 不限制。 */
+    private long filterChainTimeoutMs = 0;
 
-    /** 路由级过滤器列表（null 表示使用全局默认，空列表表示不启用任何过滤器）。 */
-    private List<String> filters;
+    /** 全局默认过滤器列表（按执行顺序）。 */
+    private List<String> defaultFilters = new ArrayList<>();
 
-    /** 各过滤器的路由级配置。 */
+    /** 全局默认各过滤器配置（路由级配置优先覆盖）。 */
     private IpAccessControlConfig ipAccessControl;
     private AuthConfig auth;
-    /** 认证前限流（IP/Route 维度）。 */
+    /** 认证前限流全局默认配置。 */
     private RateLimitConfig preAuthRateLimit;
-    /** 认证后限流（userId 维度）。 */
+    /** 认证后限流全局默认配置。 */
     private RateLimitConfig postAuthRateLimit;
     private HeaderTransformConfig headerTransform;
     private RetryConfig retry;
     private CircuitBreakerConfig circuitBreaker;
 
-    public String getId() {
-        return id;
+    public long getFilterChainTimeoutMs() {
+        return filterChainTimeoutMs;
     }
 
-    public void setId(String id) {
-        this.id = id;
+    public void setFilterChainTimeoutMs(long filterChainTimeoutMs) {
+        this.filterChainTimeoutMs = filterChainTimeoutMs;
     }
 
-    public String getPathPrefix() {
-        return pathPrefix;
+    public List<String> getDefaultFilters() {
+        return defaultFilters;
     }
 
-    public void setPathPrefix(String pathPrefix) {
-        this.pathPrefix = pathPrefix;
-    }
-
-    public String getUpstream() {
-        return upstream;
-    }
-
-    public void setUpstream(String upstream) {
-        this.upstream = upstream;
-    }
-
-    public Integer getTimeoutSeconds() {
-        return timeoutSeconds;
-    }
-
-    public void setTimeoutSeconds(Integer timeoutSeconds) {
-        this.timeoutSeconds = timeoutSeconds;
-    }
-
-    public Long getMaxRequestSize() {
-        return maxRequestSize;
-    }
-
-    public void setMaxRequestSize(Long maxRequestSize) {
-        this.maxRequestSize = maxRequestSize;
-    }
-
-    public int getPriority() {
-        return priority;
-    }
-
-    public void setPriority(int priority) {
-        this.priority = priority;
-    }
-
-    public List<String> getFilters() {
-        return filters;
-    }
-
-    public void setFilters(List<String> filters) {
-        this.filters = filters;
+    public void setDefaultFilters(List<String> defaultFilters) {
+        this.defaultFilters = defaultFilters;
     }
 
     public IpAccessControlConfig getIpAccessControl() {
