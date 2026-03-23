@@ -3,7 +3,6 @@ package com.lei.gateway.core.proxy;
 import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.Route;
-import com.lei.gateway.core.filter.FilterChainHandler;
 import com.lei.gateway.core.observability.AccessLogEntry;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
@@ -277,20 +276,10 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
     /**
      * 处理 upstream 响应头，转发给 client（分块响应专用，不含 body）。
-     * 在写出响应头前先触发 FilterChainHandler 的 post 链（逆序执行），
-     * 允许 HeaderTransformFilter 等过滤器修改响应头。
      */
     void handleUpstreamResponse(ChannelHandlerContext clientCtx,
             HttpResponse response) {
         responseStatusCode = response.status().code();
-
-        // 触发 post 链（在写出响应头之前）
-        FilterChainHandler filterChainHandler =
-                clientCtx.pipeline().get(FilterChainHandler.class);
-        if (filterChainHandler != null) {
-            filterChainHandler.onUpstreamResponse(clientCtx, response);
-        }
-
         long contentLength = HttpUtil.getContentLength(response, -1L);
         boolean chunked = HttpUtil.isTransferEncodingChunked(response);
         if (isNoBodyResponse(response)) {

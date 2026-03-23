@@ -2,17 +2,17 @@
 
 ## 任务列表
 
-- [x] 1. 过滤器链框架
-  - [x] 1.1 新增 Filter 接口（含 `getOrder()` 默认方法）、FilterResult 枚举、FilterContext 类（含 CIRCUIT_BREAKER_START_NS 常量）
-  - [x] 1.2 新增 WrappingFilter 接口和 ProxyInvoker 函数式接口
-  - [x] 1.3 实现 FilterChainHandler（Netty Handler，驱动 pre/post 链，捕获异常返回 HTTP 500；pre 链完成后检测 WrappingFilter 并委托；支持 filterChainTimeoutMs 超时返回 HTTP 504；通过 Channel Attribute FILTER_CONTEXT_KEY 暴露 FilterContext 供 ProxyHandler 读取；post 链在 ProxyHandler 收到首个 HttpResponse 帧时触发）
-  - [x] 1.4 实现 FilterChainFactory（根据 Route 配置构建过滤器链，路由级覆盖全局默认；未显式配置顺序时按 getOrder() 升序排列；RetryFilter 单独提取不参与排序）
-  - [x] 1.5 新增 FilterProperties 配置类（绑定 `gateway.filters` 前缀，含 filterChainTimeoutMs 字段）
-  - [x] 1.6 扩展 Route 类，新增过滤器配置字段（filters 列表及各过滤器 Config 对象）
-  - [x] 1.7 在 GatewayAutoConfiguration 中注册 FilterChainFactory Bean，并在 @PostConstruct 中校验过滤器配置（非法配置抛异常终止启动）
-  - [x] 1.8a 修改 RoutingHandler，在路由匹配成功后动态插入 FilterChainHandler（在 ProxyHandler 之前）
-  - [x] 1.8b 修改 ProxyHandler，在收到 Upstream 首个 HttpResponse 帧时通过 `ctx.pipeline().get(FilterChainHandler.class)` 获取 FilterChainHandler 引用并调用 `onUpstreamResponse(response)`（触发 post 链）；若获取结果为 null 则跳过
-  - [x] 1.9 为配置校验逻辑编写单元测试（验证各过滤器非法配置能正确抛出异常终止启动；可扩展现有 InvalidConfigTest）
+- [-] 1. 过滤器链框架
+  - [-] 1.1 新增 Filter 接口（含 `getOrder()` 默认方法）、FilterResult 枚举、FilterContext 类（含 CIRCUIT_BREAKER_START_NS 常量）
+  - [ ] 1.2 新增 WrappingFilter 接口和 ProxyInvoker 函数式接口
+  - [ ] 1.3 实现 FilterChainHandler（Netty Handler，驱动 pre/post 链，捕获异常返回 HTTP 500；pre 链完成后检测 WrappingFilter 并委托；支持 filterChainTimeoutMs 超时返回 HTTP 504；通过 Channel Attribute FILTER_CONTEXT_KEY 暴露 FilterContext 供 ProxyHandler 读取；post 链在 ProxyHandler 收到首个 HttpResponse 帧时触发）
+  - [ ] 1.4 实现 FilterChainFactory（根据 Route 配置构建过滤器链，路由级覆盖全局默认；未显式配置顺序时按 getOrder() 升序排列；RetryFilter 单独提取不参与排序）
+  - [ ] 1.5 新增 FilterProperties 配置类（绑定 `gateway.filters` 前缀，含 filterChainTimeoutMs 字段）
+  - [ ] 1.6 扩展 Route 类，新增过滤器配置字段（filters 列表及各过滤器 Config 对象）
+  - [ ] 1.7 在 GatewayAutoConfiguration 中注册 FilterChainFactory Bean，并在 @PostConstruct 中校验过滤器配置（非法配置抛异常终止启动）
+  - [ ] 1.8a 修改 RoutingHandler，在路由匹配成功后动态插入 FilterChainHandler（在 ProxyHandler 之前）
+  - [ ] 1.8b 修改 ProxyHandler，在收到 Upstream 首个 HttpResponse 帧时通过 `ctx.pipeline().get(FilterChainHandler.class)` 获取 FilterChainHandler 引用并调用 `onUpstreamResponse(response)`（触发 post 链）；若获取结果为 null 则跳过
+  - [ ] 1.9 为配置校验逻辑编写单元测试（验证各过滤器非法配置能正确抛出异常终止启动；可扩展现有 InvalidConfigTest）
 
 - [ ] 2. IP 访问控制过滤器
   - [ ] 2.1 新增 IpAccessControlConfig 配置类（mode: ALLOWLIST/DENYLIST，rules: List<String>）

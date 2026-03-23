@@ -1,13 +1,6 @@
 package com.lei.gateway.core.config;
 
-import com.lei.gateway.core.filter.builtin.AuthConfig;
-import com.lei.gateway.core.filter.builtin.CircuitBreakerConfig;
-import com.lei.gateway.core.filter.builtin.HeaderTransformConfig;
-import com.lei.gateway.core.filter.builtin.IpAccessControlConfig;
-import com.lei.gateway.core.filter.builtin.RateLimitConfig;
-import com.lei.gateway.core.filter.builtin.RetryConfig;
 import jakarta.validation.constraints.NotBlank;
-import java.util.List;
 
 /**
  * 路由规则配置。
@@ -24,20 +17,6 @@ public class Route {
     private Long maxRequestSize;
     /** 路由优先级，数字越小优先级越高，默认 0。 */
     private int priority = 0;
-
-    /** 路由级过滤器列表（null 表示使用全局默认，空列表表示不启用任何过滤器）。 */
-    private List<String> filters;
-
-    /** 各过滤器的路由级配置。 */
-    private IpAccessControlConfig ipAccessControl;
-    private AuthConfig auth;
-    /** 认证前限流（IP/Route 维度）。 */
-    private RateLimitConfig preAuthRateLimit;
-    /** 认证后限流（userId 维度）。 */
-    private RateLimitConfig postAuthRateLimit;
-    private HeaderTransformConfig headerTransform;
-    private RetryConfig retry;
-    private CircuitBreakerConfig circuitBreaker;
 
     public String getId() {
         return id;
@@ -85,69 +64,5 @@ public class Route {
 
     public void setPriority(int priority) {
         this.priority = priority;
-    }
-
-    public List<String> getFilters() {
-        return filters;
-    }
-
-    public void setFilters(List<String> filters) {
-        this.filters = filters;
-    }
-
-    public IpAccessControlConfig getIpAccessControl() {
-        return ipAccessControl;
-    }
-
-    public void setIpAccessControl(IpAccessControlConfig ipAccessControl) {
-        this.ipAccessControl = ipAccessControl;
-    }
-
-    public AuthConfig getAuth() {
-        return auth;
-    }
-
-    public void setAuth(AuthConfig auth) {
-        this.auth = auth;
-    }
-
-    public RateLimitConfig getPreAuthRateLimit() {
-        return preAuthRateLimit;
-    }
-
-    public void setPreAuthRateLimit(RateLimitConfig preAuthRateLimit) {
-        this.preAuthRateLimit = preAuthRateLimit;
-    }
-
-    public RateLimitConfig getPostAuthRateLimit() {
-        return postAuthRateLimit;
-    }
-
-    public void setPostAuthRateLimit(RateLimitConfig postAuthRateLimit) {
-        this.postAuthRateLimit = postAuthRateLimit;
-    }
-
-    public HeaderTransformConfig getHeaderTransform() {
-        return headerTransform;
-    }
-
-    public void setHeaderTransform(HeaderTransformConfig headerTransform) {
-        this.headerTransform = headerTransform;
-    }
-
-    public RetryConfig getRetry() {
-        return retry;
-    }
-
-    public void setRetry(RetryConfig retry) {
-        this.retry = retry;
-    }
-
-    public CircuitBreakerConfig getCircuitBreaker() {
-        return circuitBreaker;
-    }
-
-    public void setCircuitBreaker(CircuitBreakerConfig circuitBreaker) {
-        this.circuitBreaker = circuitBreaker;
     }
 }
