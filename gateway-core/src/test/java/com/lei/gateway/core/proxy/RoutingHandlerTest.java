@@ -2,13 +2,19 @@ package com.lei.gateway.core.proxy;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.lei.gateway.core.config.GatewayProperties;
 import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.Route;
 import com.lei.gateway.core.config.RouteResolver;
+import com.lei.gateway.core.config.SecurityProperties;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
+import com.lei.gateway.core.observability.TraceContextHandler;
+import com.lei.gateway.core.security.GatewaySecurityProcessor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -26,6 +32,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 class RoutingHandlerTest {
 
@@ -257,6 +264,7 @@ class RoutingHandlerTest {
 
     @Test
     void matchedRouteAddsProxyHandlerToPipeline() {
+        observabilityProperties.setTracingEnabled(true);
         Route route = createRoute("svc", "/api/example/**",
                 "http://localhost:8081");
         RoutingHandler handler = createHandler(List.of(route));
@@ -277,6 +285,11 @@ class RoutingHandlerTest {
 
         channel.writeInbound(request);
 
+        assertThat(channel.attr(TraceContextHandler.TRACE_SECURITY_TAGS_KEY).get())
+                .isNotNull()
+                .containsEntry("real-ip", "ALLOW")
+                .containsEntry("real-ip.reason", "resolved");
+
         // ProxyHandler 被添加后又因异常被移除，
         // 验证 RoutingHandler 确实尝试添加了 ProxyHandler：
         // 检查 outbound 中有错误响应（说明 ProxyHandler 被触发了）
@@ -286,16 +299,65 @@ class RoutingHandlerTest {
         channel.finish();
     }
 
+    @Test
+    void securityRejectedRequestWritesAccessLogWithSecurityFields() throws Exception {
+        Logger accessLogger = (Logger) LoggerFactory.getLogger("access");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        accessLogger.addAppender(appender);
+        try {
+            SecurityProperties securityProperties = new SecurityProperties();
+            securityProperties.setEnabled(true);
+            securityProperties.getAuth().setEnabled(true);
+            Route route = createRoute("svc", "/api/example/**",
+                    "http://localhost:8081");
+            RoutingHandler handler = createHandler(
+                    List.of(route), securityProperties);
+            EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+            DefaultFullHttpRequest request = new DefaultFullHttpRequest(
+                    HttpVersion.HTTP_1_1, HttpMethod.GET,
+                    "/api/example/private/profile");
+            request.headers().set(HttpHeaderNames.HOST, "localhost");
+            channel.writeInbound(request);
+
+            FullHttpResponse response = channel.readOutbound();
+            assertThat(response.status()).isEqualTo(HttpResponseStatus.UNAUTHORIZED);
+            response.release();
+
+            assertThat(appender.list).hasSize(1);
+            String message = appender.list.get(0).getFormattedMessage();
+            JsonNode logJson = MAPPER.readTree(message);
+            assertThat(logJson.get("statusCode").asInt()).isEqualTo(401);
+            assertThat(logJson.get("authRequired").asBoolean()).isTrue();
+            assertThat(logJson.get("authPassed").asBoolean()).isFalse();
+            assertThat(logJson.get("securityDecision").asText()).isEqualTo("DENY");
+            assertThat(logJson.get("securityFilter").asText()).isEqualTo("auth");
+            assertThat(logJson.get("securityReason").asText())
+                    .isEqualTo("missing_authorization_header");
+            channel.finish();
+        } finally {
+            accessLogger.detachAppender(appender);
+        }
+    }
+
     // ========== 辅助方法 ==========
 
     private RoutingHandler createHandler(List<Route> routes) {
+        return createHandler(routes, new SecurityProperties());
+    }
+
+    private RoutingHandler createHandler(List<Route> routes,
+            SecurityProperties securityProperties) {
         GatewayProperties gatewayProperties = new GatewayProperties();
         gatewayProperties.setRoutes(routes);
         RouteResolver routeResolver = new RouteResolver(gatewayProperties);
         // connectionPool 传 null，路由匹配测试中 ProxyHandler 是占位实现不会真正使用
         return new RoutingHandler(routeResolver, requestLimitProperties,
                 null, metricsCollector, accessLogWriter,
-                observabilityProperties, activeConnections, startTime);
+                observabilityProperties,
+                new GatewaySecurityProcessor(securityProperties, metricsCollector),
+                activeConnections, startTime);
     }
 
     private static Route createRoute(String id, String pathPrefix,

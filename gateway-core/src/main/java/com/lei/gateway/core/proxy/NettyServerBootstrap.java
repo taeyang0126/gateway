@@ -4,9 +4,11 @@ import com.lei.gateway.core.config.GatewayProperties;
 import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.RouteResolver;
+import com.lei.gateway.core.config.SecurityProperties;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
 import com.lei.gateway.core.observability.TraceContextHandler;
+import com.lei.gateway.core.security.GatewaySecurityProcessor;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.Channel;
@@ -42,6 +44,7 @@ public class NettyServerBootstrap implements SmartLifecycle {
     private final UpstreamConnectionPool connectionPool;
     private final MetricsCollector metricsCollector;
     private final AccessLogWriter accessLogWriter;
+    private final SecurityProperties securityProperties;
     private final ApplicationContext applicationContext;
     private final EventLoopGroup workerGroup;
 
@@ -58,6 +61,7 @@ public class NettyServerBootstrap implements SmartLifecycle {
             UpstreamConnectionPool connectionPool,
             MetricsCollector metricsCollector,
             AccessLogWriter accessLogWriter,
+            SecurityProperties securityProperties,
             ApplicationContext applicationContext,
             EventLoopGroup workerGroup) {
         this.gatewayProperties = gatewayProperties;
@@ -67,6 +71,7 @@ public class NettyServerBootstrap implements SmartLifecycle {
         this.connectionPool = connectionPool;
         this.metricsCollector = metricsCollector;
         this.accessLogWriter = accessLogWriter;
+        this.securityProperties = securityProperties;
         this.applicationContext = applicationContext;
         this.workerGroup = workerGroup;
     }
@@ -78,9 +83,12 @@ public class NettyServerBootstrap implements SmartLifecycle {
         Instant serverStartTime = Instant.now();
         TraceContextHandler traceContextHandler =
                 new TraceContextHandler(observabilityProperties);
+        GatewaySecurityProcessor securityProcessor =
+                new GatewaySecurityProcessor(securityProperties, metricsCollector);
         RoutingHandler routingHandler = new RoutingHandler(
                 routeResolver, requestLimitProperties, connectionPool,
                 metricsCollector, accessLogWriter, observabilityProperties,
+                securityProcessor,
                 activeConnections, serverStartTime);
         GatewayChannelInitializer initializer = new GatewayChannelInitializer(
                 traceContextHandler, routingHandler, requestLimitProperties);

@@ -1,0 +1,9 @@
+auth:
+  jwt:
+    issuer: example-issuer
+    audience: example-audience
+    public-key: ""
+    # JWKS 模式示例
+    jwks-url: http://localhost:9000/.well-known/jwks.json
+    jwks-refresh-seconds: 300
+    jwks-timeout-millis: 1000

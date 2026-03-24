@@ -178,4 +178,67 @@ class MetricsCollectorTest {
 
         assertThat(registry.find("gateway.pool.borrow.failures").counter()).isNull();
     }
+
+    @Test
+    void recordSecurityFilterDecision_recordsCounterWithTags() {
+        MeterRegistry registry = new SimpleMeterRegistry();
+        MetricsCollector collector = new MetricsCollector(registry, enabledConfig());
+
+        collector.recordSecurityFilterDecision("auth", "DENY",
+                "missing_authorization_header", "r1");
+
+        Counter counter = registry.find("gateway.security.filter.decisions")
+                .tag("filter", "auth")
+                .tag("decision", "DENY")
+                .tag("reason", "missing_authorization_header")
+                .tag("routeId", "r1")
+                .counter();
+        assertThat(counter).isNotNull();
+        assertThat(counter.count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void recordSecurityFilterDuration_recordsTimerWithTags() {
+        MeterRegistry registry = new SimpleMeterRegistry();
+        MetricsCollector collector = new MetricsCollector(registry, enabledConfig());
+
+        collector.recordSecurityFilterDuration("ip-access", "r2",
+                TimeUnit.MILLISECONDS.toNanos(12));
+
+        Timer timer = registry.find("gateway.security.filter.duration")
+                .tag("filter", "ip-access")
+                .tag("routeId", "r2")
+                .timer();
+        assertThat(timer).isNotNull();
+        assertThat(timer.count()).isEqualTo(1);
+    }
+
+    @Test
+    void recordSecurityAuxiliaryMetrics_recordsTaggedCounters() {
+        MeterRegistry registry = new SimpleMeterRegistry();
+        MetricsCollector collector = new MetricsCollector(registry, enabledConfig());
+
+        collector.recordAuthFailure("token_expired");
+        collector.recordRateLimitHit("ip-rate-limit", "r3");
+        collector.recordSecurityFallback("rate-limit", "distributed_to_local");
+
+        Counter authFailure = registry.find("gateway.security.auth.failures")
+                .tag("reason", "token_expired")
+                .counter();
+        Counter rateLimitHit = registry.find("gateway.security.rate_limit.hits")
+                .tag("stage", "ip-rate-limit")
+                .tag("routeId", "r3")
+                .counter();
+        Counter fallback = registry.find("gateway.security.fallbacks")
+                .tag("component", "rate-limit")
+                .tag("reason", "distributed_to_local")
+                .counter();
+
+        assertThat(authFailure).isNotNull();
+        assertThat(authFailure.count()).isEqualTo(1.0);
+        assertThat(rateLimitHit).isNotNull();
+        assertThat(rateLimitHit.count()).isEqualTo(1.0);
+        assertThat(fallback).isNotNull();
+        assertThat(fallback.count()).isEqualTo(1.0);
+    }
 }

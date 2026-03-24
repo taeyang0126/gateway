@@ -20,6 +20,8 @@ class GatewayPropertiesTest {
 
     @Autowired
     private ObservabilityProperties observabilityProperties;
+    @Autowired
+    private SecurityProperties securityProperties;
 
     @Test
     void gatewayPortBindsCorrectly() {
@@ -62,5 +64,31 @@ class GatewayPropertiesTest {
         assertThat(observabilityProperties.isMetricsEnabled()).isTrue();
         assertThat(observabilityProperties.isAccessLogEnabled()).isTrue();
         assertThat(observabilityProperties.isTracingEnabled()).isTrue();
+    }
+
+    @Test
+    void securityBindsCorrectly() {
+        assertThat(securityProperties.isEnabled()).isTrue();
+        assertThat(securityProperties.getTrustedProxies())
+                .containsExactly("127.0.0.1/32");
+        assertThat(securityProperties.getIpAccess().isEnabled()).isTrue();
+        assertThat(securityProperties.getIpAccess().getDenyList())
+                .containsExactly("10.0.0.0/8");
+        assertThat(securityProperties.getAuth().isEnabled()).isTrue();
+        assertThat(securityProperties.getAuth().getType())
+                .isEqualTo(SecurityProperties.AuthType.JWT);
+        assertThat(securityProperties.getAuth().getProviders().getJwt().getIssuer())
+                .isEqualTo("test-issuer");
+        assertThat(securityProperties.getAuth().getProviders().getJwt().getAudience())
+                .isEqualTo("test-audience");
+        assertThat(securityProperties.getAuth()
+                .getTokenExtractor().getTokenHeaderName())
+                .isEqualTo("Authorization");
+        assertThat(securityProperties.getAuth()
+                .getTokenExtractor().getTokenValuePrefix())
+                .isEqualTo("Bearer ");
+        assertThat(securityProperties.getRateLimit().getIp().isEnabled()).isTrue();
+        assertThat(securityProperties.getRateLimit().getIp().getPermitsPerSecond())
+                .isEqualTo(10);
     }
 }

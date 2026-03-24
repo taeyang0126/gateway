@@ -38,6 +38,21 @@ public class AccessLogEntry {
     @JsonProperty("traceId")
     private String traceId;
 
+    @JsonProperty("authRequired")
+    private Boolean authRequired;
+
+    @JsonProperty("authPassed")
+    private Boolean authPassed;
+
+    @JsonProperty("securityDecision")
+    private String securityDecision;
+
+    @JsonProperty("securityFilter")
+    private String securityFilter;
+
+    @JsonProperty("securityReason")
+    private String securityReason;
+
     public String getMethod() {
         return method;
     }
@@ -108,5 +123,45 @@ public class AccessLogEntry {
 
     public void setTraceId(String traceId) {
         this.traceId = traceId;
+    }
+
+    public Boolean getAuthRequired() {
+        return authRequired;
+    }
+
+    public void setAuthRequired(Boolean authRequired) {
+        this.authRequired = authRequired;
+    }
+
+    public Boolean getAuthPassed() {
+        return authPassed;
+    }
+
+    public void setAuthPassed(Boolean authPassed) {
+        this.authPassed = authPassed;
+    }
+
+    public String getSecurityDecision() {
+        return securityDecision;
+    }
+
+    public void setSecurityDecision(String securityDecision) {
+        this.securityDecision = securityDecision;
+    }
+
+    public String getSecurityFilter() {
+        return securityFilter;
+    }
+
+    public void setSecurityFilter(String securityFilter) {
+        this.securityFilter = securityFilter;
+    }
+
+    public String getSecurityReason() {
+        return securityReason;
+    }
+
+    public void setSecurityReason(String securityReason) {
+        this.securityReason = securityReason;
     }
 }

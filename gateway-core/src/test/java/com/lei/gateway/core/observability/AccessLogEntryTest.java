@@ -25,6 +25,11 @@ class AccessLogEntryTest {
         entry.setRequestBodySize(1048576);
         entry.setResponseBodySize(256);
         entry.setTraceId("4bf92f3577b34da6a3ce929d0e0e4736");
+        entry.setAuthRequired(true);
+        entry.setAuthPassed(true);
+        entry.setSecurityDecision("ALLOW");
+        entry.setSecurityFilter("auth");
+        entry.setSecurityReason("authenticated");
 
         String json = objectMapper.writeValueAsString(entry);
         JsonNode node = objectMapper.readTree(json);
@@ -39,6 +44,11 @@ class AccessLogEntryTest {
         assertThat(node.get("responseBodySize").asLong()).isEqualTo(256);
         assertThat(node.get("traceId").asText())
                 .isEqualTo("4bf92f3577b34da6a3ce929d0e0e4736");
+        assertThat(node.get("authRequired").asBoolean()).isTrue();
+        assertThat(node.get("authPassed").asBoolean()).isTrue();
+        assertThat(node.get("securityDecision").asText()).isEqualTo("ALLOW");
+        assertThat(node.get("securityFilter").asText()).isEqualTo("auth");
+        assertThat(node.get("securityReason").asText()).isEqualTo("authenticated");
     }
 
     @Test

@@ -59,7 +59,13 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     private String traceId;
     private String method;
     private String path;
-    private String clientIp;
+    private String realClientIp;
+    private String remoteClientIp;
+    private Boolean authRequired;
+    private Boolean authPassed;
+    private String securityDecision;
+    private String securityFilter;
+    private String securityReason;
     private long requestBodySize;
     private long responseBodySize;
     private int responseStatusCode;
@@ -108,11 +114,18 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         method = request.method().name();
         path = request.uri();
         java.net.SocketAddress remoteAddr = ctx.channel().remoteAddress();
-        if (remoteAddr instanceof InetSocketAddress inetAddr) {
-            clientIp = inetAddr.getAddress().getHostAddress();
+        remoteClientIp = resolveRemoteClientIp(remoteAddr);
+        String resolvedClientIp = ctx.channel().attr(RoutingHandler.CLIENT_IP_KEY).get();
+        if (resolvedClientIp != null && !resolvedClientIp.isBlank()) {
+            realClientIp = resolvedClientIp;
         } else {
-            clientIp = remoteAddr != null ? remoteAddr.toString() : "unknown";
+            realClientIp = remoteClientIp;
         }
+        authRequired = ctx.channel().attr(RoutingHandler.AUTH_REQUIRED_KEY).get();
+        authPassed = ctx.channel().attr(RoutingHandler.AUTH_PASSED_KEY).get();
+        securityDecision = ctx.channel().attr(RoutingHandler.SECURITY_DECISION_KEY).get();
+        securityFilter = ctx.channel().attr(RoutingHandler.SECURITY_FILTER_KEY).get();
+        securityReason = ctx.channel().attr(RoutingHandler.SECURITY_REASON_KEY).get();
 
         // 4. 记录客户端是否发送了 Expect: 100-continue
         boolean expectContinue = HttpUtil.is100ContinueExpected(request);
@@ -155,7 +168,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
         // 7. 准备请求头（在异步回调前完成，避免 request 对象被回收）
         HttpHeaders headers = request.headers();
-        ProxyHeaderUtil.addProxyHeaders(headers, clientIp,
+        ProxyHeaderUtil.addProxyHeaders(headers, realClientIp, remoteClientIp,
                 upstreamHost + (upstreamPort != 80
                         ? ":" + upstreamPort : ""));
         if (observabilityConfig.isTracingEnabled()) {
@@ -343,11 +356,16 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         logEntry.setPath(path);
         logEntry.setStatusCode(responseStatusCode);
         logEntry.setDurationMs(durationNanos / 1_000_000);
-        logEntry.setClientIp(clientIp);
+        logEntry.setClientIp(realClientIp);
         logEntry.setUpstream(route.getUpstream());
         logEntry.setRequestBodySize(requestBodySize);
         logEntry.setResponseBodySize(responseBodySize);
         logEntry.setTraceId(traceId);
+        logEntry.setAuthRequired(authRequired);
+        logEntry.setAuthPassed(authPassed);
+        logEntry.setSecurityDecision(securityDecision);
+        logEntry.setSecurityFilter(securityFilter);
+        logEntry.setSecurityReason(securityReason);
         accessLogWriter.log(logEntry);
 
         // 归还连接
@@ -444,6 +462,13 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
+    }
+
+    private static String resolveRemoteClientIp(java.net.SocketAddress remoteAddr) {
+        if (remoteAddr instanceof InetSocketAddress inetAddr) {
+            return inetAddr.getAddress().getHostAddress();
+        }
+        return remoteAddr != null ? remoteAddr.toString() : "unknown";
     }
 
     private boolean isNoBodyResponse(HttpResponse response) {

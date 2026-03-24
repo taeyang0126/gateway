@@ -17,7 +17,7 @@ mvn spring-boot:run -pl gateway-example
 > 以下命令均通过网关（端口 8080）访问，请确保网关已启动。
 
 ```bash
-# GET
+# 普通接口（无需认证）
 curl http://localhost:8080/api/example/hello
 
 # POST echo
@@ -30,12 +30,18 @@ curl -X POST http://localhost:8080/api/example/upload \
 
 # 多文件上传
 curl -X POST http://localhost:8080/api/example/upload/multi \
-  -F "files=@/Users/wulei/Downloads/Athas_0.4.4_aarch64.dmg" -F "files=@/Users/wulei/Downloads/JetBrainsMono-2.304.zip"
+  -F "files=@/Users/wulei/Downloads/Athas_0.4.4_aarch64.dmg" \
+  -F "files=@/Users/wulei/Downloads/JetBrainsMono-2.304.zip"
 
 # 文件 + 表单字段
 curl -X POST http://localhost:8080/api/example/upload/with-fields \
-  -F "file=@/Users/wulei/Downloads/Athas_0.4.4_aarch64.dmg" -F "name=test" -F "description=demo"
+  -F "file=@/Users/wulei/Downloads/Athas_0.4.4_aarch64.dmg" \
+  -F "name=test" -F "description=demo"
 
 # 大文件下载（10MB）
 curl http://localhost:8080/api/example/download -o testfile.bin
+
+# 受保护接口（需要 JWT）
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8080/api/example/private/profile
 ```

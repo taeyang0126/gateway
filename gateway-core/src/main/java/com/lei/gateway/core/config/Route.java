@@ -1,5 +1,6 @@
 package com.lei.gateway.core.config;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 
 /**
@@ -17,6 +18,8 @@ public class Route {
     private Long maxRequestSize;
     /** 路由优先级，数字越小优先级越高，默认 0。 */
     private int priority = 0;
+    @Valid
+    private RouteSecurityProperties security;
 
     public String getId() {
         return id;
@@ -64,5 +67,13 @@ public class Route {
 
     public void setPriority(int priority) {
         this.priority = priority;
+    }
+
+    public RouteSecurityProperties getSecurity() {
+        return security;
+    }
+
+    public void setSecurity(RouteSecurityProperties security) {
+        this.security = security;
     }
 }

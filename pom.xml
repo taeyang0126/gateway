@@ -16,6 +16,7 @@
         <module>gateway-core</module>
         <module>gateway-app</module>
         <module>gateway-example</module>
+        <module>auth-jwt-example</module>
     </modules>
 
     <properties>

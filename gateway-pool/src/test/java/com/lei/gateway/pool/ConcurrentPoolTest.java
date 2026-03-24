@@ -7,7 +7,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -465,6 +469,113 @@ class ConcurrentPoolTest {
                     ExecutionException.class,
                     () -> future.get(500, TimeUnit.MILLISECONDS));
             assertThat(ex.getCause()).isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Test
+    void borrowAsyncWhenCancelledByCaller_shouldNotConsumeRequitedEntry() throws Exception {
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            List<TestPoolEntry> entries = new ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                entries.add(pool.borrow(100, TimeUnit.MILLISECONDS));
+            }
+
+            CompletableFuture<TestPoolEntry> cancelled = pool.borrowAsync(500, TimeUnit.MILLISECONDS);
+            assertThat(cancelled.cancel(true)).isTrue();
+            assertThat(cancelled.isCancelled()).isTrue();
+
+            pool.requite(entries.get(0));
+            CompletableFuture<TestPoolEntry> next = pool.borrowAsync(200, TimeUnit.MILLISECONDS);
+            TestPoolEntry acquired = next.get(500, TimeUnit.MILLISECONDS);
+            assertThat(acquired).isNotNull();
+            assertThat(acquired.getState()).isEqualTo(PoolEntry.STATE_IN_USE);
+        }
+    }
+
+    @Test
+    void borrowAsyncTimeoutRacesWithRequite_shouldNotLoseEntry() throws Exception {
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            TestPoolEntry held = pool.borrow(100, TimeUnit.MILLISECONDS);
+            CompletableFuture<TestPoolEntry> waiter = pool.borrowAsync(60, TimeUnit.MILLISECONDS);
+
+            ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+            try {
+                scheduler.schedule(() -> pool.requite(held), 55, TimeUnit.MILLISECONDS);
+                try {
+                    TestPoolEntry acquiredByWaiter = waiter.get(300, TimeUnit.MILLISECONDS);
+                    assertThat(acquiredByWaiter.getState()).isEqualTo(PoolEntry.STATE_IN_USE);
+                    pool.requite(acquiredByWaiter);
+                } catch (ExecutionException ex) {
+                    assertThat(ex.getCause()).isInstanceOf(IllegalStateException.class)
+                            .hasMessageContaining("Timeout");
+                }
+            } finally {
+                scheduler.shutdownNow();
+            }
+
+            TestPoolEntry reBorrowed = pool.borrow(500, TimeUnit.MILLISECONDS);
+            assertThat(reBorrowed).isNotNull();
+            pool.requite(reBorrowed);
+        }
+    }
+
+    @Test
+    void closeBeforeAsyncCreateCompletion_shouldCloseEntryAndRollbackCount() throws Exception {
+        CompletableFuture<TestPoolEntry> createFuture = new CompletableFuture<>();
+        AtomicReference<TestPoolEntry> createdRef = new AtomicReference<>();
+        PoolEntryFactory<TestPoolEntry> delayedFactory = new PoolEntryFactory<>() {
+            @Override
+            public TestPoolEntry create() {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public CompletableFuture<TestPoolEntry> createAsync() {
+                return createFuture;
+            }
+        };
+
+        ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, delayedFactory);
+        CompletableFuture<TestPoolEntry> borrowed = pool.borrowAsync(500, TimeUnit.MILLISECONDS);
+        pool.close();
+
+        TestPoolEntry lateEntry = new TestPoolEntry();
+        createdRef.set(lateEntry);
+        createFuture.complete(lateEntry);
+
+        ExecutionException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                ExecutionException.class,
+                () -> borrowed.get(500, TimeUnit.MILLISECONDS));
+        assertThat(ex.getCause()).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("closed");
+        assertThat(createdRef.get().isClosed()).isTrue();
+        assertThat(pool.getTotalCount()).isEqualTo(0);
+    }
+
+    @Test
+    void borrowAsyncHighConcurrencyTimeoutCleanup_shouldNotLeavePermanentHangs() throws Exception {
+        config.setMaxPoolSize(1);
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            TestPoolEntry held = pool.borrow(100, TimeUnit.MILLISECONDS);
+
+            List<CompletableFuture<TestPoolEntry>> waiters = new ArrayList<>();
+            for (int i = 0; i < 120; i++) {
+                waiters.add(pool.borrowAsync(20, TimeUnit.MILLISECONDS));
+            }
+
+            for (CompletableFuture<TestPoolEntry> waiter : waiters) {
+                try {
+                    waiter.get(300, TimeUnit.MILLISECONDS);
+                } catch (ExecutionException ex) {
+                    assertThat(ex.getCause()).isInstanceOf(IllegalStateException.class);
+                } catch (TimeoutException ex) {
+                    throw new AssertionError("waiter should not hang permanently", ex);
+                }
+            }
+
+            pool.requite(held);
+            TestPoolEntry acquired = pool.borrow(500, TimeUnit.MILLISECONDS);
+            assertThat(acquired).isSameAs(held);
         }
     }
 }

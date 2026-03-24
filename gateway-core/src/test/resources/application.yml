@@ -17,3 +17,27 @@ gateway:
     access-log-enabled: true
     access-log-level: WARN
     tracing-enabled: true
+  security:
+    enabled: true
+    trusted-proxies:
+      - 127.0.0.1/32
+    ip-access:
+      enabled: true
+      deny-list:
+        - 10.0.0.0/8
+    auth:
+      enabled: true
+      type: JWT
+      token-extractor:
+        token-header-name: Authorization
+        token-value-prefix: "Bearer "
+      providers:
+        jwt:
+          issuer: test-issuer
+          audience: test-audience
+    rate-limit:
+      ip:
+        enabled: true
+        mode: local
+        permits-per-second: 10
+        burst-capacity: 20

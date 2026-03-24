@@ -124,6 +124,79 @@ public class MetricsCollector {
     }
 
     /**
+     * 记录安全过滤决策计数。
+     */
+    public void recordSecurityFilterDecision(String filter, String decision,
+            String reason, String routeId) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+        Counter.builder("gateway.security.filter.decisions")
+                .tag("filter", filter)
+                .tag("decision", decision)
+                .tag("reason", reason == null ? "none" : reason)
+                .tag("routeId", routeId == null ? "unknown" : routeId)
+                .register(meterRegistry)
+                .increment();
+    }
+
+    /**
+     * 记录安全过滤耗时。
+     */
+    public void recordSecurityFilterDuration(String filter, String routeId,
+            long durationNanos) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+        Timer.builder("gateway.security.filter.duration")
+                .tag("filter", filter)
+                .tag("routeId", routeId == null ? "unknown" : routeId)
+                .register(meterRegistry)
+                .record(durationNanos, TimeUnit.NANOSECONDS);
+    }
+
+    /**
+     * 记录认证失败。
+     */
+    public void recordAuthFailure(String reason) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+        Counter.builder("gateway.security.auth.failures")
+                .tag("reason", reason == null ? "unknown" : reason)
+                .register(meterRegistry)
+                .increment();
+    }
+
+    /**
+     * 记录限流命中。
+     */
+    public void recordRateLimitHit(String stage, String routeId) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+        Counter.builder("gateway.security.rate_limit.hits")
+                .tag("stage", stage)
+                .tag("routeId", routeId == null ? "unknown" : routeId)
+                .register(meterRegistry)
+                .increment();
+    }
+
+    /**
+     * 记录安全组件降级/回退事件。
+     */
+    public void recordSecurityFallback(String component, String reason) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+        Counter.builder("gateway.security.fallbacks")
+                .tag("component", component)
+                .tag("reason", reason == null ? "unknown" : reason)
+                .register(meterRegistry)
+                .increment();
+    }
+
+    /**
      * 注册活跃连接数 gauge。
      *
      * @param activeConnections 活跃连接数原子计数器

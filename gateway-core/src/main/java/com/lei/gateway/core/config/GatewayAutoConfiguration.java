@@ -17,7 +17,8 @@ import org.springframework.context.annotation.Configuration;
     GatewayProperties.class,
     RequestLimitProperties.class,
     ConnectionPoolProperties.class,
-    ObservabilityProperties.class
+    ObservabilityProperties.class,
+    SecurityProperties.class
 })
 public class GatewayAutoConfiguration {
 

@@ -3,7 +3,30 @@ gateway:
   routes:
     - id: example-service
       path-prefix: /api/example/**
-      upstream: http://localhost:8081
+      upstream: http://localhost:8082
+    - id: example-service-jwt
+      path-prefix: /api/example/private/**
+      upstream: http://localhost:8082
+      security:
+        enabled: true
+        auth:
+          enabled: true
+          type: JWT
+          providers:
+            jwt:
+              issuer: example-issuer
+              audience: example-audience
+              # 与 auth-jwt-example 的 auth.jwt.public-key 保持一致。
+              public-key: |
+                -----BEGIN PUBLIC KEY-----
+                MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6I25MXjpwwaXaDp0ilnr
+                5GQr/XioqlIJFjx9MMCD2Dk9T+SM1gNzRfoptZl13fQvImErCkdK9/CEEP9R2L0x
+                PwYdoZq6yoNQlwYg/cFh/VyVQB1t8+KDkUfrUlfGTZHErFpvpwMLtQ7c1aJECChD
+                gWAC0yF0PRIvfuEDEOFwWJXpumlUYMIEMSA5Li2o1SAxznFY88mtMcnJo4EzKYcT
+                6kA7MZVwXwI9EpCr+2XXiN/8NUMwNJUjYPhG34pYESqJ+5giZofggxD/+TquqakR
+                VpBK5pvbnDSZ55yix/zgG83es4AyGY3mje/8B4mnayJf3FsoOg/WOiYupl+jNSC7
+                LwIDAQAB
+                -----END PUBLIC KEY-----
   request-limit:
     max-request-size: 52428800   # 50MB
     timeout-seconds: 60

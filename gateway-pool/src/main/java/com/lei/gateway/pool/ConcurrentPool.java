@@ -1,14 +1,15 @@
 package com.lei.gateway.pool;
 
+import io.netty.util.HashedWheelTimer;
+import io.netty.util.Timeout;
+import io.netty.util.Timer;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingDeque;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -33,6 +34,13 @@ import org.slf4j.LoggerFactory;
 public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(ConcurrentPool.class);
+    private static final Timer TIMEOUT_TIMER = new HashedWheelTimer(r -> {
+        Thread t = new Thread(r, "pool-timeout-wheel");
+        t.setDaemon(true);
+        return t;
+    }, 5, TimeUnit.MILLISECONDS, 512);
+    private static final TimeoutScheduler DEFAULT_TIMEOUT_SCHEDULER =
+            new NettyTimeoutScheduler(TIMEOUT_TIMER);
 
     private final PoolConfig config;
     private final PoolEntryFactory<T> factory;
@@ -50,8 +58,8 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
     //    线程 → ThreadLocal → entry → ClassLoader 的引用链，导致 ClassLoader 无法卸载。
     private final ThreadLocal<List<WeakReference<T>>> threadLocalList;
     private final AtomicInteger totalEntries;
-    private final LinkedBlockingDeque<PendingBorrow<T>> pendingBorrows;
-    private final ScheduledExecutorService scheduler;
+    private final ConcurrentLinkedQueue<PendingBorrow<T>> pendingBorrows;
+    private final TimeoutScheduler timeoutScheduler;
     private volatile boolean closed;
 
     /**
@@ -61,18 +69,19 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
      * @param factory 条目创建工厂
      */
     public ConcurrentPool(PoolConfig config, PoolEntryFactory<T> factory) {
+        this(config, factory, DEFAULT_TIMEOUT_SCHEDULER);
+    }
+
+    ConcurrentPool(PoolConfig config, PoolEntryFactory<T> factory,
+            TimeoutScheduler timeoutScheduler) {
         this.config = new PoolConfig(config);
         this.factory = factory;
         this.sharedList = new CopyOnWriteArrayList<>();
         this.handoffQueue = new SynchronousQueue<>(true);
         this.threadLocalList = ThreadLocal.withInitial(() -> new ArrayList<>(config.getThreadLocalCacheSize()));
         this.totalEntries = new AtomicInteger(0);
-        this.pendingBorrows = new LinkedBlockingDeque<>();
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "pool-timeout-scheduler");
-            t.setDaemon(true);
-            return t;
-        });
+        this.pendingBorrows = new ConcurrentLinkedQueue<>();
+        this.timeoutScheduler = Objects.requireNonNull(timeoutScheduler);
         this.closed = false;
     }
 
@@ -175,10 +184,26 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
         }
 
         // 第二级：尝试异步创建新条目（池未满时）
-        int current = totalEntries.get();
-        if (current < config.getMaxPoolSize()
-                && totalEntries.compareAndSet(current, current + 1)) {
+        // CAS 冲突时做有限次重试，避免“一次失败就入等待队列”的假性池满。
+        boolean reserved = false;
+        for (int i = 0; i < 8; i++) {
+            int current = totalEntries.get();
+            if (current >= config.getMaxPoolSize()) {
+                break;
+            }
+            if (totalEntries.compareAndSet(current, current + 1)) {
+                reserved = true;
+                break;
+            }
+        }
+        if (reserved) {
             return factory.createAsync().thenApply(entry -> {
+                if (closed) {
+                    // close 与 createAsync 并发时，关闭后完成的条目必须直接销毁，避免泄漏。
+                    totalEntries.decrementAndGet();
+                    entry.close();
+                    return null;
+                }
                 entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE);
                 entry.setLastAccessTime(System.nanoTime());
                 sharedList.add(entry);
@@ -192,6 +217,10 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
                     return CompletableFuture.completedFuture(entry);
                 }
                 // 创建失败，进入等待队列
+                if (closed) {
+                    return CompletableFuture.failedFuture(
+                            new IllegalStateException("Pool is closed"));
+                }
                 return enqueueWaiter(timeout, unit);
             });
         }
@@ -204,27 +233,33 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
         CompletableFuture<T> future = new CompletableFuture<>();
         PendingBorrow<T> pending = new PendingBorrow<>(future);
 
-        // 注册超时
-        ScheduledFuture<?> timeoutTask = scheduler.schedule(() -> {
-            if (future.completeExceptionally(
-                    new IllegalStateException("Timeout waiting for available pool entry"))) {
-                pendingBorrows.remove(pending);
+        // 调用方主动 cancel 时标记状态，后续 requite 轮询可惰性清理。
+        future.whenComplete((result, throwable) -> {
+            if (future.isCancelled()) {
+                pending.markCancelled();
             }
-        }, timeout, unit);
+        });
+
+        // 注册超时
+        TimeoutHandle timeoutTask = timeoutScheduler.schedule(pending::timeout, timeout, unit);
         pending.setTimeoutTask(timeoutTask);
 
-        pendingBorrows.add(pending);
+        pendingBorrows.offer(pending);
+
+        if (closed) {
+            pending.close();
+            return future;
+        }
 
         // 入队后再扫描一次，防止在入队前刚好有条目归还
         for (T candidate : sharedList) {
             if (candidate.getState() == PoolEntry.STATE_NOT_IN_USE
                     && candidate.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
                 candidate.setLastAccessTime(System.nanoTime());
-                if (future.complete(candidate)) {
-                    pendingBorrows.remove(pending);
-                    timeoutTask.cancel(false);
+                if (pending.complete(candidate)) {
+                    return future;
                 } else {
-                    // future 已被超时完成，归还条目
+                    // 等待者已超时/取消，归还条目。
                     candidate.compareAndSet(PoolEntry.STATE_IN_USE, PoolEntry.STATE_NOT_IN_USE);
                 }
                 break;
@@ -244,6 +279,11 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
         }
         try {
             T entry = factory.create();
+            if (closed) {
+                totalEntries.decrementAndGet();
+                entry.close();
+                return null;
+            }
             entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE);
             entry.setLastAccessTime(System.nanoTime());
             sharedList.add(entry);
@@ -257,26 +297,22 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
 
     /** 将条目归还到池中。 */
     public void requite(T entry) {
+        if (entry.getState() != PoolEntry.STATE_IN_USE) {
+            return;
+        }
+        entry.setLastAccessTime(System.nanoTime());
+
+        // 优先尝试把条目直接交接给异步等待者，减少回池后被并发抢占的窗口。
+        PendingBorrow<T> pending;
+        while ((pending = pendingBorrows.poll()) != null) {
+            if (pending.complete(entry)) {
+                entry.setLastAccessTime(System.nanoTime());
+                return;
+            }
+        }
+
         if (entry.compareAndSet(PoolEntry.STATE_IN_USE, PoolEntry.STATE_NOT_IN_USE)) {
             entry.setLastAccessTime(System.nanoTime());
-
-            // 优先尝试通知异步等待者
-            PendingBorrow<T> pending;
-            while ((pending = pendingBorrows.poll()) != null) {
-                if (entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
-                    entry.setLastAccessTime(System.nanoTime());
-                    if (pending.complete(entry)) {
-                        return;
-                    }
-                    // 该等待者已超时，归还条目继续尝试下一个
-                    entry.compareAndSet(PoolEntry.STATE_IN_USE, PoolEntry.STATE_NOT_IN_USE);
-                } else {
-                    // 条目被其他线程抢走，插回队头保证 FIFO
-                    pendingBorrows.offerFirst(pending);
-                    return;
-                }
-            }
-
             // 无异步等待者，尝试 handoff 给同步等待者
             if (!handoffQueue.offer(entry)) {
                 // 无同步等待者，加回当前线程的 ThreadLocal 列表（上限由 PoolConfig.threadLocalCacheSize 控制）
@@ -353,11 +389,8 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
         // 取消所有异步等待者
         PendingBorrow<T> pending;
         while ((pending = pendingBorrows.poll()) != null) {
-            pending.cancel();
+            pending.close();
         }
-
-        // 关闭超时调度器
-        scheduler.shutdownNow();
 
         // 清理当前线程的 ThreadLocal 列表
         threadLocalList.remove();
@@ -372,31 +405,91 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
      * 异步借用等待者，封装 CompletableFuture 和超时任务。
      */
     static final class PendingBorrow<T extends PoolEntry> {
+        private static final int STATE_WAITING = 0;
+        private static final int STATE_COMPLETED = 1;
+        private static final int STATE_TIMED_OUT = 2;
+        private static final int STATE_CANCELLED = 3;
+        private static final int STATE_CLOSED = 4;
+
         private final CompletableFuture<T> future;
-        private volatile ScheduledFuture<?> timeoutTask;
+        private final AtomicInteger state = new AtomicInteger(STATE_WAITING);
+        private volatile TimeoutHandle timeoutTask;
 
         PendingBorrow(CompletableFuture<T> future) {
             this.future = future;
         }
 
-        void setTimeoutTask(ScheduledFuture<?> timeoutTask) {
+        void setTimeoutTask(TimeoutHandle timeoutTask) {
             this.timeoutTask = timeoutTask;
         }
 
         boolean complete(T entry) {
+            // 先 CAS 抢占完成权，再尝试完成 future，避免“检查+更新”分离的竞态窗口。
+            if (!state.compareAndSet(STATE_WAITING, STATE_COMPLETED)) {
+                return false;
+            }
             boolean completed = future.complete(entry);
-            if (completed && timeoutTask != null) {
-                timeoutTask.cancel(false);
+            if (completed) {
+                cancelTimeout();
+                return true;
+            }
+            // 极端情况下（调用方手动完成/取消），纠正状态，交由调用方回收条目。
+            if (future.isCancelled()) {
+                state.set(STATE_CANCELLED);
+            } else if (future.isCompletedExceptionally()) {
+                state.set(STATE_CLOSED);
             }
             return completed;
         }
 
-        void cancel() {
-            future.completeExceptionally(
-                    new IllegalStateException("Pool is closed"));
-            if (timeoutTask != null) {
-                timeoutTask.cancel(false);
+        void timeout() {
+            if (!state.compareAndSet(STATE_WAITING, STATE_TIMED_OUT)) {
+                return;
             }
+            future.completeExceptionally(
+                    new IllegalStateException("Timeout waiting for available pool entry"));
+        }
+
+        void close() {
+            if (state.compareAndSet(STATE_WAITING, STATE_CLOSED)) {
+                future.completeExceptionally(
+                        new IllegalStateException("Pool is closed"));
+                cancelTimeout();
+            }
+        }
+
+        void markCancelled() {
+            if (state.compareAndSet(STATE_WAITING, STATE_CANCELLED)) {
+                cancelTimeout();
+            }
+        }
+
+        private void cancelTimeout() {
+            if (timeoutTask != null) {
+                timeoutTask.cancel();
+            }
+        }
+    }
+
+    interface TimeoutScheduler {
+        TimeoutHandle schedule(Runnable task, long timeout, TimeUnit unit);
+    }
+
+    interface TimeoutHandle {
+        void cancel();
+    }
+
+    private static final class NettyTimeoutScheduler implements TimeoutScheduler {
+        private final Timer timer;
+
+        NettyTimeoutScheduler(Timer timer) {
+            this.timer = timer;
+        }
+
+        @Override
+        public TimeoutHandle schedule(Runnable task, long timeout, TimeUnit unit) {
+            Timeout timeoutHandle = timer.newTimeout(ignored -> task.run(), timeout, unit);
+            return timeoutHandle::cancel;
         }
     }
 }

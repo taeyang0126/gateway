@@ -22,16 +22,19 @@ public final class ProxyHeaderUtil {
      * 为转发请求添加标准代理请求头。
      *
      * @param headers      原始请求头（将被修改）
-     * @param clientIp     客户端真实 IP
+     * @param realClientIp 客户端真实 IP
+     * @param remoteClientIp 与网关建立连接的对端 IP（上一跳）
      * @param upstreamHost upstream 的 host
      */
-    public static void addProxyHeaders(HttpHeaders headers, String clientIp, String upstreamHost) {
+    public static void addProxyHeaders(HttpHeaders headers, String realClientIp,
+            String remoteClientIp, String upstreamHost) {
+        String xffHopIp = isBlank(remoteClientIp) ? realClientIp : remoteClientIp;
         // X-Forwarded-For：已有则逗号分隔追加，否则新增
         String existing = headers.get(X_FORWARDED_FOR);
         if (existing != null && !existing.isEmpty()) {
-            headers.set(X_FORWARDED_FOR, existing + ", " + clientIp);
+            headers.set(X_FORWARDED_FOR, existing + ", " + xffHopIp);
         } else {
-            headers.set(X_FORWARDED_FOR, clientIp);
+            headers.set(X_FORWARDED_FOR, xffHopIp);
         }
 
         // X-Forwarded-Host：原始 Host 头值
@@ -44,9 +47,13 @@ public final class ProxyHeaderUtil {
         headers.set(X_FORWARDED_PROTO, "http");
 
         // X-Real-IP
-        headers.set(X_REAL_IP, clientIp);
+        headers.set(X_REAL_IP, realClientIp);
 
         // Host 修改为 upstream 的 host
         headers.set(HttpHeaderNames.HOST, upstreamHost);
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

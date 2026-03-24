@@ -7,12 +7,14 @@ import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.Route;
 import com.lei.gateway.core.config.RouteResolver;
+import com.lei.gateway.core.config.SecurityProperties;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
 import com.lei.gateway.core.observability.TraceContextHandler;
 import com.lei.gateway.core.proxy.GatewayChannelInitializer;
 import com.lei.gateway.core.proxy.RoutingHandler;
 import com.lei.gateway.core.proxy.UpstreamConnectionPool;
+import com.lei.gateway.core.security.GatewaySecurityProcessor;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.netty.bootstrap.ServerBootstrap;
@@ -51,6 +53,7 @@ abstract class IntegrationTestBase {
     protected RequestLimitProperties requestLimitProperties;
     protected ConnectionPoolProperties connectionPoolProperties;
     protected ObservabilityProperties observabilityProperties;
+    protected SecurityProperties securityProperties;
     protected PrometheusMeterRegistry meterRegistry;
     protected MetricsCollector metricsCollector;
     protected AccessLogWriter accessLogWriter;
@@ -69,6 +72,7 @@ abstract class IntegrationTestBase {
         requestLimitProperties = createRequestLimitProperties();
         connectionPoolProperties = createConnectionPoolProperties();
         observabilityProperties = createObservabilityProperties();
+        securityProperties = createSecurityProperties();
 
         // 3. 可观测性
         meterRegistry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
@@ -133,6 +137,7 @@ abstract class IntegrationTestBase {
         RoutingHandler routingHandler = new RoutingHandler(
                 routeResolver, requestLimitProperties, connectionPool,
                 metricsCollector, accessLogWriter, observabilityProperties,
+                new GatewaySecurityProcessor(securityProperties, metricsCollector),
                 activeConnections, startTime);
         GatewayChannelInitializer initializer =
                 new GatewayChannelInitializer(
@@ -193,6 +198,11 @@ abstract class IntegrationTestBase {
         props.setAccessLogEnabled(true);
         props.setTracingEnabled(true);
         return props;
+    }
+
+    /** 默认安全配置。子类可覆盖。 */
+    protected SecurityProperties createSecurityProperties() {
+        return new SecurityProperties();
     }
 
     /** 创建路由。 */

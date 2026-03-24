@@ -39,3 +39,5 @@ replay_pid*
 **/logs/**
 
 **/uploads/**
+
+.m2

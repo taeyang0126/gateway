@@ -1,0 +1,50 @@
+server:
+  port: 8091
+
+auth:
+  jwt:
+    issuer: example-issuer
+    audience: example-audience
+    key-id: auth-jwt-example-key
+    token-expires-seconds: 3600
+    # PKCS#8 RSA 私钥，用于签发 token。
+    private-key: |
+      -----BEGIN PRIVATE KEY-----
+      MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDojbkxeOnDBpdo
+      OnSKWevkZCv9eKiqUgkWPH0wwIPYOT1P5IzWA3NF+im1mXXd9C8iYSsKR0r38IQQ
+      /1HYvTE/Bh2hmrrKg1CXBiD9wWH9XJVAHW3z4oORR+tSV8ZNkcSsWm+nAwu1DtzV
+      okQIKEOBYALTIXQ9Ei9+4QMQ4XBYlem6aVRgwgQxIDkuLajVIDHOcVjzya0xycmj
+      gTMphxPqQDsxlXBfAj0SkKv7ZdeI3/w1QzA0lSNg+EbfilgRKon7mCJmh+CDEP/5
+      Oq6pqRFWkErmm9ucNJnnnKLH/OAbzd6zgDIZjeaN7/wHiadrIl/cWyg6D9Y6Ji6m
+      X6M1ILsvAgMBAAECggEAAp6UdArOBataVnGdUT2hp/xU3oSjnOxSbxSvvrY8bFmt
+      gVJF7KQA6JkTxTIWuMqz750ALhwPEet8oVbIf9RJuYScUTviV/IFg136gY4Fe4qC
+      bkSmmDVFKoRdeAHGTKaUSSWC1aYo7v/DqKH5ec0/GjYppS7FFdCebL0+GpksRpZZ
+      AQ9+YrSthEsdR0Vv0I79j5dYkmTDsqWB+mDkJXRwsmKD15dhDfKYKBLQi9V/+wTx
+      3x988mSNprQPBmNhnGWxGAS2KYiJQQxD0dJNIC3UUI4uoiN4WOChekLkhbeN+DgH
+      4fLrZa2WEcButsdXYalZK35VKRytxpYSEvd/h97+cQKBgQD0aYJGOM0KARAbDFUU
+      1bRxdPpnoW6TGlcSZ/ZYxh8D8vwJJBeBxiIY1mTvgbIwHINAZqQ6O+31pm0bHNYs
+      T9sEg73SLuqWHlsiy/EYXv6uPpQpnDkc3SaBOdJ9U6YEx8dtKJV5VsvlvZBl7Tli
+      7CMRNQlz2Sb+322AptbxJihkGQKBgQDzlEjVfalMzZBex10Fm4syy946uSqWyxVI
+      OuTn3MmYqV+VINXcqKwWRURINvamEGtn7g3XAneVd+wE+SXHilfzkf+0NzvHGrvO
+      Kmbf2kCDsnsPE7IhUnLAE6/LxXYbbJPmAGiOPsaHmQ9RBLlbzKIUTyE0ZdH99tR4
+      piQpgOHChwKBgCrasRfk77aYVx2W/PgJPHlEPH+dI4kxbiDxD5WjL17+5MgphuGf
+      Pu1B8jK4d+jNpwnMtXDsfx26T5kYZkkgu1NAUjEfPsyRiANC5QQT6+3bVRkypiT0
+      dcLkw45r80kVSldObV74JAolQcNNY+l/Y+qpdP3WDmtT+5w6JKflu+FJAoGAT8c8
+      h7gtsDsP0wsnG4QTdmKxebhWC6eeY9buTEbTPI4VAUoM4cXY/z5Wm/Rsmn18QEEH
+      BWoIcsshYYuc5RsZrWwfPQ5uJMtLwb2/jgf0422cwpZn3GQds21/QZV+FoNceZOe
+      qyBCc/0cuCN89mUynMZCEOBcg/rJIm8AHxvYVZcCgYBJ+Au4qmAzT1v7+icXlVdW
+      17t4FRvXWPRF5QdUfn/nmzSU3wkA3c8ClIxx6TCmHSII7E2ynTfz8WykxyKxE/pw
+      j2lPQCh8GLcVoWU2WvOoZyWBEnNLbOCT/VwxdsjKOaGpCWyWuFRgq5ot41MDs6H3
+      wXMlnPL4tguxNI9Kj+ZF2g==
+      -----END PRIVATE KEY-----
+    # 网关与认证服务共享该公钥完成验签。
+    public-key: |
+      -----BEGIN PUBLIC KEY-----
+      MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6I25MXjpwwaXaDp0ilnr
+      5GQr/XioqlIJFjx9MMCD2Dk9T+SM1gNzRfoptZl13fQvImErCkdK9/CEEP9R2L0x
+      PwYdoZq6yoNQlwYg/cFh/VyVQB1t8+KDkUfrUlfGTZHErFpvpwMLtQ7c1aJECChD
+      gWAC0yF0PRIvfuEDEOFwWJXpumlUYMIEMSA5Li2o1SAxznFY88mtMcnJo4EzKYcT
+      6kA7MZVwXwI9EpCr+2XXiN/8NUMwNJUjYPhG34pYESqJ+5giZofggxD/+TquqakR
+      VpBK5pvbnDSZ55yix/zgG83es4AyGY3mje/8B4mnayJf3FsoOg/WOiYupl+jNSC7
+      LwIDAQAB
+      -----END PUBLIC KEY-----

@@ -48,6 +48,11 @@ class AccessLogWriterTest {
         entry.setRequestBodySize(512);
         entry.setResponseBodySize(512);
         entry.setTraceId("abcdef1234567890abcdef1234567890");
+        entry.setAuthRequired(true);
+        entry.setAuthPassed(true);
+        entry.setSecurityDecision("ALLOW");
+        entry.setSecurityFilter("auth");
+        entry.setSecurityReason("authenticated");
         return entry;
     }
 
@@ -72,6 +77,11 @@ class AccessLogWriterTest {
         assertThat(message).contains("\"requestBodySize\":512");
         assertThat(message).contains("\"responseBodySize\":512");
         assertThat(message).contains("\"traceId\":\"abcdef1234567890abcdef1234567890\"");
+        assertThat(message).contains("\"authRequired\":true");
+        assertThat(message).contains("\"authPassed\":true");
+        assertThat(message).contains("\"securityDecision\":\"ALLOW\"");
+        assertThat(message).contains("\"securityFilter\":\"auth\"");
+        assertThat(message).contains("\"securityReason\":\"authenticated\"");
     }
 
     @Test

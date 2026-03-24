@@ -7,6 +7,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.util.AttributeKey;
 import java.security.SecureRandom;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,6 +35,9 @@ public class TraceContextHandler extends ChannelInboundHandlerAdapter {
     /** Channel Attribute key：存储 trace-id（供访问日志使用）。 */
     public static final AttributeKey<String> TRACE_ID_KEY =
             AttributeKey.valueOf("traceId");
+    /** Channel Attribute key：存储安全过滤阶段追踪标签。 */
+    public static final AttributeKey<Map<String, String>> TRACE_SECURITY_TAGS_KEY =
+            AttributeKey.valueOf("traceSecurityTags");
 
     private static final String TRACEPARENT_HEADER = "traceparent";
     private static final String TRACESTATE_HEADER = "tracestate";

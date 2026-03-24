@@ -4,8 +4,13 @@ import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.Route;
 import com.lei.gateway.core.config.RouteResolver;
+import com.lei.gateway.core.observability.AccessLogEntry;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
+import com.lei.gateway.core.observability.TraceContextHandler;
+import com.lei.gateway.core.security.GatewaySecurityProcessor;
+import com.lei.gateway.core.security.SecurityDecision;
+import com.lei.gateway.core.security.SecurityEvaluationResult;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
@@ -24,6 +29,8 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.util.AttributeKey;
 import io.netty.util.CharsetUtil;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -47,6 +54,18 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
     /** Channel Attribute：标记当前连接是否需要在响应后关闭。 */
     static final AttributeKey<Boolean> CONNECTION_CLOSE_KEY =
             AttributeKey.valueOf("connectionClose");
+    static final AttributeKey<String> CLIENT_IP_KEY =
+            AttributeKey.valueOf("clientIp");
+    static final AttributeKey<Boolean> AUTH_REQUIRED_KEY =
+            AttributeKey.valueOf("authRequired");
+    static final AttributeKey<Boolean> AUTH_PASSED_KEY =
+            AttributeKey.valueOf("authPassed");
+    static final AttributeKey<String> SECURITY_DECISION_KEY =
+            AttributeKey.valueOf("securityDecision");
+    static final AttributeKey<String> SECURITY_FILTER_KEY =
+            AttributeKey.valueOf("securityFilter");
+    static final AttributeKey<String> SECURITY_REASON_KEY =
+            AttributeKey.valueOf("securityReason");
 
     private static final String HEALTH_PATH = "/health";
     private static final String METRICS_PATH = "/metrics";
@@ -61,6 +80,7 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
     private final MetricsCollector metricsCollector;
     private final AccessLogWriter accessLogWriter;
     private final ObservabilityProperties observabilityProperties;
+    private final GatewaySecurityProcessor gatewaySecurityProcessor;
     private final AtomicInteger activeConnections;
     private final Instant startTime;
 
@@ -71,6 +91,7 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
             MetricsCollector metricsCollector,
             AccessLogWriter accessLogWriter,
             ObservabilityProperties observabilityProperties,
+            GatewaySecurityProcessor gatewaySecurityProcessor,
             AtomicInteger activeConnections,
             Instant startTime) {
         this.routeResolver = routeResolver;
@@ -79,6 +100,7 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
         this.metricsCollector = metricsCollector;
         this.accessLogWriter = accessLogWriter;
         this.observabilityProperties = observabilityProperties;
+        this.gatewaySecurityProcessor = gatewaySecurityProcessor;
         this.activeConnections = activeConnections;
         this.startTime = startTime;
     }
@@ -106,6 +128,7 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
         // 记录 Connection: close 标记
         boolean keepAlive = HttpUtil.isKeepAlive(request);
         ctx.channel().attr(CONNECTION_CLOSE_KEY).set(!keepAlive);
+        final long requestStartNanos = System.nanoTime();
 
         String path = new QueryStringDecoder(request.uri()).path();
 
@@ -135,6 +158,25 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
             return;
         }
         Route route = matched.get();
+
+        SecurityEvaluationResult securityResult = gatewaySecurityProcessor.evaluate(
+                ctx, request, route);
+        attachSecurityAttributes(ctx, securityResult);
+        if (securityResult.getContext().getClientIp() != null) {
+            ctx.channel().attr(CLIENT_IP_KEY).set(
+                    securityResult.getContext().getClientIp());
+        }
+        if (observabilityProperties.isTracingEnabled()) {
+            ctx.channel().attr(TraceContextHandler.TRACE_SECURITY_TAGS_KEY).set(
+                    securityResult.getContext().getTraceTags());
+        }
+        if (!securityResult.getDecision().isAllowed()) {
+            writeSecurityAccessLog(ctx, request, route, securityResult,
+                    requestStartNanos);
+            sendSecurityDecision(ctx, request, securityResult.getDecision());
+            return;
+        }
+
         ProxyHandler proxyHandler = new ProxyHandler(route,
                 requestLimitProperties, connectionPool,
                 metricsCollector, accessLogWriter, observabilityProperties);
@@ -162,7 +204,8 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
         String json = "{\"status\":\"UP\",\"startTime\":\""
                 + startTime.toString()
                 + "\",\"activeConnections\":" + activeConnections.get() + "}";
-        sendResponse(ctx, request, HttpResponseStatus.OK, json, CONTENT_TYPE_JSON);
+        sendResponse(ctx, request, HttpResponseStatus.OK, json, CONTENT_TYPE_JSON,
+                null);
     }
 
     private void handleMetrics(ChannelHandlerContext ctx, HttpRequest request) {
@@ -173,7 +216,7 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
         }
         String body = metricsCollector.scrape();
         sendResponse(ctx, request, HttpResponseStatus.OK, body,
-                CONTENT_TYPE_PROMETHEUS);
+                CONTENT_TYPE_PROMETHEUS, null);
     }
 
     static void sendError(ChannelHandlerContext ctx, HttpRequest request,
@@ -181,18 +224,21 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
         String json = "{\"status\":" + status.code()
                 + ",\"error\":\"" + status.reasonPhrase()
                 + "\",\"message\":\"" + escapeJson(message) + "\"}";
-        sendResponse(ctx, request, status, json, CONTENT_TYPE_JSON);
+        sendResponse(ctx, request, status, json, CONTENT_TYPE_JSON, null);
     }
 
     private static void sendResponse(ChannelHandlerContext ctx,
             HttpRequest request, HttpResponseStatus status,
-            String body, String contentType) {
+            String body, String contentType, Integer retryAfterSeconds) {
         ByteBuf content = Unpooled.copiedBuffer(body, CharsetUtil.UTF_8);
         FullHttpResponse response = new DefaultFullHttpResponse(
                 HttpVersion.HTTP_1_1, status, content);
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, contentType);
         response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
                 content.readableBytes());
+        if (retryAfterSeconds != null) {
+            response.headers().set("Retry-After", retryAfterSeconds);
+        }
 
         boolean keepAlive = HttpUtil.isKeepAlive(request);
         if (keepAlive) {
@@ -206,6 +252,17 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
         }
     }
 
+    private static void sendSecurityDecision(ChannelHandlerContext ctx,
+            HttpRequest request, SecurityDecision decision) {
+        String message = "Rejected by " + decision.getFilterName()
+                + ": " + decision.getReason();
+        String json = "{\"status\":" + decision.getStatus().code()
+                + ",\"error\":\"" + decision.getStatus().reasonPhrase()
+                + "\",\"message\":\"" + escapeJson(message) + "\"}";
+        sendResponse(ctx, request, decision.getStatus(), json, CONTENT_TYPE_JSON,
+                decision.getRetryAfterSeconds());
+    }
+
     private static String escapeJson(String value) {
         if (value == null) {
             return "";
@@ -215,6 +272,76 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
+    }
+
+    private static void attachSecurityAttributes(ChannelHandlerContext ctx,
+            SecurityEvaluationResult securityResult) {
+        SecurityDecision decision = securityResult.getDecision();
+        Boolean authRequired = securityResult.getContext()
+                .getSecurityConfig().getAuth().isEnabled();
+        Boolean authPassed = determineAuthPassed(securityResult);
+        ctx.channel().attr(AUTH_REQUIRED_KEY).set(authRequired);
+        ctx.channel().attr(AUTH_PASSED_KEY).set(authPassed);
+        ctx.channel().attr(SECURITY_DECISION_KEY).set(decision.getType().name());
+        ctx.channel().attr(SECURITY_FILTER_KEY).set(decision.getFilterName());
+        ctx.channel().attr(SECURITY_REASON_KEY).set(decision.getReason());
+    }
+
+    private void writeSecurityAccessLog(ChannelHandlerContext ctx,
+            HttpRequest request, Route route,
+            SecurityEvaluationResult securityResult, long requestStartNanos) {
+        long durationNanos = System.nanoTime() - requestStartNanos;
+        AccessLogEntry logEntry = new AccessLogEntry();
+        logEntry.setMethod(request.method().name());
+        logEntry.setPath(request.uri());
+        logEntry.setStatusCode(securityResult.getDecision().getStatus().code());
+        logEntry.setDurationMs(durationNanos / 1_000_000);
+        String resolvedClientIp = securityResult.getContext().getClientIp();
+        if (resolvedClientIp == null || resolvedClientIp.isBlank()) {
+            resolvedClientIp = resolveRemoteClientIp(ctx.channel().remoteAddress());
+        }
+        logEntry.setClientIp(resolvedClientIp);
+        logEntry.setUpstream(route.getUpstream());
+        logEntry.setRequestBodySize(0);
+        logEntry.setResponseBodySize(0);
+        logEntry.setTraceId(ctx.channel().attr(TraceContextHandler.TRACE_ID_KEY).get());
+        logEntry.setAuthRequired(ctx.channel().attr(AUTH_REQUIRED_KEY).get());
+        logEntry.setAuthPassed(ctx.channel().attr(AUTH_PASSED_KEY).get());
+        logEntry.setSecurityDecision(ctx.channel().attr(SECURITY_DECISION_KEY).get());
+        logEntry.setSecurityFilter(ctx.channel().attr(SECURITY_FILTER_KEY).get());
+        logEntry.setSecurityReason(ctx.channel().attr(SECURITY_REASON_KEY).get());
+        accessLogWriter.log(logEntry);
+    }
+
+    private static Boolean determineAuthPassed(
+            SecurityEvaluationResult securityResult) {
+        boolean authRequired = securityResult.getContext()
+                .getSecurityConfig().getAuth().isEnabled();
+        if (!authRequired) {
+            return null;
+        }
+        String userId = securityResult.getContext().getUserId();
+        if (userId != null && !userId.isBlank()) {
+            return Boolean.TRUE;
+        }
+        SecurityDecision decision = securityResult.getDecision();
+        if (decision.isAllowed()) {
+            return Boolean.FALSE;
+        }
+        if ("auth".equals(decision.getFilterName())) {
+            return Boolean.FALSE;
+        }
+        return null;
+    }
+
+    private static String resolveRemoteClientIp(SocketAddress remoteAddr) {
+        if (remoteAddr instanceof InetSocketAddress inet) {
+            if (inet.getAddress() != null) {
+                return inet.getAddress().getHostAddress();
+            }
+            return inet.getHostString();
+        }
+        return remoteAddr == null ? "unknown" : remoteAddr.toString();
     }
 
     @Override
