@@ -264,8 +264,23 @@ public class GatewaySecurityProcessor {
                 return SecurityDecision.allow(name(), "fail_open_provider_missing");
             }
 
-            AuthenticationResult authResult = authProvider.authenticate(
-                    context, authConfig);
+            AuthenticationResult authResult;
+            try {
+                authResult = authProvider.authenticate(
+                        context, authConfig);
+            } catch (Exception ex) {
+                log.error("认证提供方执行异常 providerType={} routeId={}",
+                        authConfig.getType(), context.getRouteId(), ex);
+                metricsCollector.recordAuthFailure("provider_exception");
+                if (authConfig.isShadow()) {
+                    return SecurityDecision.allow(name(), "shadow_auth_provider_error");
+                }
+                if (authConfig.isFailClosed()) {
+                    return SecurityDecision.deny(HttpResponseStatus.UNAUTHORIZED,
+                            name(), "auth_provider_error");
+                }
+                return SecurityDecision.allow(name(), "fail_open_auth_provider_error");
+            }
             if (authResult.isAuthenticated()) {
                 context.setUserId(authResult.getUserId());
                 if (authResult.getUserId() != null

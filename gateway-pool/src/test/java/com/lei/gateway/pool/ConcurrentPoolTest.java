@@ -6,8 +6,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -550,6 +553,49 @@ class ConcurrentPoolTest {
                 .hasMessageContaining("closed");
         assertThat(createdRef.get().isClosed()).isTrue();
         assertThat(pool.getTotalCount()).isEqualTo(0);
+    }
+
+    @Test
+    void borrowAsyncWhenCasConflictsBelowMaxPoolSize_shouldStillCreateWithoutWaiting()
+            throws Exception {
+        int workers = 16;
+        config.setMaxPoolSize(workers);
+        config.setConnectionTimeoutMillis(200);
+
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            ExecutorService executor = Executors.newFixedThreadPool(workers);
+            CyclicBarrier barrier = new CyclicBarrier(workers);
+            try {
+                List<Future<CompletableFuture<TestPoolEntry>>> submitted =
+                        new ArrayList<>();
+                for (int i = 0; i < workers; i++) {
+                    submitted.add(executor.submit(() -> {
+                        barrier.await();
+                        return pool.borrowAsync(150, TimeUnit.MILLISECONDS);
+                    }));
+                }
+
+                List<CompletableFuture<TestPoolEntry>> futures = new ArrayList<>();
+                for (Future<CompletableFuture<TestPoolEntry>> task : submitted) {
+                    futures.add(task.get(1, TimeUnit.SECONDS));
+                }
+
+                List<TestPoolEntry> borrowed = new ArrayList<>();
+                for (CompletableFuture<TestPoolEntry> future : futures) {
+                    TestPoolEntry entry = future.get(1, TimeUnit.SECONDS);
+                    assertThat(entry).isNotNull();
+                    borrowed.add(entry);
+                }
+
+                // 所有借用都成功，说明 CAS 冲突场景下没有“首次失败即入等待并超时”。
+                assertThat(borrowed).hasSize(workers);
+                for (TestPoolEntry entry : borrowed) {
+                    pool.requite(entry);
+                }
+            } finally {
+                executor.shutdownNow();
+            }
+        }
     }
 
     @Test
