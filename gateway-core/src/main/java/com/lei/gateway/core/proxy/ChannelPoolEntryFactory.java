@@ -47,12 +47,6 @@ public class ChannelPoolEntryFactory implements PoolEntryFactory<ChannelPoolEntr
     }
 
     @Override
-    public ChannelPoolEntry create() throws Exception {
-        Channel channel = bootstrap.connect().sync().channel();
-        return new ChannelPoolEntry(channel, poolKey);
-    }
-
-    @Override
     public CompletableFuture<ChannelPoolEntry> createAsync() {
         CompletableFuture<ChannelPoolEntry> future = new CompletableFuture<>();
         bootstrap.connect().addListener(f -> {

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
@@ -18,8 +19,14 @@ import net.jqwik.api.constraints.IntRange;
  */
 class ConcurrentPoolPropertyTest {
 
+    /** 辅助方法：异步借用并同步等待结果。 */
+    private static TestPoolEntry borrowSync(ConcurrentPool<TestPoolEntry> pool,
+            long timeout, TimeUnit unit) throws Exception {
+        return pool.borrowAsync(timeout, unit).get(timeout + 200, TimeUnit.MILLISECONDS);
+    }
+
     /**
-     * Property 8: 池未满时，borrow 通过工厂创建新条目。
+     * Property 8: 池未满时，borrowAsync 通过工厂创建新条目。
      */
     @Property(tries = 100)
     void borrowCreatesNewEntryWhenPoolNotFull(
@@ -28,9 +35,11 @@ class ConcurrentPoolPropertyTest {
         config.setMaxPoolSize(maxPoolSize);
         config.setConnectionTimeoutMillis(500);
 
+        PoolEntryFactory<TestPoolEntry> factory =
+                () -> CompletableFuture.completedFuture(new TestPoolEntry());
         try (ConcurrentPool<TestPoolEntry> pool =
-                new ConcurrentPool<>(config, TestPoolEntry::new)) {
-            TestPoolEntry entry = pool.borrow(100, TimeUnit.MILLISECONDS);
+                new ConcurrentPool<>(config, factory)) {
+            TestPoolEntry entry = borrowSync(pool, 100, TimeUnit.MILLISECONDS);
 
             assertThat(entry).isNotNull();
             assertThat(entry.getState()).isEqualTo(PoolEntry.STATE_IN_USE);
@@ -48,9 +57,11 @@ class ConcurrentPoolPropertyTest {
         config.setMaxPoolSize(10);
         config.setMaxIdleTimeSeconds(maxIdleTimeSeconds);
 
+        PoolEntryFactory<TestPoolEntry> factory =
+                () -> CompletableFuture.completedFuture(new TestPoolEntry());
         try (ConcurrentPool<TestPoolEntry> pool =
-                new ConcurrentPool<>(config, TestPoolEntry::new)) {
-            TestPoolEntry entry = pool.borrow(100, TimeUnit.MILLISECONDS);
+                new ConcurrentPool<>(config, factory)) {
+            TestPoolEntry entry = borrowSync(pool, 100, TimeUnit.MILLISECONDS);
             pool.requite(entry);
 
             // 模拟空闲时间超过阈值
@@ -76,21 +87,23 @@ class ConcurrentPoolPropertyTest {
         config.setMaxPoolSize(threadCount);
         config.setConnectionTimeoutMillis(2000);
 
+        PoolEntryFactory<TestPoolEntry> factory =
+                () -> CompletableFuture.completedFuture(new TestPoolEntry());
         try (ConcurrentPool<TestPoolEntry> pool =
-                new ConcurrentPool<>(config, TestPoolEntry::new)) {
+                new ConcurrentPool<>(config, factory)) {
             int iterations = 200;
             AtomicBoolean violation = new AtomicBoolean(false);
             Set<TestPoolEntry> inUseSet = ConcurrentHashMap.newKeySet();
             CyclicBarrier barrier = new CyclicBarrier(threadCount);
 
             List<Thread> threads = new ArrayList<>();
-            for (int t = 0; t < threadCount; t++) {
+            for (int th = 0; th < threadCount; th++) {
                 Thread thread = new Thread(() -> {
                     try {
                         barrier.await();
                         for (int i = 0; i < iterations; i++) {
                             TestPoolEntry entry =
-                                    pool.borrow(1000, TimeUnit.MILLISECONDS);
+                                    borrowSync(pool, 1000, TimeUnit.MILLISECONDS);
                             // 如果条目已在 inUseSet 中，说明 CAS 安全性被破坏
                             if (!inUseSet.add(entry)) {
                                 violation.set(true);
@@ -98,7 +111,7 @@ class ConcurrentPoolPropertyTest {
                             inUseSet.remove(entry);
                             pool.requite(entry);
                         }
-                    } catch (Exception e) {
+                    } catch (Exception ex) {
                         Thread.currentThread().interrupt();
                     }
                 });
@@ -128,11 +141,13 @@ class ConcurrentPoolPropertyTest {
         config.setMaxPoolSize(borrowCount);
         config.setConnectionTimeoutMillis(500);
 
+        PoolEntryFactory<TestPoolEntry> factory =
+                () -> CompletableFuture.completedFuture(new TestPoolEntry());
         try (ConcurrentPool<TestPoolEntry> pool =
-                new ConcurrentPool<>(config, TestPoolEntry::new)) {
+                new ConcurrentPool<>(config, factory)) {
             List<TestPoolEntry> borrowed = new ArrayList<>();
             for (int i = 0; i < borrowCount; i++) {
-                borrowed.add(pool.borrow(200, TimeUnit.MILLISECONDS));
+                borrowed.add(borrowSync(pool, 200, TimeUnit.MILLISECONDS));
             }
 
             // 归还部分条目

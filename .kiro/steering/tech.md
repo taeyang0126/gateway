@@ -2,44 +2,34 @@
 inclusion: always
 ---
 
-# Tech Stack
+# Tech
 
-- Java 21, Maven 多模块
-- Netty 4.2.x（网络层，非 Spring WebFlux）
-- Spring Boot 3.4.x（配置绑定、自动装配，不用 Spring MVC 做请求处理）
-- Micrometer + Prometheus（指标）
-- jqwik 1.9.x（属性测试 / Property-Based Testing）
-- JUnit 5（单元测试 + 集成测试）
-- Jackson 2.18.x（JSON 序列化）
-- nimbus-jose-jwt（JWT 验签）
+## 与标准 Google Java Style 的差异（Checkstyle 强制）
 
-## 代码质量
+- 缩进 4 空格（非 Google 默认 2 空格），续行和 throws 缩进 8 空格
+- 行宽 120（非 Google 默认 100）
+- Javadoc 句末用中文句号 `。`（非英文 `.`）
+- public/protected 方法和类必须有 Javadoc（`@Override` 和 `@Test` 除外）
+- 成员名至少 2 字符（`^[a-z][a-z0-9][a-zA-Z0-9]*$`），单字母变量不通过
+- 缩写词按驼峰拆分，写 `HttpUrl` 不写 `HTTPURL`
+- 抑制检查：`// CHECKSTYLE.SUPPRESS: RuleName` 行内注释，或 `CHECKSTYLE.OFF/ON` 块注释
 
-| 工具 | 阶段 | 说明 |
-|---|---|---|
-| Checkstyle | validate | Google Java Style，warning 即 fail |
-| forbidden-apis | compile | 禁止 jdk-unsafe / jdk-non-portable / jdk-deprecated |
-| JaCoCo | test | 覆盖率报告 |
+## forbidden-apis
 
-## 常用命令
+- 禁止依赖平台默认编码的 API：用 `new String(bytes, StandardCharsets.UTF_8)` 而非 `new String(bytes)`
+- 禁止 `sun.misc.Unsafe` 等内部 API、已废弃 JDK API
+- main 和 test 代码均检查
+
+## 构建
 
 ```bash
-# 完整构建（Checkstyle + forbidden-apis + 测试 + 覆盖率）
-mvn clean verify -T 1C -U
-
-# 日常开发：跳过集成测试
-mvn clean test -Dexclude="**/*IntegrationTest.java" -T 1C
-
-# 单模块测试
-mvn test -pl gateway-pool
-mvn test -pl gateway-core
-
-# 仅 Checkstyle
-mvn checkstyle:check
+mvn clean verify -T 1C -U          # 完整构建
+mvn clean test -Dexclude="**/*IntegrationTest.java" -T 1C  # 跳过集成测试
+mvn test -pl gateway-core           # 单模块
+mvn checkstyle:check                # 仅 Checkstyle
 ```
 
 ## 注意事项
 
-- 测试并行：surefire 配置 `parallel=classes, threadCount=4`，测试类须线程安全
-- 本地 Maven 仓库在项目根目录 `.m2/repository`（非默认 `~/.m2`）
-- forbidden-apis 同时检查 main 和 test 代码（`check` + `testCheck`）
+- surefire 配置 `parallel=classes, threadCount=4`，测试类须线程安全
+- 异常日志必须传异常对象：`log.error("msg", e)`，禁止只打 `e.getMessage()`

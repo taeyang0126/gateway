@@ -9,13 +9,14 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 /**
- * PoolEntryFactory 默认方法测试。
+ * PoolEntryFactory 接口测试。
  */
 class PoolEntryFactoryTest {
 
     @Test
-    void createAsync_defaultImpl_delegatesToCreate() throws Exception {
-        PoolEntryFactory<TestPoolEntry> factory = TestPoolEntry::new;
+    void createAsync_returnsCompletedFuture() throws Exception {
+        PoolEntryFactory<TestPoolEntry> factory =
+                () -> CompletableFuture.completedFuture(new TestPoolEntry());
 
         CompletableFuture<TestPoolEntry> future = factory.createAsync();
         TestPoolEntry entry = future.get(500, TimeUnit.MILLISECONDS);
@@ -25,10 +26,9 @@ class PoolEntryFactoryTest {
     }
 
     @Test
-    void createAsync_defaultImpl_wrapsExceptionAsCompletionException() {
-        PoolEntryFactory<TestPoolEntry> failFactory = () -> {
-            throw new RuntimeException("create failed");
-        };
+    void createAsync_failedFuture_propagatesException() {
+        PoolEntryFactory<TestPoolEntry> failFactory =
+                () -> CompletableFuture.failedFuture(new RuntimeException("create failed"));
 
         CompletableFuture<TestPoolEntry> future = failFactory.createAsync();
 

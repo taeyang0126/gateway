@@ -4,30 +4,26 @@ inclusion: always
 
 # Project Structure
 
-```
-netty-gateway/                  # Maven 父 POM（pom packaging）
-├── gateway-pool/               # 通用并发资源池（无 Spring 依赖）
-│   └── com.lei.gateway.pool
-│       ├── ConcurrentPool      # 核心池实现（ConcurrentBag 模式）
-│       ├── PoolEntry           # 池条目基类
-│       ├── PoolEntryFactory    # 条目创建/销毁/健康检查接口
-│       ├── PoolConfig          # 池配置
-│       └── IdleEvictor         # 空闲驱逐
-├── gateway-core/               # 网关核心（依赖 gateway-pool）
-│   └── com.lei.gateway.core
-│       ├── config/             # Spring Boot 配置绑定（GatewayProperties, Route 等）
-│       ├── proxy/              # Netty pipeline：路由 → 代理转发 → 连接池
-│       ├── security/           # JWT 认证、IP 访问控制、限流
-│       └── observability/      # 指标、Access Log、Trace
-├── gateway-app/                # Spring Boot 启动入口（端口 8080）
-├── gateway-example/            # Mock 上游服务（端口 8081/8082），仅本地开发
-├── auth-jwt-example/           # JWT 认证示例
-└── config/checkstyle/          # Checkstyle 配置文件
-```
-
-## 模块依赖
+## 模块依赖与边界
 
 gateway-app → gateway-core → gateway-pool
+
+- gateway-pool：零 Spring 依赖（依赖 netty-common），可独立使用
+- gateway-core：依赖 Spring Boot（仅配置绑定和自动装配）+ Netty
+- gateway-app：只放启动类和 application.yml，不放业务逻辑
+
+## 代码放置规则
+
+| 新增代码类型 | 目标模块 | 目标包 |
+|---|---|---|
+| 通用池逻辑（与网关无关） | gateway-pool | `com.lei.gateway.pool` |
+| 配置类 / Properties | gateway-core | `com.lei.gateway.core.config` |
+| Netty Handler / 代理转发 / 连接池管理 | gateway-core | `com.lei.gateway.core.proxy` |
+| 认证、授权、限流、IP 控制 | gateway-core | `com.lei.gateway.core.security` |
+| 指标、日志、追踪 | gateway-core | `com.lei.gateway.core.observability` |
+| Spring Boot 自动装配 | gateway-core | `com.lei.gateway.core.config.GatewayAutoConfiguration` |
+
+新增包前先确认现有包是否已覆盖该职责，避免包膨胀。
 
 ## 包命名
 
@@ -35,7 +31,11 @@ gateway-app → gateway-core → gateway-pool
 
 ## 测试组织
 
-- 单元测试：与源码同包路径，`*Test.java`
-- 属性测试：`*PropertyTest.java`（jqwik）
-- 集成测试：`gateway-core/.../integration/*IntegrationTest.java`，可通过 `-Dexclude` 跳过
-- 集成测试基类：`IntegrationTestBase`，内含 `MockUpstreamServer`
+| 类型 | 命名 | 位置 | 说明 |
+|---|---|---|---|
+| 单元测试 | `*Test.java` | 与源码同包路径 | 线程安全（surefire parallel=classes） |
+| 属性测试 | `*PropertyTest.java` | 与源码同包路径 | jqwik，验证不变量 |
+| 集成测试 | `*IntegrationTest.java` | `gateway-core/.../integration/` | 可通过 `-Dexclude` 跳过 |
+
+- 集成测试继承 `IntegrationTestBase`，使用内置 `MockUpstreamServer`
+- 属性测试与单元测试放同一个包，不单独建 integration 目录
