@@ -26,16 +26,16 @@ curl -X POST http://localhost:8080/api/example/echo \
 
 # 单文件上传
 curl -X POST http://localhost:8080/api/example/upload \
-  -F "file=@/Users/wulei/Downloads/Athas_0.4.4_aarch64.dmg"
+  -F "file=@/path/to/your-file"
 
 # 多文件上传
 curl -X POST http://localhost:8080/api/example/upload/multi \
-  -F "files=@/Users/wulei/Downloads/Athas_0.4.4_aarch64.dmg" \
-  -F "files=@/Users/wulei/Downloads/JetBrainsMono-2.304.zip"
+  -F "files=@/path/to/file1" \
+  -F "files=@/path/to/file2"
 
 # 文件 + 表单字段
 curl -X POST http://localhost:8080/api/example/upload/with-fields \
-  -F "file=@/Users/wulei/Downloads/Athas_0.4.4_aarch64.dmg" \
+  -F "file=@/path/to/your-file" \
   -F "name=test" -F "description=demo"
 
 # 大文件下载（10MB）

@@ -3,12 +3,8 @@ package com.lei.gateway.core.proxy;
 import com.lei.gateway.core.config.GatewayProperties;
 import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
-import com.lei.gateway.core.config.RouteResolver;
-import com.lei.gateway.core.config.SecurityProperties;
-import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
 import com.lei.gateway.core.observability.TraceContextHandler;
-import com.lei.gateway.core.security.GatewaySecurityProcessor;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.Channel;
@@ -22,76 +18,62 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.SmartLifecycle;
-import org.springframework.stereotype.Component;
 
 /**
- * Netty 服务生命周期管理，与 Spring Boot 集成。
+ * Netty 服务启动器。
  *
- * <p>实现 {@link SmartLifecycle}，Spring 容器就绪后启动 Netty，
- * 应用关闭时优雅停机。
+ * <p>不再实现 {@code SmartLifecycle}，生命周期由
+ * {@link ShutdownCoordinator} 统一管理。
  */
-@Component
-public class NettyServerBootstrap implements SmartLifecycle {
+public class NettyServerBootstrap {
 
     private static final Logger log =
             LoggerFactory.getLogger(NettyServerBootstrap.class);
 
     private final GatewayProperties gatewayProperties;
-    private final RequestLimitProperties requestLimitProperties;
     private final ObservabilityProperties observabilityProperties;
-    private final RouteResolver routeResolver;
-    private final UpstreamConnectionPool connectionPool;
+    private final RequestLimitProperties requestLimitProperties;
     private final MetricsCollector metricsCollector;
-    private final AccessLogWriter accessLogWriter;
-    private final SecurityProperties securityProperties;
+    private final RoutingContext routingContext;
+    private final DrainHandler drainHandler;
     private final ApplicationContext applicationContext;
     private final EventLoopGroup workerGroup;
 
     private EventLoopGroup bossGroup;
     private Channel serverChannel;
     private final AtomicInteger activeConnections = new AtomicInteger(0);
-    private volatile boolean running;
 
     /** 创建 NettyServerBootstrap。 */
     public NettyServerBootstrap(GatewayProperties gatewayProperties,
-            RequestLimitProperties requestLimitProperties,
             ObservabilityProperties observabilityProperties,
-            RouteResolver routeResolver,
-            UpstreamConnectionPool connectionPool,
+            RequestLimitProperties requestLimitProperties,
             MetricsCollector metricsCollector,
-            AccessLogWriter accessLogWriter,
-            SecurityProperties securityProperties,
+            RoutingContext routingContext,
+            DrainHandler drainHandler,
             ApplicationContext applicationContext,
             EventLoopGroup workerGroup) {
         this.gatewayProperties = gatewayProperties;
-        this.requestLimitProperties = requestLimitProperties;
         this.observabilityProperties = observabilityProperties;
-        this.routeResolver = routeResolver;
-        this.connectionPool = connectionPool;
+        this.requestLimitProperties = requestLimitProperties;
         this.metricsCollector = metricsCollector;
-        this.accessLogWriter = accessLogWriter;
-        this.securityProperties = securityProperties;
+        this.routingContext = routingContext;
+        this.drainHandler = drainHandler;
         this.applicationContext = applicationContext;
         this.workerGroup = workerGroup;
     }
 
-    @Override
+    /** 启动 Netty 服务，bind 端口并开始接受连接。 */
     public void start() {
         bossGroup = new NioEventLoopGroup(1);
 
         Instant serverStartTime = Instant.now();
         TraceContextHandler traceContextHandler =
                 new TraceContextHandler(observabilityProperties);
-        GatewaySecurityProcessor securityProcessor =
-                new GatewaySecurityProcessor(securityProperties, metricsCollector);
         RoutingHandler routingHandler = new RoutingHandler(
-                routeResolver, requestLimitProperties, connectionPool,
-                metricsCollector, accessLogWriter, observabilityProperties,
-                securityProcessor,
-                activeConnections, serverStartTime);
+                routingContext, activeConnections, serverStartTime);
         GatewayChannelInitializer initializer = new GatewayChannelInitializer(
-                traceContextHandler, routingHandler, requestLimitProperties);
+                traceContextHandler, routingHandler, requestLimitProperties,
+                drainHandler);
 
         ServerBootstrap bootstrap = new ServerBootstrap()
                 .group(bossGroup, workerGroup)
@@ -103,7 +85,6 @@ public class NettyServerBootstrap implements SmartLifecycle {
         try {
             serverChannel = bootstrap.bind(gatewayProperties.getPort())
                     .sync().channel();
-            running = true;
 
             metricsCollector.registerActiveConnections(activeConnections);
             metricsCollector.registerJvmMetrics();
@@ -121,23 +102,18 @@ public class NettyServerBootstrap implements SmartLifecycle {
         }
     }
 
-    @Override
-    public void stop() {
-        log.info("Netty 网关开始关闭...");
-        running = false;
+    /**
+     * 关闭 serverChannel 和 bossGroup，停止接受新 TCP 连接。
+     *
+     * <p>供 {@link ShutdownCoordinator} 在停机阶段1调用。
+     */
+    public void closeServerChannelAndBossGroup() {
         if (serverChannel != null) {
             serverChannel.close().syncUninterruptibly();
         }
-        connectionPool.closeAll();
         if (bossGroup != null) {
             bossGroup.shutdownGracefully();
         }
-        log.info("Netty 网关已关闭");
-    }
-
-    @Override
-    public boolean isRunning() {
-        return running;
     }
 
     /** 返回活跃连接数计数器（供 Handler 使用）。 */

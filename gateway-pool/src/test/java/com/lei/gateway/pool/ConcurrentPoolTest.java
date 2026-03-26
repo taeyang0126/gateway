@@ -624,4 +624,53 @@ class ConcurrentPoolTest {
             assertThat(acquired).isSameAs(held);
         }
     }
+
+    @Test
+    void borrowEvictsDeadEntryFromSharedList() throws Exception {
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            TestPoolEntry entry = pool.borrow(100, TimeUnit.MILLISECONDS);
+            pool.requite(entry);
+            entry.setAlive(false);
+
+            TestPoolEntry second = pool.borrow(100, TimeUnit.MILLISECONDS);
+
+            assertThat(second).isNotSameAs(entry);
+            assertThat(second.isAlive()).isTrue();
+            assertThat(entry.isClosed()).isTrue();
+        }
+    }
+
+    @Test
+    void borrowAsyncEvictsDeadEntryFromSharedList() throws Exception {
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            TestPoolEntry entry = pool.borrowAsync(100, TimeUnit.MILLISECONDS)
+                    .get(1, TimeUnit.SECONDS);
+            pool.requite(entry);
+            entry.setAlive(false);
+
+            TestPoolEntry second = pool.borrowAsync(100, TimeUnit.MILLISECONDS)
+                    .get(1, TimeUnit.SECONDS);
+
+            assertThat(second).isNotSameAs(entry);
+            assertThat(second.isAlive()).isTrue();
+            assertThat(entry.isClosed()).isTrue();
+        }
+    }
+
+    @Test
+    void borrowEvictsDeadEntryFromThreadLocal() throws Exception {
+        config.setThreadLocalCacheSize(4);
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            // borrow + requite 在同一线程，条目会进入 ThreadLocal 缓存
+            TestPoolEntry entry = pool.borrow(100, TimeUnit.MILLISECONDS);
+            pool.requite(entry);
+            entry.setAlive(false);
+
+            TestPoolEntry second = pool.borrow(100, TimeUnit.MILLISECONDS);
+
+            assertThat(second).isNotSameAs(entry);
+            assertThat(second.isAlive()).isTrue();
+            assertThat(entry.isClosed()).isTrue();
+        }
+    }
 }

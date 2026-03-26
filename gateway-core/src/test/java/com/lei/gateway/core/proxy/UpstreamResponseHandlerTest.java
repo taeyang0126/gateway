@@ -174,9 +174,10 @@ class UpstreamResponseHandlerTest {
         when(connectionPool.acquire(anyString(), anyInt()))
                 .thenReturn(new CompletableFuture<>());
 
-        ProxyHandler proxyHandler = new ProxyHandler(route, limitConfig,
+        ProxyContext proxyCtx = new ProxyContext(limitConfig,
                 connectionPool, metricsCollector, accessLogWriter,
-                new ObservabilityProperties());
+                new ObservabilityProperties(), new InFlightRequestTracker());
+        ProxyHandler proxyHandler = new ProxyHandler(route, proxyCtx);
 
         EmbeddedChannel channel = new EmbeddedChannel(proxyHandler);
 

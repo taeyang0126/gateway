@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.lei.gateway.core.config.GatewayAutoConfiguration;
 import com.lei.gateway.core.config.GatewayProperties;
-import com.lei.gateway.core.proxy.NettyServerBootstrap;
+import com.lei.gateway.core.proxy.ShutdownCoordinator;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -13,10 +13,10 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
@@ -27,17 +27,18 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest(classes = LifecycleIntegrationTest.TestConfig.class)
 @ActiveProfiles("lifecycle")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class LifecycleIntegrationTest {
 
     @Autowired
-    private NettyServerBootstrap nettyServerBootstrap;
+    private ShutdownCoordinator shutdownCoordinator;
 
     @Autowired
     private GatewayProperties gatewayProperties;
 
     @Test
     void nettyStartsWithSpringBoot() {
-        assertThat(nettyServerBootstrap.isRunning()).isTrue();
+        assertThat(shutdownCoordinator.isRunning()).isTrue();
     }
 
     @Test
@@ -65,11 +66,11 @@ class LifecycleIntegrationTest {
 
     @Test
     void nettyStopsWhenSpringBootCloses() {
-        assertThat(nettyServerBootstrap.isRunning()).isTrue();
-        nettyServerBootstrap.stop();
-        assertThat(nettyServerBootstrap.isRunning()).isFalse();
+        assertThat(shutdownCoordinator.isRunning()).isTrue();
+        shutdownCoordinator.stop();
+        assertThat(shutdownCoordinator.isRunning()).isFalse();
         // 重新启动以免影响其他测试
-        nettyServerBootstrap.start();
+        shutdownCoordinator.start();
     }
 
     @Configuration

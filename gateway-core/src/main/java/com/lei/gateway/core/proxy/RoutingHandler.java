@@ -1,5 +1,6 @@
 package com.lei.gateway.core.proxy;
 
+import com.lei.gateway.core.config.HealthProperties;
 import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.Route;
@@ -68,6 +69,8 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
             AttributeKey.valueOf("securityReason");
 
     private static final String HEALTH_PATH = "/health";
+    private static final String HEALTH_LIVE_PATH = "/health/live";
+    private static final String HEALTH_READY_PATH = "/health/ready";
     private static final String METRICS_PATH = "/metrics";
     private static final String PROXY_HANDLER_NAME = "proxy";
     private static final String CONTENT_TYPE_JSON = "application/json";
@@ -81,26 +84,26 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
     private final AccessLogWriter accessLogWriter;
     private final ObservabilityProperties observabilityProperties;
     private final GatewaySecurityProcessor gatewaySecurityProcessor;
+    private final InFlightRequestTracker inFlightTracker;
+    private final DrainHandler drainHandler;
+    private final HealthProperties healthProperties;
     private final AtomicInteger activeConnections;
     private final Instant startTime;
 
     /** 创建 RoutingHandler。 */
-    public RoutingHandler(RouteResolver routeResolver,
-            RequestLimitProperties requestLimitProperties,
-            UpstreamConnectionPool connectionPool,
-            MetricsCollector metricsCollector,
-            AccessLogWriter accessLogWriter,
-            ObservabilityProperties observabilityProperties,
-            GatewaySecurityProcessor gatewaySecurityProcessor,
+    public RoutingHandler(RoutingContext ctx,
             AtomicInteger activeConnections,
             Instant startTime) {
-        this.routeResolver = routeResolver;
-        this.requestLimitProperties = requestLimitProperties;
-        this.connectionPool = connectionPool;
-        this.metricsCollector = metricsCollector;
-        this.accessLogWriter = accessLogWriter;
-        this.observabilityProperties = observabilityProperties;
-        this.gatewaySecurityProcessor = gatewaySecurityProcessor;
+        this.routeResolver = ctx.getRouteResolver();
+        this.requestLimitProperties = ctx.getRequestLimitProperties();
+        this.connectionPool = ctx.getConnectionPool();
+        this.metricsCollector = ctx.getMetricsCollector();
+        this.accessLogWriter = ctx.getAccessLogWriter();
+        this.observabilityProperties = ctx.getObservabilityProperties();
+        this.gatewaySecurityProcessor = ctx.getSecurityProcessor();
+        this.inFlightTracker = ctx.getInFlightTracker();
+        this.drainHandler = ctx.getDrainHandler();
+        this.healthProperties = ctx.getHealthProperties();
         this.activeConnections = activeConnections;
         this.startTime = startTime;
     }
@@ -131,6 +134,20 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
         final long requestStartNanos = System.nanoTime();
 
         String path = new QueryStringDecoder(request.uri()).path();
+
+        // /health/live 端点
+        if (HEALTH_LIVE_PATH.equals(path)
+                && HttpMethod.GET.equals(request.method())) {
+            handleHealthLive(ctx, request);
+            return;
+        }
+
+        // /health/ready 端点
+        if (HEALTH_READY_PATH.equals(path)
+                && HttpMethod.GET.equals(request.method())) {
+            handleHealthReady(ctx, request);
+            return;
+        }
 
         // /health 端点
         if (HEALTH_PATH.equals(path) && HttpMethod.GET.equals(request.method())) {
@@ -177,10 +194,12 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        ProxyHandler proxyHandler = new ProxyHandler(route,
-                requestLimitProperties, connectionPool,
-                metricsCollector, accessLogWriter, observabilityProperties);
+        ProxyContext proxyCtx = new ProxyContext(requestLimitProperties,
+                connectionPool, metricsCollector, accessLogWriter,
+                observabilityProperties, inFlightTracker);
+        ProxyHandler proxyHandler = new ProxyHandler(route, proxyCtx);
         ctx.pipeline().addAfter("routing", PROXY_HANDLER_NAME, proxyHandler);
+        inFlightTracker.increment();
         ctx.fireChannelRead(msg);
     }
 
@@ -206,6 +225,35 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
                 + "\",\"activeConnections\":" + activeConnections.get() + "}";
         sendResponse(ctx, request, HttpResponseStatus.OK, json, CONTENT_TYPE_JSON,
                 null);
+    }
+
+    private void handleHealthLive(ChannelHandlerContext ctx,
+            HttpRequest request) {
+        sendResponse(ctx, request, HttpResponseStatus.OK,
+                "{\"status\":\"UP\"}", CONTENT_TYPE_JSON, null);
+    }
+
+    private void handleHealthReady(ChannelHandlerContext ctx,
+            HttpRequest request) {
+        if (drainHandler.isDraining()) {
+            sendResponse(ctx, request,
+                    HttpResponseStatus.SERVICE_UNAVAILABLE,
+                    "{\"status\":\"DOWN\",\"reason\":\"draining\"}",
+                    CONTENT_TYPE_JSON, null);
+            return;
+        }
+        int delaySeconds = healthProperties.getStartupDelaySeconds();
+        if (delaySeconds > 0
+                && Instant.now().isBefore(
+                        startTime.plusSeconds(delaySeconds))) {
+            sendResponse(ctx, request,
+                    HttpResponseStatus.SERVICE_UNAVAILABLE,
+                    "{\"status\":\"DOWN\",\"reason\":\"warming_up\"}",
+                    CONTENT_TYPE_JSON, null);
+            return;
+        }
+        sendResponse(ctx, request, HttpResponseStatus.OK,
+                "{\"status\":\"UP\"}", CONTENT_TYPE_JSON, null);
     }
 
     private void handleMetrics(ChannelHandlerContext ctx, HttpRequest request) {

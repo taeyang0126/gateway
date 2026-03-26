@@ -108,6 +108,10 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             T entry = localList.remove(i).get();
             if (entry != null && entry.getState() == PoolEntry.STATE_NOT_IN_USE
                     && entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
+                if (!entry.isAlive()) {
+                    remove(entry);
+                    continue;
+                }
                 entry.setLastAccessTime(System.nanoTime());
                 return entry;
             }
@@ -117,6 +121,10 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
         for (T candidate : sharedList) {
             if (candidate.getState() == PoolEntry.STATE_NOT_IN_USE
                     && candidate.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
+                if (!candidate.isAlive()) {
+                    remove(candidate);
+                    continue;
+                }
                 candidate.setLastAccessTime(System.nanoTime());
                 return candidate;
             }
@@ -139,6 +147,10 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             T handed = handoffQueue.poll(waitNanos, TimeUnit.NANOSECONDS);
             if (handed != null
                     && handed.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
+                if (!handed.isAlive()) {
+                    remove(handed);
+                    continue;
+                }
                 handed.setLastAccessTime(System.nanoTime());
                 return handed;
             }
@@ -169,6 +181,10 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             T entry = localList.remove(i).get();
             if (entry != null && entry.getState() == PoolEntry.STATE_NOT_IN_USE
                     && entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
+                if (!entry.isAlive()) {
+                    remove(entry);
+                    continue;
+                }
                 entry.setLastAccessTime(System.nanoTime());
                 return CompletableFuture.completedFuture(entry);
             }
@@ -178,6 +194,10 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
         for (T candidate : sharedList) {
             if (candidate.getState() == PoolEntry.STATE_NOT_IN_USE
                     && candidate.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
+                if (!candidate.isAlive()) {
+                    remove(candidate);
+                    continue;
+                }
                 candidate.setLastAccessTime(System.nanoTime());
                 return CompletableFuture.completedFuture(candidate);
             }
@@ -207,6 +227,7 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
                 entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE);
                 entry.setLastAccessTime(System.nanoTime());
                 sharedList.add(entry);
+                log.info("连接已创建(async) {} total={}", entry, totalEntries.get());
                 return entry;
             }).exceptionally(e -> {
                 totalEntries.decrementAndGet();
@@ -287,6 +308,7 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE);
             entry.setLastAccessTime(System.nanoTime());
             sharedList.add(entry);
+            log.info("连接已创建 {} total={}", entry, totalEntries.get());
             return entry;
         } catch (Exception e) {
             totalEntries.decrementAndGet();
@@ -336,9 +358,9 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             return;
         }
         sharedList.remove(entry);
-        totalEntries.decrementAndGet();
-        // 清理当前线程 ThreadLocal 列表里对该条目的引用（参考 HikariCP remove 实现）
+        int remaining = totalEntries.decrementAndGet();
         threadLocalList.get().removeIf(ref -> ref.get() == entry);
+        log.info("连接已移除 {} alive={} total={}", entry, entry.isAlive(), remaining);
         entry.close();
     }
 

@@ -71,4 +71,9 @@ public class ChannelPoolEntry implements PoolEntry {
     public boolean isAlive() {
         return channel.isActive();
     }
+
+    @Override
+    public String toString() {
+        return poolKey + "/" + channel.id().asShortText();
+    }
 }

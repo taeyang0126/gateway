@@ -4,13 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
 
 class InvalidConfigTest {
+
+    @Configuration
+    @EnableConfigurationProperties(GatewayProperties.class)
+    static class TestConfig {
+    }
 
     @Test
     void invalidRouteConfigFailsStartup() {
         try {
-            new SpringApplicationBuilder(GatewayAutoConfiguration.class)
+            new SpringApplicationBuilder(TestConfig.class)
                 .profiles("invalid")
                 .run();
             throw new AssertionError("Expected startup to fail");

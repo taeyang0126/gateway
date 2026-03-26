@@ -3,6 +3,7 @@ package com.lei.gateway.core.integration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lei.gateway.core.config.ConnectionPoolProperties;
 import com.lei.gateway.core.config.GatewayProperties;
+import com.lei.gateway.core.config.HealthProperties;
 import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.Route;
@@ -11,7 +12,10 @@ import com.lei.gateway.core.config.SecurityProperties;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
 import com.lei.gateway.core.observability.TraceContextHandler;
+import com.lei.gateway.core.proxy.DrainHandler;
 import com.lei.gateway.core.proxy.GatewayChannelInitializer;
+import com.lei.gateway.core.proxy.InFlightRequestTracker;
+import com.lei.gateway.core.proxy.RoutingContext;
 import com.lei.gateway.core.proxy.RoutingHandler;
 import com.lei.gateway.core.proxy.UpstreamConnectionPool;
 import com.lei.gateway.core.security.GatewaySecurityProcessor;
@@ -134,15 +138,21 @@ abstract class IntegrationTestBase {
         Instant startTime = Instant.now();
         TraceContextHandler traceHandler =
                 new TraceContextHandler(observabilityProperties);
-        RoutingHandler routingHandler = new RoutingHandler(
+        InFlightRequestTracker inFlightTracker = new InFlightRequestTracker();
+        DrainHandler drainHandler = new DrainHandler();
+        HealthProperties healthProperties =
+                new HealthProperties();
+        RoutingContext routingCtx = new RoutingContext(
                 routeResolver, requestLimitProperties, connectionPool,
                 metricsCollector, accessLogWriter, observabilityProperties,
                 new GatewaySecurityProcessor(securityProperties, metricsCollector),
-                activeConnections, startTime);
+                inFlightTracker, drainHandler, healthProperties);
+        RoutingHandler routingHandler = new RoutingHandler(
+                routingCtx, activeConnections, startTime);
         GatewayChannelInitializer initializer =
                 new GatewayChannelInitializer(
                         traceHandler, routingHandler,
-                        requestLimitProperties);
+                        requestLimitProperties, drainHandler);
 
         ServerBootstrap bootstrap = new ServerBootstrap()
                 .group(bossGroup, workerGroup)

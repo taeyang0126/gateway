@@ -31,8 +31,8 @@ gateway:
     max-request-size: 52428800   # 50MB
     timeout-seconds: 60
   connection-pool:
-    max-connections-per-host: 50
-    max-idle-time-seconds: 60
+    max-connections-per-host: 1
+    max-idle-time-seconds: 15
     slow-connect-threshold-millis: 10
     connect-timeout-millis: 100
     thread-local-cache-size: 32
@@ -40,3 +40,7 @@ gateway:
     metrics-enabled: true
     access-log-enabled: true
     tracing-enabled: true
+
+logging:
+  level:
+    com.lei.gateway.core.proxy.ProxyHandler: DEBUG

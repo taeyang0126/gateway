@@ -4,12 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.test.context.ActiveProfiles;
 
-@SpringBootTest(classes = GatewayAutoConfiguration.class)
+@SpringBootTest(classes = RouteOptionalFieldsTest.TestConfig.class)
 @ActiveProfiles("route-optional")
 class RouteOptionalFieldsTest {
+
+    @Configuration
+    @EnableConfigurationProperties(GatewayProperties.class)
+    static class TestConfig {
+    }
 
     @Autowired
     private GatewayProperties gatewayProperties;

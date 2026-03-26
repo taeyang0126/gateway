@@ -6,6 +6,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.lei.gateway.core.config.GatewayProperties;
+import com.lei.gateway.core.config.HealthProperties;
 import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.Route;
@@ -169,6 +170,134 @@ class RoutingHandlerTest {
 
         FullHttpResponse response = channel.readOutbound();
         assertThat(response.status()).isEqualTo(HttpResponseStatus.NOT_FOUND);
+        response.release();
+        channel.finish();
+    }
+
+    // ========== /health/live 端点测试 ==========
+
+    @Test
+    void healthLiveReturns200WithStatusUp() throws Exception {
+        RoutingHandler handler = createHandler(List.of());
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        DefaultFullHttpRequest request = new DefaultFullHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.GET, "/health/live");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        channel.writeInbound(request);
+
+        FullHttpResponse response = channel.readOutbound();
+        assertThat(response.status()).isEqualTo(HttpResponseStatus.OK);
+        assertThat(response.headers().get(HttpHeaderNames.CONTENT_TYPE))
+                .isEqualTo("application/json");
+
+        String body = response.content().toString(CharsetUtil.UTF_8);
+        JsonNode json = MAPPER.readTree(body);
+        assertThat(json.get("status").asText()).isEqualTo("UP");
+        response.release();
+        channel.finish();
+    }
+
+    // ========== /health/ready 端点测试 ==========
+
+    @Test
+    void healthReadyReturns200WhenNotDrainingAndWarmupComplete()
+            throws Exception {
+        RoutingHandler handler = createHandler(List.of());
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        DefaultFullHttpRequest request = new DefaultFullHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.GET, "/health/ready");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        channel.writeInbound(request);
+
+        FullHttpResponse response = channel.readOutbound();
+        assertThat(response.status()).isEqualTo(HttpResponseStatus.OK);
+
+        String body = response.content().toString(CharsetUtil.UTF_8);
+        JsonNode json = MAPPER.readTree(body);
+        assertThat(json.get("status").asText()).isEqualTo("UP");
+        response.release();
+        channel.finish();
+    }
+
+    @Test
+    void healthReadyReturns503WhenDraining() throws Exception {
+        DrainHandler drainHandler = new DrainHandler();
+        drainHandler.activateDrain();
+        RoutingHandler handler = createHandler(List.of(),
+                new SecurityProperties(), drainHandler,
+                new HealthProperties());
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        DefaultFullHttpRequest request = new DefaultFullHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.GET, "/health/ready");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        channel.writeInbound(request);
+
+        FullHttpResponse response = channel.readOutbound();
+        assertThat(response.status())
+                .isEqualTo(HttpResponseStatus.SERVICE_UNAVAILABLE);
+
+        String body = response.content().toString(CharsetUtil.UTF_8);
+        JsonNode json = MAPPER.readTree(body);
+        assertThat(json.get("status").asText()).isEqualTo("DOWN");
+        assertThat(json.get("reason").asText()).isEqualTo("draining");
+        response.release();
+        channel.finish();
+    }
+
+    @Test
+    void healthReadyReturns503WhenWarmingUp() throws Exception {
+        HealthProperties healthProperties = new HealthProperties();
+        healthProperties.setStartupDelaySeconds(3600);
+        // startTime 设为当前时间，确保 startTime + 3600s 在未来
+        startTime = Instant.now();
+        RoutingHandler handler = createHandler(List.of(),
+                new SecurityProperties(), new DrainHandler(),
+                healthProperties);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        DefaultFullHttpRequest request = new DefaultFullHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.GET, "/health/ready");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        channel.writeInbound(request);
+
+        FullHttpResponse response = channel.readOutbound();
+        assertThat(response.status())
+                .isEqualTo(HttpResponseStatus.SERVICE_UNAVAILABLE);
+
+        String body = response.content().toString(CharsetUtil.UTF_8);
+        JsonNode json = MAPPER.readTree(body);
+        assertThat(json.get("status").asText()).isEqualTo("DOWN");
+        assertThat(json.get("reason").asText()).isEqualTo("warming_up");
+        response.release();
+        channel.finish();
+    }
+
+    @Test
+    void healthReadyDrainingTakesPrecedenceOverWarmingUp() throws Exception {
+        DrainHandler drainHandler = new DrainHandler();
+        drainHandler.activateDrain();
+        HealthProperties healthProperties = new HealthProperties();
+        healthProperties.setStartupDelaySeconds(3600);
+        startTime = Instant.now();
+        RoutingHandler handler = createHandler(List.of(),
+                new SecurityProperties(), drainHandler, healthProperties);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        DefaultFullHttpRequest request = new DefaultFullHttpRequest(
+                HttpVersion.HTTP_1_1, HttpMethod.GET, "/health/ready");
+        request.headers().set(HttpHeaderNames.HOST, "localhost");
+        channel.writeInbound(request);
+
+        FullHttpResponse response = channel.readOutbound();
+        assertThat(response.status())
+                .isEqualTo(HttpResponseStatus.SERVICE_UNAVAILABLE);
+
+        String body = response.content().toString(CharsetUtil.UTF_8);
+        JsonNode json = MAPPER.readTree(body);
+        assertThat(json.get("reason").asText()).isEqualTo("draining");
         response.release();
         channel.finish();
     }
@@ -349,15 +478,24 @@ class RoutingHandlerTest {
 
     private RoutingHandler createHandler(List<Route> routes,
             SecurityProperties securityProperties) {
+        return createHandler(routes, securityProperties,
+                new DrainHandler(), new HealthProperties());
+    }
+
+    private RoutingHandler createHandler(List<Route> routes,
+            SecurityProperties securityProperties,
+            DrainHandler drainHandler,
+            HealthProperties healthProperties) {
         GatewayProperties gatewayProperties = new GatewayProperties();
         gatewayProperties.setRoutes(routes);
         RouteResolver routeResolver = new RouteResolver(gatewayProperties);
-        // connectionPool 传 null，路由匹配测试中 ProxyHandler 是占位实现不会真正使用
-        return new RoutingHandler(routeResolver, requestLimitProperties,
-                null, metricsCollector, accessLogWriter,
-                observabilityProperties,
+        InFlightRequestTracker inFlightTracker = new InFlightRequestTracker();
+        RoutingContext routingCtx = new RoutingContext(
+                routeResolver, requestLimitProperties, null,
+                metricsCollector, accessLogWriter, observabilityProperties,
                 new GatewaySecurityProcessor(securityProperties, metricsCollector),
-                activeConnections, startTime);
+                inFlightTracker, drainHandler, healthProperties);
+        return new RoutingHandler(routingCtx, activeConnections, startTime);
     }
 
     private static Route createRoute(String id, String pathPrefix,

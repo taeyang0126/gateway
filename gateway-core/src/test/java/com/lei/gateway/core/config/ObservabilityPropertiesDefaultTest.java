@@ -4,15 +4,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(
-    classes = GatewayAutoConfiguration.class,
+    classes = ObservabilityPropertiesDefaultTest.TestConfig.class,
     properties = "spring.config.location=classpath:application-empty.yml"
 )
 @ActiveProfiles("defaults")
 class ObservabilityPropertiesDefaultTest {
+
+    @Configuration
+    @EnableConfigurationProperties({
+        ObservabilityProperties.class,
+        ConnectionPoolProperties.class
+    })
+    static class TestConfig {
+    }
 
     @Autowired
     private ObservabilityProperties observabilityProperties;

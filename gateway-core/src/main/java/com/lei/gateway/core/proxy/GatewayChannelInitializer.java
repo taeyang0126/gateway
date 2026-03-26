@@ -12,21 +12,24 @@ import java.util.concurrent.TimeUnit;
  * 配置每个新连接的 ChannelPipeline。
  *
  * <p>Pipeline 组成：
- * HttpServerCodec → IdleStateHandler → TraceContextHandler → RoutingHandler
+ * HttpServerCodec → IdleStateHandler → TraceContextHandler → DrainHandler → RoutingHandler
  */
 public class GatewayChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     private final TraceContextHandler traceContextHandler;
     private final RoutingHandler routingHandler;
     private final RequestLimitProperties requestLimitProperties;
+    private final DrainHandler drainHandler;
 
     /** 创建 GatewayChannelInitializer。 */
     public GatewayChannelInitializer(TraceContextHandler traceContextHandler,
             RoutingHandler routingHandler,
-            RequestLimitProperties requestLimitProperties) {
+            RequestLimitProperties requestLimitProperties,
+            DrainHandler drainHandler) {
         this.traceContextHandler = traceContextHandler;
         this.routingHandler = routingHandler;
         this.requestLimitProperties = requestLimitProperties;
+        this.drainHandler = drainHandler;
     }
 
     @Override
@@ -36,6 +39,7 @@ public class GatewayChannelInitializer extends ChannelInitializer<SocketChannel>
                 .addLast("idleState", new IdleStateHandler(
                         requestLimitProperties.getIdleTimeoutSeconds(), 0, 0, TimeUnit.SECONDS))
                 .addLast("traceContext", traceContextHandler)
+                .addLast("drain", drainHandler)
                 .addLast("routing", routingHandler);
     }
 }

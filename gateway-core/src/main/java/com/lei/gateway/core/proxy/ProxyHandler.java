@@ -53,6 +53,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     private final MetricsCollector metricsCollector;
     private final AccessLogWriter accessLogWriter;
     private final ObservabilityProperties observabilityConfig;
+    private final InFlightRequestTracker inFlightTracker;
 
     // 请求级状态
     private long startTimeNanos;
@@ -76,18 +77,14 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     private final AtomicBoolean requestCompleted = new AtomicBoolean(false);
 
     /** 创建 ProxyHandler。 */
-    public ProxyHandler(Route route,
-            RequestLimitProperties limitConfig,
-            UpstreamConnectionPool connectionPool,
-            MetricsCollector metricsCollector,
-            AccessLogWriter accessLogWriter,
-            ObservabilityProperties observabilityConfig) {
+    public ProxyHandler(Route route, ProxyContext ctx) {
         this.route = route;
-        this.limitConfig = limitConfig;
-        this.connectionPool = connectionPool;
-        this.metricsCollector = metricsCollector;
-        this.accessLogWriter = accessLogWriter;
-        this.observabilityConfig = observabilityConfig;
+        this.limitConfig = ctx.getRequestLimitProperties();
+        this.connectionPool = ctx.getConnectionPool();
+        this.metricsCollector = ctx.getMetricsCollector();
+        this.accessLogWriter = ctx.getAccessLogWriter();
+        this.observabilityConfig = ctx.getObservabilityProperties();
+        this.inFlightTracker = ctx.getInFlightTracker();
     }
 
     @Override
@@ -190,6 +187,8 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                 request.headers());
 
         // 8. 异步获取 upstream 连接
+        log.debug("traceId={} acquire upstream {}:{}", traceId,
+                upstreamHost, upstreamPort);
         connectionPool.acquire(upstreamHost, upstreamPort)
                 .whenComplete((channel, ex) -> {
                     // 确保回调在客户端 EventLoop 上执行
@@ -207,9 +206,10 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             DefaultHttpRequest upstreamRequest,
             Channel channel, Throwable ex) {
         if (!ctx.channel().isActive()) {
-            // 客户端已断开
+            // 客户端已断开，从池中移除连接（不能只 close，否则 PoolEntry
+            // 仍以 IN_USE 状态留在 sharedList 中，导致连接泄漏）
             if (channel != null) {
-                channel.close();
+                connectionPool.remove(channel);
             }
             return;
         }
@@ -235,6 +235,9 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
         upstreamChannel = channel;
         connectingToUpstream = false;
+
+        log.debug("traceId={} acquired upstream={} active={}",
+                traceId, channel.id(), channel.isActive());
 
         // 设置 upstream 响应处理器
         upstreamChannel.pipeline().addLast("upstreamHandler",
@@ -341,8 +344,12 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
     private void completeRequest(ChannelHandlerContext clientCtx) {
         if (!requestCompleted.compareAndSet(false, true)) {
+            log.debug("traceId={} completeRequest 重复调用，已忽略", traceId);
             return;
         }
+        log.debug("traceId={} completeRequest: statusCode={}", traceId,
+                responseStatusCode);
+        inFlightTracker.decrement();
         // 计算耗时
         long durationNanos = System.nanoTime() - startTimeNanos;
 
@@ -378,6 +385,10 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         // Client 断开连接，释放资源，关闭 upstream（不归还连接池）
+        boolean wasNotCompleted = requestCompleted.compareAndSet(false, true);
+        if (wasNotCompleted) {
+            inFlightTracker.decrement();
+        }
         releaseUpstream(false);
         super.channelInactive(ctx);
     }
@@ -396,6 +407,10 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         log.error("ProxyHandler 异常", cause);
+        boolean wasNotCompleted = requestCompleted.compareAndSet(false, true);
+        if (wasNotCompleted) {
+            inFlightTracker.decrement();
+        }
         releaseUpstream(false);
         if (ctx.channel().isActive()) {
             sendError(ctx, HttpResponseStatus.INTERNAL_SERVER_ERROR,
@@ -405,7 +420,10 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
     private void sendErrorAndCleanup(ChannelHandlerContext ctx,
             HttpResponseStatus status, String message) {
-        requestCompleted.set(true);
+        boolean wasNotCompleted = requestCompleted.compareAndSet(false, true);
+        if (wasNotCompleted) {
+            inFlightTracker.decrement();
+        }
         releaseUpstream(false);
         sendError(ctx, status, message);
         RoutingHandler.onProxyComplete(ctx);
@@ -440,16 +458,27 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             pendingContent = null;
         }
         if (upstreamChannel != null) {
-            // 移除 upstream handler 避免重复处理
-            if (upstreamChannel.pipeline().get("upstreamHandler") != null) {
-                upstreamChannel.pipeline().remove("upstreamHandler");
-            }
-            if (requite) {
-                connectionPool.release(upstreamChannel);
-            } else {
-                connectionPool.remove(upstreamChannel);
-            }
+            Channel ch = upstreamChannel;
             upstreamChannel = null;
+            // pipeline 操作必须在 upstream channel 自己的 EventLoop 上执行，
+            // 否则跨线程 remove 是异步的，归还后下一个请求 addLast 同名
+            // handler 可能被延迟执行的 remove 误删，导致响应无人处理而卡住。
+            if (ch.eventLoop().inEventLoop()) {
+                removeHandlerAndReturn(ch, requite);
+            } else {
+                ch.eventLoop().execute(() -> removeHandlerAndReturn(ch, requite));
+            }
+        }
+    }
+
+    private void removeHandlerAndReturn(Channel ch, boolean requite) {
+        if (ch.pipeline().get("upstreamHandler") != null) {
+            ch.pipeline().remove("upstreamHandler");
+        }
+        if (requite) {
+            connectionPool.release(ch);
+        } else {
+            connectionPool.remove(ch);
         }
     }
 

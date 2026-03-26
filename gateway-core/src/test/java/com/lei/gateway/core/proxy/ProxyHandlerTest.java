@@ -258,8 +258,11 @@ class ProxyHandlerTest {
     }
 
     private ProxyHandler createHandler(Route route) {
-        return new ProxyHandler(route, limitConfig, connectionPool,
-                metricsCollector, accessLogWriter, observabilityConfig);
+        InFlightRequestTracker inFlightTracker = new InFlightRequestTracker();
+        ProxyContext proxyCtx = new ProxyContext(limitConfig, connectionPool,
+                metricsCollector, accessLogWriter, observabilityConfig,
+                inFlightTracker);
+        return new ProxyHandler(route, proxyCtx);
     }
 
     private static Route createRoute(String id, String pathPrefix,
@@ -499,8 +502,11 @@ class ProxyHandlerTest {
         ObservabilityProperties tracingConfig = new ObservabilityProperties();
         tracingConfig.setTracingEnabled(true);
 
-        ProxyHandler handler = new ProxyHandler(route, limitConfig, connectionPool,
-                metricsCollector, accessLogWriter, tracingConfig);
+        InFlightRequestTracker inFlightTracker = new InFlightRequestTracker();
+        ProxyContext proxyCtx = new ProxyContext(limitConfig, connectionPool,
+                metricsCollector, accessLogWriter, tracingConfig,
+                inFlightTracker);
+        ProxyHandler handler = new ProxyHandler(route, proxyCtx);
         EmbeddedChannel clientChannel = new EmbeddedChannel(handler);
 
         // 设置 traceparent 属性

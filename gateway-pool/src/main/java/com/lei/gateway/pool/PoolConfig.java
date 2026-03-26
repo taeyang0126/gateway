@@ -6,7 +6,7 @@ package com.lei.gateway.pool;
 public class PoolConfig {
 
     private int maxPoolSize = 50;
-    private int maxIdleTimeSeconds = 60;
+    private int maxIdleTimeSeconds = 15;
     private int connectionTimeoutMillis = 500;
     private int threadLocalCacheSize = 32;
 

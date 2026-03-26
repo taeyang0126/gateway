@@ -4,10 +4,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Configuration;
 
-@SpringBootTest(classes = GatewayAutoConfiguration.class)
+@SpringBootTest(classes = GatewayPropertiesTest.TestConfig.class)
 class GatewayPropertiesTest {
+
+    @Configuration
+    @EnableConfigurationProperties({
+        GatewayProperties.class,
+        RequestLimitProperties.class,
+        ConnectionPoolProperties.class,
+        ObservabilityProperties.class,
+        SecurityProperties.class
+    })
+    static class TestConfig {
+    }
 
     @Autowired
     private GatewayProperties gatewayProperties;
