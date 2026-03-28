@@ -13,8 +13,7 @@ Spring Boot 仅用于配置绑定和自动装配，所有请求处理由 Netty p
 HttpServerCodec → IdleStateHandler → TraceContextHandler → DrainHandler → RoutingHandler
 ```
 - RoutingHandler：路径匹配 → 安全检查 → 动态添加 ProxyHandler
-- ProxyHandler：从连接池获取上游 Channel → 转发请求/响应 → 归还连接（每请求新建）
-- 上游响应通过 UpstreamResponseHandler 回写到客户端 Channel
+- ProxyHandler：从连接池获取上游 H2 Channel → borrow/流控检查/write HEADERS/requite → 响应通过 H2ResponseDemuxHandler 映射表回调（每请求新建）
 - RoutingHandler / TraceContextHandler / DrainHandler 是 `@Sharable` 全局单例
 
 ## 关键设计约束

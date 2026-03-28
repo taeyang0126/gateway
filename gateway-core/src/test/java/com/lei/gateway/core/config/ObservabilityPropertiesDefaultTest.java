@@ -41,7 +41,7 @@ class ObservabilityPropertiesDefaultTest {
     void connectionPoolDefaultValues() {
         assertThat(connectionPoolProperties.getConnectTimeoutMillis()).isEqualTo(100);
         assertThat(connectionPoolProperties.getSlowConnectThresholdMillis()).isEqualTo(10);
-        assertThat(connectionPoolProperties.getMaxConnectionsPerHost()).isEqualTo(50);
+        assertThat(connectionPoolProperties.getMaxConnectionsPerHost()).isEqualTo(5);
         assertThat(connectionPoolProperties.getMaxIdleTimeSeconds()).isEqualTo(60);
     }
 }

@@ -53,7 +53,7 @@ public class UpstreamConnectionPool {
             PoolConfig poolConfig = toPoolConfig();
             ChannelPoolEntryFactory factory = new ChannelPoolEntryFactory(
                     host, port, workerGroup, NioSocketChannel.class,
-                    properties.getConnectTimeoutMillis());
+                    properties.getConnectTimeoutMillis(), this);
             ConcurrentPool<ChannelPoolEntry> newPool =
                     new ConcurrentPool<>(poolConfig, factory);
             metricsCollector.registerPoolMetrics(k, newPool);
@@ -129,6 +129,53 @@ public class UpstreamConnectionPool {
             return;
         }
         pool.remove(entry);
+    }
+
+    /**
+     * 从池中摘除连接但不关闭，由调用方决定关闭时机。
+     *
+     * <p>用于 GOAWAY 和 streamId 溢出等场景：连接上可能还有正在飞行的 stream，
+     * 不能立即关闭，但需要从池中摘除防止新请求使用。
+     *
+     * @param channel 要退役的 Netty Channel
+     */
+    public void retire(Channel channel) {
+        ChannelPoolEntry entry = channel.attr(ChannelPoolEntry.POOL_ENTRY_KEY).get();
+        if (entry == null) {
+            log.warn("退役连接时未找到关联的 PoolEntry: {}", channel);
+            return;
+        }
+        String key = entry.getPoolKey();
+        ConcurrentPool<ChannelPoolEntry> pool = pools.get(key);
+        if (pool == null) {
+            log.warn("退役连接时未找到对应的连接池: {}", key);
+            return;
+        }
+        pool.retire(entry);
+    }
+
+    /**
+     * 检查所有连接池中是否存在 H2 活跃 stream。
+     *
+     * <p>遍历所有池的所有 {@link ChannelPoolEntry}，通过 Channel pipeline
+     * 获取 {@link H2ResponseDemuxHandler} 检查 {@code hasActiveStreams()}。
+     *
+     * @return 任一连接上有活跃 stream 返回 true
+     */
+    public boolean hasActiveH2Streams() {
+        for (ConcurrentPool<ChannelPoolEntry> pool : pools.values()) {
+            for (ChannelPoolEntry entry : pool.getEntries()) {
+                Channel ch = entry.getChannel();
+                if (!ch.isActive()) {
+                    continue;
+                }
+                H2ResponseDemuxHandler demux = ch.pipeline().get(H2ResponseDemuxHandler.class);
+                if (demux != null && demux.hasActiveStreams()) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** 关闭所有连接池。 */

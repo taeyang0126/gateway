@@ -157,6 +157,7 @@ class ShutdownCoordinatorTest {
     @Test
     void stopWithZeroInFlightCompletesImmediately() {
         when(inFlightTracker.getInFlightCount()).thenReturn(0);
+        when(connectionPool.hasActiveH2Streams()).thenReturn(false);
         coordinator.start();
 
         long startMs = System.currentTimeMillis();
@@ -165,7 +166,83 @@ class ShutdownCoordinatorTest {
         long elapsedMs = System.currentTimeMillis() - startMs;
 
         assertThat(callbackCalled).isTrue();
-        // 在途请求为 0 时应立即完成，不等待 poll interval
+        // 在途请求为 0 且无 H2 活跃 stream 时应立即完成
         assertThat(elapsedMs).isLessThan(1000);
+    }
+
+    @Test
+    void stopWaitsForH2ActiveStreamsThenCompletes() {
+        when(inFlightTracker.getInFlightCount()).thenReturn(0);
+        AtomicInteger h2CallCount = new AtomicInteger(0);
+        when(connectionPool.hasActiveH2Streams()).thenAnswer(inv -> {
+            // 前两次返回 true（有活跃 stream），第三次返回 false（stream 完成）
+            return h2CallCount.incrementAndGet() <= 2;
+        });
+        coordinator.start();
+
+        AtomicBoolean callbackCalled = new AtomicBoolean(false);
+        coordinator.stop(() -> callbackCalled.set(true));
+
+        assertThat(callbackCalled).isTrue();
+        verify(connectionPool).closeAll();
+        verify(workerGroup).shutdownGracefully();
+    }
+
+    @Test
+    void stopTimesOutWhenH2StreamsNeverComplete() {
+        shutdownProperties.setShutdownTimeoutSeconds(1);
+        shutdownProperties.setShutdownPollIntervalMillis(100);
+        when(inFlightTracker.getInFlightCount()).thenReturn(0);
+        when(connectionPool.hasActiveH2Streams()).thenReturn(true);
+        coordinator.start();
+
+        AtomicBoolean callbackCalled = new AtomicBoolean(false);
+        coordinator.stop(() -> callbackCalled.set(true));
+
+        // 超时后仍然执行 callback 和关闭流程（强制关闭）
+        assertThat(callbackCalled).isTrue();
+        verify(connectionPool).closeAll();
+        verify(workerGroup).shutdownGracefully();
+    }
+
+    @Test
+    void stopWaitsForBothInFlightAndH2Streams() {
+        AtomicInteger inFlightCallCount = new AtomicInteger(0);
+        when(inFlightTracker.getInFlightCount()).thenAnswer(inv -> {
+            // 前两次返回 1，之后返回 0
+            return inFlightCallCount.incrementAndGet() <= 2 ? 1 : 0;
+        });
+        AtomicInteger h2CallCount = new AtomicInteger(0);
+        when(connectionPool.hasActiveH2Streams()).thenAnswer(inv -> {
+            // 前三次返回 true，之后返回 false
+            return h2CallCount.incrementAndGet() <= 3;
+        });
+        coordinator.start();
+
+        AtomicBoolean callbackCalled = new AtomicBoolean(false);
+        coordinator.stop(() -> callbackCalled.set(true));
+
+        // 两个条件都满足后才完成
+        assertThat(callbackCalled).isTrue();
+        verify(connectionPool).closeAll();
+        verify(workerGroup).shutdownGracefully();
+    }
+
+    @Test
+    void stopWithZeroInFlightButActiveH2StreamsDoesNotCompleteImmediately() {
+        when(inFlightTracker.getInFlightCount()).thenReturn(0);
+        AtomicInteger h2CallCount = new AtomicInteger(0);
+        when(connectionPool.hasActiveH2Streams()).thenAnswer(inv -> {
+            // 前两次返回 true，第三次返回 false
+            return h2CallCount.incrementAndGet() <= 2;
+        });
+        coordinator.start();
+
+        AtomicBoolean callbackCalled = new AtomicBoolean(false);
+        coordinator.stop(() -> callbackCalled.set(true));
+
+        assertThat(callbackCalled).isTrue();
+        // hasActiveH2Streams 被调用了多次（初始检查 + 轮询）
+        assertThat(h2CallCount.get()).isGreaterThanOrEqualTo(3);
     }
 }

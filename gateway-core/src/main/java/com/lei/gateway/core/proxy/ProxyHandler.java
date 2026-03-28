@@ -26,6 +26,12 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.handler.codec.http2.DefaultHttp2DataFrame;
+import io.netty.handler.codec.http2.DefaultHttp2HeadersFrame;
+import io.netty.handler.codec.http2.Http2FrameCodec;
+import io.netty.handler.codec.http2.Http2FrameCodecAccess;
+import io.netty.handler.codec.http2.Http2FrameStream;
+import io.netty.handler.codec.http2.Http2Headers;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.CharsetUtil;
 import io.netty.util.ReferenceCountUtil;
@@ -38,14 +44,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 统一的全流式转发处理器，处理所有类型的请求。
+ * H2 模式的全流式转发处理器。
  *
- * <p>处理流程：HttpRequest（请求头）→ N 个 HttpContent（请求体块）→
- * LastHttpContent（请求体结束）→ 等待 Upstream 响应 → 流式回传。
+ * <p>处理流程：borrow → 流控检查 → nextStreamId（溢出检测）→ register 映射 →
+ * write HEADERS → 立即 requite → DATA 帧通过保存的 Channel 引用异步写入 → 响应通过映射表回调。
+ *
+ * <p>使用 {@link Http2FrameCodec} 高层帧 API（{@link DefaultHttp2HeadersFrame} /
+ * {@link DefaultHttp2DataFrame}）写帧，由 codec 管理 stream 生命周期和 flow control。
+ * stream ID 由 codec 自动分配（与 {@code ChannelPoolEntry.nextStreamId()} 同步递增），
+ * 后者仅用于溢出检测。
  */
 public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
     private static final Logger log = LoggerFactory.getLogger(ProxyHandler.class);
+
+    /** 流控重试上限，防止所有连接都满时无限循环 borrow。 */
+    static final int MAX_ACQUIRE_RETRIES = 3;
 
     private final Route route;
     private final RequestLimitProperties limitConfig;
@@ -71,7 +85,15 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     private long responseBodySize;
     private int responseStatusCode;
     private long maxRequestSize;
-    private Channel upstreamChannel;
+
+    // H2 模式状态
+    private int streamId;
+    private Channel h2Channel;
+    private Http2FrameStream h2FrameStream;
+    private H2ResponseDemuxHandler demuxHandler;
+    private ChannelHandlerContext clientCtx;
+    private int acquireRetryCount;
+
     private boolean connectingToUpstream;
     private Queue<HttpContent> pendingContent;
     private final AtomicBoolean requestCompleted = new AtomicBoolean(false);
@@ -101,13 +123,9 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
     private void handleHttpRequest(ChannelHandlerContext ctx,
             HttpRequest request) {
-        // 1. 记录请求开始时间
         startTimeNanos = System.nanoTime();
-
-        // 2. 读取 trace-id
         traceId = ctx.channel().attr(TraceContextHandler.TRACE_ID_KEY).get();
 
-        // 3. 记录请求基本信息
         method = request.method().name();
         path = request.uri();
         java.net.SocketAddress remoteAddr = ctx.channel().remoteAddress();
@@ -124,10 +142,8 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         securityFilter = ctx.channel().attr(RoutingHandler.SECURITY_FILTER_KEY).get();
         securityReason = ctx.channel().attr(RoutingHandler.SECURITY_REASON_KEY).get();
 
-        // 4. 记录客户端是否发送了 Expect: 100-continue
         boolean expectContinue = HttpUtil.is100ContinueExpected(request);
 
-        // 5. Content-Length 预检（路由级别 maxRequestSize 优先于全局）
         maxRequestSize = route.getMaxRequestSize() != null
                 ? route.getMaxRequestSize()
                 : limitConfig.getMaxRequestSize();
@@ -139,19 +155,15 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        // 如果客户端带了 Expect: 100-continue，不向客户端主动回 100。
-        // 实测该交互在当前 pipeline 下可能导致客户端收不到最终 200 而卡住。
-        // 这里仅去掉转发给上游的 Expect 头，避免上游再回 100 干扰响应序列。
         if (expectContinue) {
             request.headers().remove(HttpHeaderNames.EXPECT);
         }
 
-        // 6. 解析 upstream 地址
         URI upstreamUri;
         try {
             upstreamUri = URI.create(route.getUpstream());
-        } catch (IllegalArgumentException e) {
-            log.error("无效的 upstream 地址: {}", route.getUpstream(), e);
+        } catch (IllegalArgumentException ex) {
+            log.error("无效的 upstream 地址: {}", route.getUpstream(), ex);
             sendErrorAndCleanup(ctx, HttpResponseStatus.BAD_GATEWAY,
                     "Invalid upstream address");
             return;
@@ -160,10 +172,9 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         int upstreamPort = upstreamUri.getPort() > 0
                 ? upstreamUri.getPort() : 80;
 
-        // 6. 标记正在连接 upstream，后续 HttpContent 会被缓冲
         connectingToUpstream = true;
+        this.clientCtx = ctx;
 
-        // 7. 准备请求头（在异步回调前完成，避免 request 对象被回收）
         HttpHeaders headers = request.headers();
         ProxyHeaderUtil.addProxyHeaders(headers, realClientIp, remoteClientIp,
                 upstreamHost + (upstreamPort != 80
@@ -180,18 +191,15 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                 headers.set("tracestate", tracestate);
             }
         }
-        headers.set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
 
         DefaultHttpRequest upstreamRequest = new DefaultHttpRequest(
                 HttpVersion.HTTP_1_1, request.method(), request.uri(),
                 request.headers());
 
-        // 8. 异步获取 upstream 连接
         log.debug("traceId={} acquire upstream {}:{}", traceId,
                 upstreamHost, upstreamPort);
         connectionPool.acquire(upstreamHost, upstreamPort)
                 .whenComplete((channel, ex) -> {
-                    // 确保回调在客户端 EventLoop 上执行
                     if (ctx.channel().eventLoop().inEventLoop()) {
                         onAcquireComplete(ctx, upstreamRequest, channel, ex);
                     } else {
@@ -206,8 +214,6 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             DefaultHttpRequest upstreamRequest,
             Channel channel, Throwable ex) {
         if (!ctx.channel().isActive()) {
-            // 客户端已断开，从池中移除连接（不能只 close，否则 PoolEntry
-            // 仍以 IN_USE 状态留在 sharedList 中，导致连接泄漏）
             if (channel != null) {
                 connectionPool.remove(channel);
             }
@@ -233,33 +239,115 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        upstreamChannel = channel;
+        ChannelPoolEntry entry = channel.attr(ChannelPoolEntry.POOL_ENTRY_KEY).get();
+        H2ResponseDemuxHandler demux = channel.pipeline().get(H2ResponseDemuxHandler.class);
+
+        // 1. MAX_CONCURRENT_STREAMS 流控检查
+        if (!demux.canCreateStream()) {
+            connectionPool.release(channel);
+            if (++acquireRetryCount > MAX_ACQUIRE_RETRIES) {
+                log.warn("traceId={} 所有连接 MAX_CONCURRENT_STREAMS 已满，重试 {} 次后放弃",
+                        traceId, MAX_ACQUIRE_RETRIES);
+                sendErrorAndCleanup(ctx, HttpResponseStatus.SERVICE_UNAVAILABLE,
+                        "All upstream connections at MAX_CONCURRENT_STREAMS limit");
+                return;
+            }
+            reacquire(ctx, upstreamRequest);
+            return;
+        }
+
+        // 2. 分配 streamId（溢出检查——与 codec 内部自增同步）
+        int sid = entry.nextStreamId();
+        if (sid == -1) {
+            connectionPool.retire(channel);
+            reacquire(ctx, upstreamRequest);
+            return;
+        }
+
+        // 3. 通过高层帧 API 创建 Http2FrameStream
+        Http2FrameCodec codec = (Http2FrameCodec) channel.pipeline()
+                .get(Http2FrameCodec.class);
+        Http2FrameStream frameStream = Http2FrameCodecAccess.newStream(codec);
+
+        // 4. 保存引用
+        this.h2Channel = channel;
+        this.h2FrameStream = frameStream;
+        this.demuxHandler = demux;
         connectingToUpstream = false;
 
-        log.debug("traceId={} acquired upstream={} active={}",
-                traceId, channel.id(), channel.isActive());
+        // 5. 构造 H2 HEADERS
+        Http2Headers h2Headers = H2HeaderConverter.toH2Headers(upstreamRequest);
+        boolean noBody = pendingContent == null || pendingContent.isEmpty();
+        long contentLength = HttpUtil.getContentLength(upstreamRequest, -1L);
+        boolean chunked = HttpUtil.isTransferEncodingChunked(upstreamRequest);
+        boolean endStream = !chunked && contentLength <= 0 && noBody;
 
-        // 设置 upstream 响应处理器
-        upstreamChannel.pipeline().addLast("upstreamHandler",
-                new UpstreamResponseHandler(ctx, this));
+        // 6. 归还连接（独占结束）——在写帧之前归还，因为写帧会切到 H2 event loop
+        connectionPool.release(channel);
 
-        // 转发请求头到 upstream（不立即 flush，等待后续 content 一起 flush）
-        upstreamChannel.write(upstreamRequest);
-
-        // flush 连接就绪前缓冲的 HttpContent（逐块 flush，避免大包长时间滞留在写缓冲）
-        if (pendingContent != null) {
-            HttpContent buffered;
-            while ((buffered = pendingContent.poll()) != null) {
-                upstreamChannel.write(buffered);
-            }
+        // 7. 帧写入必须在 H2 channel 的 event loop 上执行（codec 同步分配 stream ID）
+        // 收集需要在 H2 event loop 上写入的 pending content
+        Queue<HttpContent> buffered = null;
+        if (!endStream && pendingContent != null) {
+            buffered = pendingContent;
             pendingContent = null;
         }
-        upstreamChannel.flush();
+        final Queue<HttpContent> pendingToWrite = buffered;
+
+        channel.eventLoop().execute(() -> {
+            // 写 HEADERS 帧——通过 channel.write() 让消息经过 Http2FrameCodec.write() 处理
+            DefaultHttp2HeadersFrame headersFrame =
+                    new DefaultHttp2HeadersFrame(h2Headers, endStream);
+            headersFrame.stream(frameStream);
+            channel.write(headersFrame).addListener(future -> {
+                if (!future.isSuccess()) {
+                    log.error("traceId={} 写 HEADERS 帧失败, streamId={}",
+                            traceId, streamId, future.cause());
+                    demux.remove(streamId);
+                    ctx.channel().eventLoop().execute(() ->
+                            sendErrorAndCleanup(ctx, HttpResponseStatus.BAD_GATEWAY,
+                                    "Failed to write H2 HEADERS to upstream"));
+                }
+            });
+
+            // codec 同步分配了 stream ID，获取并注册映射
+            this.streamId = frameStream.id();
+            log.debug("traceId={} acquired upstream={} streamId={}",
+                    traceId, channel.id(), streamId);
+            demux.register(streamId, this);
+
+            // 写缓冲的请求体 DATA 帧
+            if (pendingToWrite != null) {
+                HttpContent content;
+                while ((content = pendingToWrite.poll()) != null) {
+                    writeDataFrame(content);
+                }
+            }
+            channel.flush();
+        });
+    }
+
+    /**
+     * 重新获取 upstream 连接（流控超限或 streamId 溢出时调用）。
+     */
+    private void reacquire(ChannelHandlerContext ctx,
+            DefaultHttpRequest upstreamRequest) {
+        URI upstreamUri = URI.create(route.getUpstream());
+        String host = upstreamUri.getHost();
+        int port = upstreamUri.getPort() > 0 ? upstreamUri.getPort() : 80;
+        connectionPool.acquire(host, port)
+                .whenComplete((ch, err) -> {
+                    if (ctx.channel().eventLoop().inEventLoop()) {
+                        onAcquireComplete(ctx, upstreamRequest, ch, err);
+                    } else {
+                        ctx.channel().eventLoop().execute(() ->
+                                onAcquireComplete(ctx, upstreamRequest, ch, err));
+                    }
+                });
     }
 
     private void handleHttpContent(ChannelHandlerContext ctx,
             HttpContent content) {
-        // 累计字节数检查（无论连接是否就绪都要检查）
         int readableBytes = content.content().readableBytes();
         requestBodySize += readableBytes;
         if (requestBodySize > maxRequestSize) {
@@ -271,37 +359,73 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        // upstream 连接尚未就绪，缓冲 content
         if (connectingToUpstream) {
             if (pendingContent == null) {
                 pendingContent = new ArrayDeque<>();
             }
-            // 当前 handler 已持有 content 的所有权，直接入队即可，避免额外 retain 导致泄漏
             pendingContent.add(content);
             return;
         }
 
-        if (upstreamChannel == null || !upstreamChannel.isActive()) {
+        if (h2Channel == null || !h2Channel.isActive()) {
             ReferenceCountUtil.release(content);
             return;
         }
 
-        // 请求体逐块 flush，保证上游及时消费，避免大文件上传卡住
-        upstreamChannel.writeAndFlush(content);
+        writeDataFrame(content);
     }
 
     /**
-     * 处理 upstream 响应头，转发给 client（分块响应专用，不含 body）。
+     * 将 H1 HttpContent 转换为 H2 DATA 帧，通过高层帧 API 写入。
+     *
+     * <p>必须在 H2 channel 的 event loop 上调用，或通过 {@code h2Channel.eventLoop().execute()} 调度。
      */
-    void handleUpstreamResponse(ChannelHandlerContext clientCtx,
-            HttpResponse response) {
+    private void writeDataFrame(HttpContent content) {
+        boolean endStream = content instanceof LastHttpContent;
+        ByteBuf data = content.content().retain();
+        ReferenceCountUtil.release(content);
+        DefaultHttp2DataFrame dataFrame = new DefaultHttp2DataFrame(data, endStream);
+        dataFrame.stream(h2FrameStream);
+
+        Runnable writeTask = () -> {
+            h2Channel.write(dataFrame).addListener(future -> {
+                if (!future.isSuccess()) {
+                    log.error("traceId={} 写 DATA 帧失败, streamId={}",
+                            traceId, streamId, future.cause());
+                }
+            });
+            if (endStream) {
+                h2Channel.flush();
+            }
+        };
+
+        if (h2Channel.eventLoop().inEventLoop()) {
+            writeTask.run();
+        } else {
+            h2Channel.eventLoop().execute(writeTask);
+        }
+    }
+
+    // ---- H2 回调方法（由 H2ResponseDemuxHandler 调用）----
+
+    /**
+     * H2 响应头回调，由 {@link H2ResponseDemuxHandler} 在收到 HEADERS 帧时调用。
+     *
+     * @param response 转换后的 H1 响应对象
+     */
+    void onH2Response(HttpResponse response) {
         responseStatusCode = response.status().code();
-        long contentLength = HttpUtil.getContentLength(response, -1L);
-        boolean chunked = HttpUtil.isTransferEncodingChunked(response);
         if (isNoBodyResponse(response)) {
+            // no-body 响应直接写 FullHttpResponse 并完成请求。
+            // H2ResponseDemuxHandler.handleHeaders() 在 END_STREAM 时仍会调用
+            // onH2Content(EMPTY_LAST_CONTENT)，由 onH2Content 中的
+            // requestCompleted 检查兜底忽略。
+            if (demuxHandler != null && streamId > 0) {
+                demuxHandler.remove(streamId);
+            }
             FullHttpResponse fullResponse = new DefaultFullHttpResponse(
                     response.protocolVersion(), response.status(),
-                    io.netty.buffer.Unpooled.EMPTY_BUFFER, response.headers(),
+                    Unpooled.EMPTY_BUFFER, response.headers(),
                     io.netty.handler.codec.http.EmptyHttpHeaders.INSTANCE);
             clientCtx.writeAndFlush(fullResponse).addListener(future -> {
                 if (!future.isSuccess()) {
@@ -311,25 +435,29 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             });
             return;
         }
-        // 上游要求关闭连接，或响应无明确长度边界时，响应后关闭客户端连接，避免客户端等待结束信号卡住
+        long cl = HttpUtil.getContentLength(response, -1L);
+        boolean isChunked = HttpUtil.isTransferEncodingChunked(response);
         if (!HttpUtil.isKeepAlive(response)
-                || (!chunked && contentLength < 0)) {
+                || (!isChunked && cl < 0)) {
             response.headers().set(HttpHeaderNames.CONNECTION,
                     HttpHeaderValues.CLOSE);
             clientCtx.channel().attr(RoutingHandler.CONNECTION_CLOSE_KEY)
                     .set(Boolean.TRUE);
         }
-        // 响应头先刷新，避免客户端在等待首包时长时间挂起
         clientCtx.writeAndFlush(response);
     }
 
     /**
-     * 처리 upstream 响应体块，逐块转发给 client。
+     * H2 响应体回调，由 {@link H2ResponseDemuxHandler} 在收到 DATA 帧时调用。
+     *
+     * @param content 转换后的 H1 内容块
      */
-    void handleUpstreamContent(ChannelHandlerContext clientCtx,
-            HttpContent content) {
+    void onH2Content(HttpContent content) {
+        if (requestCompleted.get()) {
+            ReferenceCountUtil.release(content);
+            return;
+        }
         responseBodySize += content.content().readableBytes();
-
         if (content instanceof LastHttpContent) {
             clientCtx.writeAndFlush(content).addListener(future -> {
                 if (!future.isSuccess()) {
@@ -342,7 +470,22 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         }
     }
 
-    private void completeRequest(ChannelHandlerContext clientCtx) {
+    /**
+     * H2 错误回调，由 {@link H2ResponseDemuxHandler} 在 RST_STREAM/GOAWAY/连接断开时调用。
+     *
+     * @param cause 错误原因
+     */
+    void onH2Error(Throwable cause) {
+        log.error("traceId={} H2 stream 错误, streamId={}", traceId, streamId, cause);
+        if (clientCtx != null && clientCtx.channel().isActive()) {
+            sendErrorAndCleanup(clientCtx, HttpResponseStatus.BAD_GATEWAY,
+                    "Upstream H2 error");
+        } else {
+            cleanupOnError();
+        }
+    }
+
+    private void completeRequest(ChannelHandlerContext ctx) {
         if (!requestCompleted.compareAndSet(false, true)) {
             log.debug("traceId={} completeRequest 重复调用，已忽略", traceId);
             return;
@@ -350,14 +493,11 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         log.debug("traceId={} completeRequest: statusCode={}", traceId,
                 responseStatusCode);
         inFlightTracker.decrement();
-        // 计算耗时
         long durationNanos = System.nanoTime() - startTimeNanos;
 
-        // 记录指标
         metricsCollector.recordRequest(method, path, responseStatusCode,
                 durationNanos);
 
-        // 输出访问日志
         AccessLogEntry logEntry = new AccessLogEntry();
         logEntry.setMethod(method);
         logEntry.setPath(path);
@@ -375,21 +515,20 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         logEntry.setSecurityReason(securityReason);
         accessLogWriter.log(logEntry);
 
-        // 归还连接
-        releaseUpstream(true);
-
-        // 从 Pipeline 移除自身，通知 RoutingHandler
-        RoutingHandler.onProxyComplete(clientCtx);
+        releasePendingContent();
+        RoutingHandler.onProxyComplete(ctx);
     }
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-        // Client 断开连接，释放资源，关闭 upstream（不归还连接池）
         boolean wasNotCompleted = requestCompleted.compareAndSet(false, true);
         if (wasNotCompleted) {
             inFlightTracker.decrement();
         }
-        releaseUpstream(false);
+        if (demuxHandler != null && streamId > 0) {
+            demuxHandler.remove(streamId);
+        }
+        releasePendingContent();
         super.channelInactive(ctx);
     }
 
@@ -407,11 +546,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         log.error("ProxyHandler 异常", cause);
-        boolean wasNotCompleted = requestCompleted.compareAndSet(false, true);
-        if (wasNotCompleted) {
-            inFlightTracker.decrement();
-        }
-        releaseUpstream(false);
+        cleanupOnError();
         if (ctx.channel().isActive()) {
             sendError(ctx, HttpResponseStatus.INTERNAL_SERVER_ERROR,
                     "Internal server error");
@@ -420,17 +555,36 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
     private void sendErrorAndCleanup(ChannelHandlerContext ctx,
             HttpResponseStatus status, String message) {
-        boolean wasNotCompleted = requestCompleted.compareAndSet(false, true);
-        if (wasNotCompleted) {
-            inFlightTracker.decrement();
-        }
-        releaseUpstream(false);
+        cleanupOnError();
         sendError(ctx, status, message);
         RoutingHandler.onProxyComplete(ctx);
     }
 
+    private void cleanupOnError() {
+        boolean wasNotCompleted = requestCompleted.compareAndSet(false, true);
+        if (wasNotCompleted) {
+            inFlightTracker.decrement();
+        }
+        if (demuxHandler != null && streamId > 0) {
+            demuxHandler.remove(streamId);
+        }
+        releasePendingContent();
+    }
+
+    private void releasePendingContent() {
+        connectingToUpstream = false;
+        if (pendingContent != null) {
+            HttpContent buffered;
+            while ((buffered = pendingContent.poll()) != null) {
+                ReferenceCountUtil.release(buffered);
+            }
+            pendingContent = null;
+        }
+    }
+
     private void sendError(ChannelHandlerContext ctx,
             HttpResponseStatus status, String message) {
+        responseStatusCode = status.code();
         String json = "{\"status\":" + status.code()
                 + ",\"error\":\"" + status.reasonPhrase()
                 + "\",\"message\":\"" + escapeJson(message) + "\"}";
@@ -445,41 +599,6 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                 HttpHeaderValues.CLOSE);
         ctx.writeAndFlush(response)
                 .addListener(ChannelFutureListener.CLOSE);
-    }
-
-    private void releaseUpstream(boolean requite) {
-        connectingToUpstream = false;
-        // 释放缓冲的 HttpContent
-        if (pendingContent != null) {
-            HttpContent buffered;
-            while ((buffered = pendingContent.poll()) != null) {
-                ReferenceCountUtil.release(buffered);
-            }
-            pendingContent = null;
-        }
-        if (upstreamChannel != null) {
-            Channel ch = upstreamChannel;
-            upstreamChannel = null;
-            // pipeline 操作必须在 upstream channel 自己的 EventLoop 上执行，
-            // 否则跨线程 remove 是异步的，归还后下一个请求 addLast 同名
-            // handler 可能被延迟执行的 remove 误删，导致响应无人处理而卡住。
-            if (ch.eventLoop().inEventLoop()) {
-                removeHandlerAndReturn(ch, requite);
-            } else {
-                ch.eventLoop().execute(() -> removeHandlerAndReturn(ch, requite));
-            }
-        }
-    }
-
-    private void removeHandlerAndReturn(Channel ch, boolean requite) {
-        if (ch.pipeline().get("upstreamHandler") != null) {
-            ch.pipeline().remove("upstreamHandler");
-        }
-        if (requite) {
-            connectionPool.release(ch);
-        } else {
-            connectionPool.remove(ch);
-        }
     }
 
     private static String escapeJson(String value) {
@@ -511,68 +630,5 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             return false;
         }
         return HttpUtil.getContentLength(response, -1L) == 0L;
-    }
-
-    /**
-     * Upstream 响应处理器，安装在 upstream channel 的 pipeline 上，
-     * 将 upstream 的响应转发回 client。
-     */
-    private static class UpstreamResponseHandler
-            extends ChannelInboundHandlerAdapter {
-
-        private final ChannelHandlerContext clientCtx;
-        private final ProxyHandler proxyHandler;
-
-        UpstreamResponseHandler(ChannelHandlerContext clientCtx,
-                ProxyHandler proxyHandler) {
-            this.clientCtx = clientCtx;
-            this.proxyHandler = proxyHandler;
-        }
-
-        @Override
-        public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            if (!clientCtx.channel().isActive()) {
-                ReferenceCountUtil.release(msg);
-                return;
-            }
-            if (msg instanceof HttpResponse response) {
-                // 1xx 中间响应防御性丢弃（网关已自己回 100，上游不应再发）
-                if (response.status().code() < 200) {
-                    ReferenceCountUtil.release(msg);
-                    return;
-                }
-                // upstream pipeline 无 HttpObjectAggregator，响应始终为分块模式
-                proxyHandler.handleUpstreamResponse(clientCtx, response);
-            } else if (msg instanceof HttpContent content) {
-                proxyHandler.handleUpstreamContent(clientCtx, content);
-            }
-        }
-
-        @Override
-        public void channelInactive(ChannelHandlerContext ctx)
-                throws Exception {
-            // Upstream 断开连接
-            if (clientCtx.channel().isActive()
-                    && proxyHandler.responseStatusCode == 0) {
-                // 还没收到响应就断开了
-                log.warn("Upstream channel 提前断开，responseStatusCode=0，remoteAddr={}",
-                        ctx.channel().remoteAddress());
-                proxyHandler.sendErrorAndCleanup(clientCtx,
-                        HttpResponseStatus.BAD_GATEWAY,
-                        "Upstream connection closed prematurely");
-            }
-            super.channelInactive(ctx);
-        }
-
-        @Override
-        public void exceptionCaught(ChannelHandlerContext ctx,
-                Throwable cause) {
-            log.error("Upstream 响应处理异常，remoteAddr={}", ctx.channel().remoteAddress(), cause);
-            if (clientCtx.channel().isActive()) {
-                proxyHandler.sendErrorAndCleanup(clientCtx,
-                        HttpResponseStatus.BAD_GATEWAY,
-                        "Upstream error: " + cause.getMessage());
-            }
-        }
     }
 }

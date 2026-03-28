@@ -3,6 +3,7 @@ package com.lei.gateway.core.proxy;
 import com.lei.gateway.pool.PoolEntry;
 import io.netty.channel.Channel;
 import io.netty.util.AttributeKey;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 /**
@@ -24,6 +25,9 @@ public class ChannelPoolEntry implements PoolEntry {
     private volatile int state = STATE_NOT_IN_USE;
     private volatile long lastAccessTime;
 
+    // H2 stream ID 自增器：客户端 stream ID 为奇数（1, 3, 5, ...）
+    private final AtomicInteger streamIdGenerator = new AtomicInteger(-1);
+
     /** 创建 ChannelPoolEntry，并将自身存入 Channel Attribute。 */
     public ChannelPoolEntry(Channel channel, String poolKey) {
         this.channel = channel;
@@ -40,6 +44,22 @@ public class ChannelPoolEntry implements PoolEntry {
     /** 返回底层 Netty Channel。 */
     public Channel getChannel() {
         return channel;
+    }
+
+    /**
+     * 分配下一个 H2 stream ID（奇数序列：1, 3, 5, ...）。
+     *
+     * <p>线程安全，可在 borrow 独占期间调用。
+     *
+     * @return 下一个奇数 stream ID；溢出（超过 {@link Integer#MAX_VALUE}）时返回 -1，
+     *         调用方收到 -1 后应 retire 该连接并重新 borrow 另一条。
+     */
+    public int nextStreamId() {
+        int id = streamIdGenerator.addAndGet(2);
+        if (id < 0) {
+            return -1;
+        }
+        return id;
     }
 
     @Override

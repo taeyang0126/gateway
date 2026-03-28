@@ -127,14 +127,15 @@ public class ShutdownCoordinator implements SmartLifecycle {
     }
 
     /**
-     * 使用 {@link ScheduledExecutorService} 定时轮询在途请求计数，
+     * 使用 {@link ScheduledExecutorService} 定时轮询在途请求计数和 H2 活跃 stream，
      * 避免 {@code Thread.sleep} 阻塞。通过 {@link CountDownLatch} 等待
-     * 在途请求清零或超时。
+     * 在途请求清零且 H2 活跃 stream 全部完成，或超时。
      */
     private void awaitInFlightRequests(int timeoutSeconds,
             int pollIntervalMillis) {
-        if (inFlightTracker.getInFlightCount() == 0) {
-            LOG.info("阶段3：在途请求已清零");
+        if (inFlightTracker.getInFlightCount() == 0
+                && !connectionPool.hasActiveH2Streams()) {
+            LOG.info("阶段3：在途请求和 H2 活跃 stream 已清零");
             return;
         }
 
@@ -149,11 +150,13 @@ public class ShutdownCoordinator implements SmartLifecycle {
         try {
             ScheduledFuture<?> pollTask = scheduler.scheduleAtFixedRate(() -> {
                 int count = inFlightTracker.getInFlightCount();
-                if (count <= 0) {
-                    LOG.info("阶段3：在途请求已清零");
+                boolean h2Active = connectionPool.hasActiveH2Streams();
+                if (count <= 0 && !h2Active) {
+                    LOG.info("阶段3：在途请求和 H2 活跃 stream 已清零");
                     latch.countDown();
                 } else {
-                    LOG.info("阶段3：等待在途请求完成，当前在途 {}", count);
+                    LOG.info("阶段3：等待完成，在途请求 {}，H2 活跃 stream {}",
+                            count, h2Active);
                 }
             }, 0, pollIntervalMillis, TimeUnit.MILLISECONDS);
 
@@ -161,8 +164,9 @@ public class ShutdownCoordinator implements SmartLifecycle {
             pollTask.cancel(false);
 
             if (!completed) {
-                LOG.warn("阶段3：等待超时，剩余在途请求 {}",
-                        inFlightTracker.getInFlightCount());
+                LOG.warn("阶段3：等待超时，剩余在途请求 {}，H2 活跃 stream {}",
+                        inFlightTracker.getInFlightCount(),
+                        connectionPool.hasActiveH2Streams());
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

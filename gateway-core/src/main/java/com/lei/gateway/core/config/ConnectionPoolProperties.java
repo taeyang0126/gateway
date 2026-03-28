@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "gateway.connection-pool")
 public class ConnectionPoolProperties {
 
-    private int maxConnectionsPerHost = 50;
+    private int maxConnectionsPerHost = 5;
     private int maxIdleTimeSeconds = 60;
     private int slowConnectThresholdMillis = 10;
     private int connectTimeoutMillis = 100;

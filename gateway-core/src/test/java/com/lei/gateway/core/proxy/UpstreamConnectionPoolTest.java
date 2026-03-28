@@ -103,6 +103,60 @@ class UpstreamConnectionPoolTest {
     }
 
     // -------------------------------------------------------------------------
+    // release — H2 语义：不移除 pipeline handler
+    // -------------------------------------------------------------------------
+
+    @Test
+    void releaseActiveChannel_doesNotRemovePipelineHandlers() {
+        EmbeddedChannel channel = new EmbeddedChannel(
+                new H2ResponseDemuxHandler(pool));
+        new ChannelPoolEntry(channel, "localhost:8080");
+
+        // release 后 H2ResponseDemuxHandler 仍在 pipeline 中（H2 下是常驻的）
+        pool.release(channel);
+        assertThat(channel.pipeline().get(H2ResponseDemuxHandler.class)).isNotNull();
+
+        channel.finishAndReleaseAll();
+    }
+
+    // -------------------------------------------------------------------------
+    // retire
+    // -------------------------------------------------------------------------
+
+    @Test
+    void retireChannel_entryNull_shouldNotThrow() {
+        EmbeddedChannel channel = new EmbeddedChannel();
+        // 没有设置 POOL_ENTRY_KEY，entry 为 null
+        pool.retire(channel);
+        // 不抛异常即通过，channel 不应被关闭
+        assertThat(channel.isActive()).isTrue();
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void retireChannel_poolNotFound_shouldNotThrow() {
+        EmbeddedChannel channel = new EmbeddedChannel();
+        new ChannelPoolEntry(channel, "unknown:9999");
+        pool.retire(channel);
+        // pool 找不到时不应关闭 channel（retire 语义：不关闭资源）
+        assertThat(channel.isActive()).isTrue();
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void retireChannel_doesNotCloseChannel() {
+        EmbeddedChannel channel = new EmbeddedChannel(
+                new H2ResponseDemuxHandler(pool));
+        new ChannelPoolEntry(channel, "localhost:8080");
+
+        // pool 里没有 localhost:8080 的池（未通过 acquire 创建），走 pool==null 分支
+        // 关键验证：retire 不关闭 channel
+        pool.retire(channel);
+        assertThat(channel.isActive()).isTrue();
+        channel.finishAndReleaseAll();
+    }
+
+    // -------------------------------------------------------------------------
     // closeAll
     // -------------------------------------------------------------------------
 

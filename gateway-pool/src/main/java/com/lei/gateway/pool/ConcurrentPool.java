@@ -255,6 +255,24 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
         entry.close();
     }
 
+    /**
+     * 从池中退役条目但不关闭资源。
+     *
+     * <p>与 {@link #remove(Object)} 的唯一区别：不调用 {@code entry.close()}，
+     * 由调用方决定关闭时机。适用于 GOAWAY、streamId 溢出等场景，
+     * 连接上可能还有正在飞行的请求，不能立即关闭。
+     */
+    public void retire(T entry) {
+        if (!entry.compareAndSet(PoolEntry.STATE_IN_USE, PoolEntry.STATE_REMOVED)
+                && !entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_REMOVED)) {
+            return;
+        }
+        sharedList.remove(entry);
+        int remaining = totalEntries.decrementAndGet();
+        threadLocalList.get().removeIf(ref -> ref.get() == entry);
+        log.info("连接已退役 {} alive={} total={}", entry, entry.isAlive(), remaining);
+    }
+
     /** 返回当前正在使用的条目数。 */
     public int getActiveCount() {
         int count = 0;
@@ -285,6 +303,15 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
     /** 返回池配置的拷贝。 */
     public PoolConfig getConfig() {
         return new PoolConfig(config);
+    }
+
+    /**
+     * 返回池中所有条目的不可变快照。
+     *
+     * @return 当前池中所有条目的列表副本
+     */
+    public List<T> getEntries() {
+        return List.copyOf(sharedList);
     }
 
     /** 返回共享列表快照，供内部使用（如空闲清理）。 */
