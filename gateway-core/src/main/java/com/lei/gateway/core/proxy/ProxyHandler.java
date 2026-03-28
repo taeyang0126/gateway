@@ -95,6 +95,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     private int acquireRetryCount;
 
     private boolean connectingToUpstream;
+    private boolean headersEndStream;
     private Queue<HttpContent> pendingContent;
     private final AtomicBoolean requestCompleted = new AtomicBoolean(false);
 
@@ -276,14 +277,22 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         connectingToUpstream = false;
 
         // 5. 构造 H2 HEADERS
-        Http2Headers h2Headers = H2HeaderConverter.toH2Headers(upstreamRequest);
-        boolean noBody = pendingContent == null || pendingContent.isEmpty();
         long contentLength = HttpUtil.getContentLength(upstreamRequest, -1L);
         boolean chunked = HttpUtil.isTransferEncodingChunked(upstreamRequest);
-        boolean endStream = !chunked && contentLength <= 0 && noBody;
+        // 仅凭请求头判断是否有 body，不依赖 pendingContent 状态（acquire 可能比 body 到达更快）
+        boolean endStream = !chunked && contentLength <= 0;
 
         // 6. 归还连接（独占结束）——在写帧之前归还，因为写帧会切到 H2 event loop
         connectionPool.release(channel);
+        this.headersEndStream = endStream;
+
+        // endStream=true 时 pendingContent 不应有内容，但防御性 release 防止内存泄漏
+        if (endStream && pendingContent != null) {
+            HttpContent item;
+            while ((item = pendingContent.poll()) != null) {
+                ReferenceCountUtil.release(item);
+            }
+        }
 
         // 7. 帧写入必须在 H2 channel 的 event loop 上执行（codec 同步分配 stream ID）
         // 收集需要在 H2 event loop 上写入的 pending content
@@ -296,6 +305,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
         channel.eventLoop().execute(() -> {
             // 写 HEADERS 帧——通过 channel.write() 让消息经过 Http2FrameCodec.write() 处理
+            Http2Headers h2Headers = H2HeaderConverter.toH2Headers(upstreamRequest);
             DefaultHttp2HeadersFrame headersFrame =
                     new DefaultHttp2HeadersFrame(h2Headers, endStream);
             headersFrame.stream(frameStream);
@@ -364,6 +374,12 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                 pendingContent = new ArrayDeque<>();
             }
             pendingContent.add(content);
+            return;
+        }
+
+        if (headersEndStream) {
+            // HEADERS 已带 END_STREAM，后续 content（如空的 LastHttpContent）直接丢弃
+            ReferenceCountUtil.release(content);
             return;
         }
 

@@ -1,0 +1,12 @@
+name: local
+variables:
+  - name: gateway-host
+    value: http://localhost:8080
+  - name: auth-jwt-host
+    value: http://localhost:8091
+  - name: jwt-token
+    value: <replace-with-jwt-token>
+  - name: upload-file1
+    value: /Users/wulei/Downloads/Athas_0.4.4_aarch64.dmg
+  - name: upload-file2
+    value: /Users/wulei/Downloads/JetBrainsMono-2.304.zip

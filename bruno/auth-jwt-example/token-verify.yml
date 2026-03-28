@@ -1,0 +1,24 @@
+info:
+  name: token-verify
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{auth-jwt-host}}/api/auth-jwt/verify"
+  auth: inherit
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "token": "{{jwt-token}}"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

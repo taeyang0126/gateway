@@ -25,9 +25,13 @@ class IdleEvictor<T extends PoolEntry> implements Runnable {
 
         for (T entry : pool.getSharedList()) {
             if (entry.getState() == PoolEntry.STATE_NOT_IN_USE
-                    && (now - entry.getLastAccessTime()) > maxIdleNanos) {
-                pool.remove(entry);
-                log.debug("清理空闲池化条目: {}", entry);
+                    && entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
+                if ((now - entry.getLastAccessTime()) > maxIdleNanos) {
+                    pool.remove(entry);
+                    log.debug("清理空闲池化条目: {}", entry);
+                } else {
+                    entry.compareAndSet(PoolEntry.STATE_IN_USE, PoolEntry.STATE_NOT_IN_USE);
+                }
             }
         }
     }

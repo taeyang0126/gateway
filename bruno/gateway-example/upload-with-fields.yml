@@ -1,0 +1,28 @@
+info:
+  name: upload-with-fields
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{gateway-host}}/api/example/upload/with-fields"
+  body:
+    type: multipart-form
+    data:
+      - name: file
+        type: file
+        value:
+          - /Users/wulei/Downloads/Athas_0.4.4_aarch64.dmg
+      - name: name
+        type: text
+        value: test
+      - name: description
+        type: text
+        value: demo
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

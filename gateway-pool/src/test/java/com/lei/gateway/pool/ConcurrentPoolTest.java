@@ -575,4 +575,94 @@ class ConcurrentPoolTest {
             assertThat(entry.isClosed()).isTrue();
         }
     }
+
+    @Test
+    void borrowAsyncEvictsIdleExpiredEntryFromSharedList() throws Exception {
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            TestPoolEntry entry = borrowSync(pool, 100, TimeUnit.MILLISECONDS);
+            pool.requite(entry);
+            // 模拟空闲超时：将 lastAccessTime 设到很久以前
+            entry.setLastAccessTime(System.nanoTime() - TimeUnit.SECONDS.toNanos(60));
+
+            TestPoolEntry second = borrowSync(pool, 100, TimeUnit.MILLISECONDS);
+
+            assertThat(second).isNotSameAs(entry);
+            assertThat(entry.isClosed()).isTrue();
+        }
+    }
+
+    @Test
+    void borrowAsyncEvictsIdleExpiredEntryFromThreadLocal() throws Exception {
+        config.setThreadLocalCacheSize(4);
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory)) {
+            TestPoolEntry entry = borrowSync(pool, 100, TimeUnit.MILLISECONDS);
+            pool.requite(entry);
+            entry.setLastAccessTime(System.nanoTime() - TimeUnit.SECONDS.toNanos(60));
+
+            TestPoolEntry second = borrowSync(pool, 100, TimeUnit.MILLISECONDS);
+
+            assertThat(second).isNotSameAs(entry);
+            assertThat(entry.isClosed()).isTrue();
+        }
+    }
+
+    @Test
+    void idleEvictorEvictsIdleExpiredEntries() throws Exception {
+        // 用 ManualScheduler 手动触发 IdleEvictor，不依赖真实时间
+        List<Runnable> scheduled = new ArrayList<>();
+        ConcurrentPool.TimeoutScheduler manualScheduler =
+                (task, timeout, unit) -> {
+                    scheduled.add(task);
+                    return () -> { };
+                };
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory, manualScheduler)) {
+            TestPoolEntry entry = borrowSync(pool, 100, TimeUnit.MILLISECONDS);
+            pool.requite(entry);
+            entry.setLastAccessTime(System.nanoTime() - TimeUnit.SECONDS.toNanos(60));
+
+            // 手动触发 IdleEvictor（scheduled[0] 是初始调度的任务）
+            assertThat(scheduled).isNotEmpty();
+            scheduled.get(0).run();
+
+            assertThat(entry.isClosed()).isTrue();
+            assertThat(pool.getTotalCount()).isEqualTo(0);
+        }
+    }
+
+    @Test
+    void idleEvictorSkipsActiveAndNonExpiredEntries() throws Exception {
+        List<Runnable> scheduled = new ArrayList<>();
+        ConcurrentPool.TimeoutScheduler manualScheduler =
+                (task, timeout, unit) -> {
+                    scheduled.add(task);
+                    return () -> { };
+                };
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory, manualScheduler)) {
+            TestPoolEntry active = borrowSync(pool, 100, TimeUnit.MILLISECONDS);
+            TestPoolEntry idle = borrowSync(pool, 100, TimeUnit.MILLISECONDS);
+            pool.requite(idle);
+            // idle 未超时，active 正在使用中
+
+            scheduled.get(0).run();
+
+            assertThat(active.isClosed()).isFalse();
+            assertThat(idle.isClosed()).isFalse();
+            assertThat(pool.getTotalCount()).isEqualTo(2);
+            pool.requite(active);
+        }
+    }
+
+    @Test
+    void idleEvictorDisabledWhenIdleTimeoutIsZero() {
+        List<Runnable> scheduled = new ArrayList<>();
+        ConcurrentPool.TimeoutScheduler manualScheduler =
+                (task, timeout, unit) -> {
+                    scheduled.add(task);
+                    return () -> { };
+                };
+        config.setMaxIdleTimeSeconds(0);
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, factory, manualScheduler)) {
+            assertThat(scheduled).isEmpty();
+        }
+    }
 }

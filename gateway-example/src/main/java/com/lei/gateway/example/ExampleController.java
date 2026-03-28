@@ -1,11 +1,13 @@
 package com.lei.gateway.example;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Collections;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,8 +47,8 @@ public class ExampleController {
      * 简单 GET 接口。
      */
     @GetMapping("/hello")
-    public ResponseEntity<String> hello() {
-        log.info("GET /hello");
+    public ResponseEntity<String> hello(HttpServletRequest request) {
+        log.info("GET /hello headers={}", headersOf(request));
         return ResponseEntity.ok("Hello from upstream!");
     }
 
@@ -54,8 +56,8 @@ public class ExampleController {
      * POST echo 接口，原样返回请求体。
      */
     @PostMapping("/echo")
-    public ResponseEntity<String> echo(@RequestBody String body) {
-        log.info("POST /echo body.length={}", body.length());
+    public ResponseEntity<String> echo(@RequestBody String body, HttpServletRequest request) {
+        log.info("POST /echo body.length={} headers={}", body.length(), headersOf(request));
         return ResponseEntity.ok(body);
     }
 
@@ -63,10 +65,12 @@ public class ExampleController {
      * 单文件上传接口，保存到 UPLOAD_DIR。
      */
     @PostMapping("/upload")
-    public ResponseEntity<String> upload(@RequestParam("file") MultipartFile file)
+    public ResponseEntity<String> upload(@RequestParam("file") MultipartFile file,
+            HttpServletRequest request)
             throws IOException {
         String filename = file.getOriginalFilename();
-        log.info("POST /upload filename={} size={}", filename, file.getSize());
+        log.info("POST /upload filename={} size={} headers={}", filename, file.getSize(),
+                headersOf(request));
         Path saved = saveFile(file);
         log.info("POST /upload saved to {}", saved.toAbsolutePath());
         return ResponseEntity.ok("Uploaded: " + filename + ", size: " + file.getSize());
@@ -76,9 +80,10 @@ public class ExampleController {
      * 多文件上传接口，逐个保存到 UPLOAD_DIR。
      */
     @PostMapping("/upload/multi")
-    public ResponseEntity<String> uploadMulti(@RequestParam("files") List<MultipartFile> files)
+    public ResponseEntity<String> uploadMulti(@RequestParam("files") List<MultipartFile> files,
+            HttpServletRequest request)
             throws IOException {
-        log.info("POST /upload/multi count={}", files.size());
+        log.info("POST /upload/multi count={} headers={}", files.size(), headersOf(request));
         StringBuilder sb = new StringBuilder();
         for (MultipartFile file : files) {
             Path saved = saveFile(file);
@@ -100,9 +105,10 @@ public class ExampleController {
     public ResponseEntity<String> uploadWithFields(
             @RequestParam("file") MultipartFile file,
             @RequestParam("name") String name,
-            @RequestParam("description") String description) throws IOException {
-        log.info("POST /upload/with-fields filename={} size={} name={} description={}",
-                file.getOriginalFilename(), file.getSize(), name, description);
+            @RequestParam("description") String description,
+            HttpServletRequest request) throws IOException {
+        log.info("POST /upload/with-fields filename={} size={} name={} description={} headers={}",
+                file.getOriginalFilename(), file.getSize(), name, description, headersOf(request));
         Path saved = saveFile(file);
         log.info("POST /upload/with-fields saved to {}", saved.toAbsolutePath());
         return ResponseEntity.ok("Uploaded: " + file.getOriginalFilename()
@@ -115,8 +121,8 @@ public class ExampleController {
      * 文件下载接口，从 UPLOAD_DIR 读取 testfile.bin；若不存在则自动生成并保存。
      */
     @GetMapping("/download")
-    public ResponseEntity<Resource> download() throws IOException {
-        log.info("GET /download");
+    public ResponseEntity<Resource> download(HttpServletRequest request) throws IOException {
+        log.info("GET /download headers={}", headersOf(request));
         Path filePath = UPLOAD_DIR.resolve(DOWNLOAD_FILE);
         if (!Files.exists(filePath)) {
             log.info("GET /download testfile.bin not found, generating...");
@@ -154,5 +160,19 @@ public class ExampleController {
             Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
         }
         return target;
+    }
+
+    /**
+     * 将请求头格式化为字符串，用于日志输出。
+     */
+    private static String headersOf(HttpServletRequest request) {
+        StringBuilder sb = new StringBuilder("{");
+        Collections.list(request.getHeaderNames()).forEach(name ->
+                sb.append(name).append("=").append(request.getHeader(name)).append(", "));
+        if (sb.length() > 1) {
+            sb.setLength(sb.length() - 2);
+        }
+        sb.append("}");
+        return sb.toString();
     }
 }

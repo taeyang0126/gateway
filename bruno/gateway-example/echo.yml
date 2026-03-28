@@ -1,0 +1,21 @@
+info:
+  name: echo
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{gateway-host}}/api/example/echo"
+  auth: inherit
+  headers:
+    - name: Content-Type
+      value: text/plain
+  body:
+    type: text
+    data: hello
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

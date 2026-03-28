@@ -1,0 +1,32 @@
+info:
+  name: token-create
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{auth-jwt-host}}/api/auth-jwt/token"
+  auth: inherit
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "userId": "1000001"
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 200 && res.body && res.body.accessToken) {
+          bru.setVar("jwt-token", res.body.accessToken);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

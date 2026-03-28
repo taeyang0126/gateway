@@ -2,6 +2,8 @@ server:
   port: 8082
   http2:
     enabled: true
+  tomcat:
+    keep-alive-timeout: 60000  # 毫秒
 
 spring:
   servlet:

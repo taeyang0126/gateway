@@ -1,0 +1,26 @@
+info:
+  name: upload-multi
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{gateway-host}}/api/example/upload/multi"
+  auth: inherit
+  body:
+    type: multipart-form
+    data:
+      - name: files
+        type: file
+        value:
+          - /Users/wulei/Downloads/Athas_0.4.4_aarch64.dmg
+      - name: files
+        type: file
+        value:
+          - /Users/wulei/Downloads/JetBrainsMono-2.304.zip
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

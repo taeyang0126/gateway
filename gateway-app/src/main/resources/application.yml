@@ -43,4 +43,4 @@ gateway:
 
 logging:
   level:
-    com.lei.gateway.core.proxy.ProxyHandler: DEBUG
+    com.lei.gateway: DEBUG

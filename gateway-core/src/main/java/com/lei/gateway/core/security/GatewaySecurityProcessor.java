@@ -288,6 +288,8 @@ public class GatewaySecurityProcessor {
                     context.getRequest().headers().set(
                             USER_ID_HEADER, authResult.getUserId());
                 }
+                context.getRequest().headers().remove(
+                        authConfig.getTokenExtractor().getTokenHeaderName());
                 return SecurityDecision.allow(name(), "authenticated");
             }
 

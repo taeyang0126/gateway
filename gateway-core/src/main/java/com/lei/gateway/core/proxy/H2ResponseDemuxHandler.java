@@ -231,6 +231,7 @@ public class H2ResponseDemuxHandler extends ChannelInboundHandlerAdapter {
 
         // 如果映射表已空，立即关闭
         if (activeStreamCount.get() == 0) {
+            log.info("连接已移除 {} ", ctx.channel().attr(ChannelPoolEntry.POOL_ENTRY_KEY).get());
             ctx.channel().close();
         }
     }

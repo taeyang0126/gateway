@@ -1,0 +1,17 @@
+info:
+  name: private-profile
+  type: http
+  seq: 7
+
+http:
+  method: GET
+  url: "{{gateway-host}}/api/example/private/profile"
+  auth:
+    type: bearer
+    token: "{{jwt-token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

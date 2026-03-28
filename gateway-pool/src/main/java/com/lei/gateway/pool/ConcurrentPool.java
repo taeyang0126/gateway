@@ -40,6 +40,7 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             new NettyTimeoutScheduler(TIMEOUT_TIMER);
 
     private final PoolConfig config;
+    private final long idleTimeoutNanos;
     private final PoolEntryFactory<T> factory;
     private final CopyOnWriteArrayList<T> sharedList;
     // 参考 HikariCP：ThreadLocal 存列表而非单个引用，requite 时加回列表，borrow 时从列表尾部取出并移除。
@@ -71,6 +72,7 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
     ConcurrentPool(PoolConfig config, PoolEntryFactory<T> factory,
             TimeoutScheduler timeoutScheduler) {
         this.config = new PoolConfig(config);
+        this.idleTimeoutNanos = TimeUnit.SECONDS.toNanos(config.getMaxIdleTimeSeconds());
         this.factory = factory;
         this.sharedList = new CopyOnWriteArrayList<>();
         this.threadLocalList = ThreadLocal.withInitial(() -> new ArrayList<>(config.getThreadLocalCacheSize()));
@@ -78,6 +80,25 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
         this.pendingBorrows = new ConcurrentLinkedQueue<>();
         this.timeoutScheduler = Objects.requireNonNull(timeoutScheduler);
         this.closed = false;
+        scheduleHouseKeeper();
+    }
+
+    private void scheduleHouseKeeper() {
+        if (idleTimeoutNanos <= 0) {
+            return;
+        }
+        long periodSeconds = Math.max(config.getMaxIdleTimeSeconds() / 2, 30);
+        scheduleEviction(new IdleEvictor<>(this), periodSeconds);
+    }
+
+    private void scheduleEviction(IdleEvictor<T> evictor, long periodSeconds) {
+        timeoutScheduler.schedule(() -> {
+            if (closed) {
+                return;
+            }
+            evictor.run();
+            scheduleEviction(evictor, periodSeconds);
+        }, periodSeconds, TimeUnit.SECONDS);
     }
 
     /**
@@ -106,6 +127,11 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
                     remove(entry);
                     continue;
                 }
+                if (idleTimeoutNanos > 0
+                        && System.nanoTime() - entry.getLastAccessTime() > idleTimeoutNanos) {
+                    remove(entry);
+                    continue;
+                }
                 entry.setLastAccessTime(System.nanoTime());
                 return CompletableFuture.completedFuture(entry);
             }
@@ -116,6 +142,11 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             if (candidate.getState() == PoolEntry.STATE_NOT_IN_USE
                     && candidate.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE)) {
                 if (!candidate.isAlive()) {
+                    remove(candidate);
+                    continue;
+                }
+                if (idleTimeoutNanos > 0
+                        && System.nanoTime() - candidate.getLastAccessTime() > idleTimeoutNanos) {
                     remove(candidate);
                     continue;
                 }
