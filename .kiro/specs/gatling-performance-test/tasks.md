@@ -1,0 +1,270 @@
+# 实现计划：Gatling 性能测试套件（gateway-perf）
+
+## 概述
+
+在 Maven 多模块项目中新增独立模块 `gateway-perf`，基于 Gatling 3.10.5 Java API 构建完整性能测试套件。
+实现分为七个阶段：模块骨架 → 上游接口 → 网关配置 → 工具类 → 核心 Simulation → 高级 Simulation → 基线与监控。
+
+## 任务
+
+- [x] 1. 搭建 gateway-perf 模块骨架
+  - [x] 1.1 创建 `gateway-perf/pom.xml`
+    - 继承父 pom（`com.lei:netty-gateway:1.0.0-SNAPSHOT`）
+    - 声明以下依赖（scope=test）：`gatling-charts-highcharts:3.10.5`、`jackson-databind`、`jqwik`（父 pom dependencyManagement 已管理版本）、`spring-boot-starter-test`（用于 DelayController 单元测试的 MockMvc）
+    - 配置 `gatling-maven-plugin:4.9.6`，resultsFolder 指向 `target/gatling`，通过 `<jvmArgs>` 将所有 `gatling.*` Maven 属性传入 JVM 系统属性，`<simulationClass>${gatling.simulationClass}</simulationClass>` 支持 CI 指定单个 Simulation（不指定时运行所有 Simulation）
+    - 配置 `maven-surefire-plugin`：保留默认行为（运行工具类单元测试），但通过 `<excludes>` 排除 `**/simulation/**` 下的类，避免 surefire 误扫描 Gatling Simulation 类
+    - 配置 `maven-checkstyle-plugin` 跳过（`<skip>true</skip>`）
+    - 配置 `forbiddenapis` 跳过（`<skip>true</skip>`）
+    - 声明所有可参数化属性的默认值（baseUrl、users、duration、targetRps、rateLimitRps、fileUsers、slowUsers、spikeUsers、spikeDuration、soakDuration、soakUsers、warmupDuration、warmupUsers、skipWarmup、repeatCount、updateBaseline、rpsRegressionThreshold、p99RegressionThreshold、maxProxyOverheadMs、maxConnectionLeak、upstreamTimeoutMs、routeCountVariants、simulationClass）
+    - _需求：1.3, 1.5, 6.3_
+  - [x] 1.2 在父 `pom.xml` 的 `<modules>` 中追加 `<module>gateway-perf</module>`
+    - _需求：1.1, 1.2_
+  - [x] 1.3 创建目录结构和占位文件
+    - 创建 `gateway-perf/src/test/java/com/lei/gateway/perf/simulation/` 目录
+    - 创建 `gateway-perf/src/test/java/com/lei/gateway/perf/util/` 目录
+    - 创建 `gateway-perf/src/test/resources/` 目录，新增 `gatling.conf`（空配置，不覆盖 Gatling 默认报告设置，保留 P50/P75/P95/P99 分布输出）
+    - 创建 `gateway-perf/scripts/` 目录
+    - 创建 `gateway-perf/baseline.json`（初始内容：`{}`，纳入版本控制）
+    - _需求：1.1, 6.1_
+
+- [x] 2. gateway-example 新增延迟与 Mock 接口
+  - [x] 2.1 实现 `DelayController`
+    - 包路径 `com.lei.gateway.example`，与 `ExampleController` 平级
+    - `GET /api/example/delay/fixed?ms=50`：`Thread.sleep(ms)` 后返回 `{"delay": ms, "type": "fixed"}`
+    - `GET /api/example/delay/random?min=0&max=100`：均匀随机延迟后返回 `{"delay": actual_ms, "type": "random"}`
+    - `GET /api/example/delay/slow`：固定 500ms 后返回 `{"delay": 500, "type": "slow"}`
+    - 参数校验：`ms < 0` → 400 `{"error": "ms must be non-negative"}`；`min > max` → 400 `{"error": "min must not exceed max"}`；`min < 0 || max < 0` → 400 `{"error": "min and max must be non-negative"}`
+    - _需求：9.1, 9.2, 9.3, 9.4, 9.5_
+  - [x] 2.2 实现 `MockController`
+    - 包路径 `com.lei.gateway.example`，`@RequestMapping("/api/example")`
+    - `GET /api/example/mock`：直接返回 HTTP 200 及 `{"status":"ok"}`，无任何延迟
+    - _需求：17.1_
+  - [x] 2.3 为 `DelayController` 编写单元测试 `DelayControllerTest`
+    - 测试固定延迟响应体字段（`delay`、`type`）
+    - 测试随机延迟响应体 `delay` 在 `[min, max]` 范围内
+    - 测试参数校验：`ms=-1` → 400，`min=10&max=5` → 400，`min=-1&max=10` → 400
+    - _需求：9.4, 9.5_
+  - [x] 2.4 为 `DelayController` 编写属性测试 `DelayControllerPropertyTest`
+    - **Property 6：延迟接口响应不变量**
+    - **Validates: 需求 9.1, 9.2**
+
+- [x] 3. 检查点 — 确认 gateway-example 编译和测试通过
+
+- [x] 4. gateway-app 新增 perf profile 配置
+  - [x] 4.1 创建 `gateway-app/src/main/resources/application-perf.yml`
+    - 覆盖连接池：`max-connections-per-host: 20`（生产配置为 1，不足以触发连接池压力测试）
+    - 声明限流测试路由 `perf-rate-limit-test`（路径 `/api/perf/hello`，`security.rate-limit.ip.permits-per-second: 100`）
+    - 声明慢上游超时测试路由 `perf-slow-timeout`（路径 `/api/perf/slow`，upstream `http://localhost:8082`，`timeout-seconds: 1`；网关 upstream 不支持路径前缀，已在 gateway-example `DelayController` 新增 `/api/perf/slow` 别名映射到 500ms 慢接口）
+    - 声明路由对比测试路由：`perf-route-1`（1 条基准）、`perf-route-2` ~ `perf-route-10`（共 10 条）、`perf-route-11` ~ `perf-route-50`（共 50 条），所有路由 upstream 指向 `http://localhost:8082`
+    - 声明不可达上游路由 `perf-unreachable`（路径 `/api/perf/unreachable`，upstream `http://localhost:19999`）
+    - _需求：3.1, 3.2, 10.1, 13.1, 13.2, 14.1_
+
+- [x] 5. 实现工具类
+  - [x] 5.1 实现数据模型 record 类
+    - `PerfMetrics`（rps、p95Ms、p99Ms、errorRate、mockRps、kneeRps、env、timestamp）
+    - `RegressionResult`（regressed、rpsReport、p99Report、rpsBaselineValue、rpsCurrentValue、rpsDeviationPct、p99BaselineMs、p99CurrentMs、p99DeviationPct）
+    - `EnvSnapshotData`（cpuCores、availableMemoryMb、loadAvg1min、loadAvg5min、loadAvg15min、osName、osVersion、jvmVersion、jvmArgs、gatlingVersion、capturedAt）
+    - `EnvSnapshotSummary`（cpuCores、jvmVersion、availableMemoryMb）
+    - 所有 record 放 `com.lei.gateway.perf.util` 包
+    - _需求：8.1, 23.1_
+  - [x] 5.2 实现 `BaselineManager`
+    - 使用 Jackson `ObjectMapper` 读写 `gateway-perf/baseline.json`
+    - `save(PerfMetrics)`：序列化写入 baseline.json
+    - `load()`：反序列化返回 `Optional<PerfMetrics>`，文件不存在返回 `Optional.empty()`
+    - `compare(PerfMetrics baseline, PerfMetrics current, double rpsThreshold, double p99Threshold)`：按设计文档公式计算退化幅度，返回 `RegressionResult`
+    - `writeRegressionReport(RegressionResult)`：写入 `target/gatling/regression-report.txt`，同时打印到 stdout
+    - Simulation 调用时须处理三种分支：`updateBaseline=true` → 强制覆盖并输出"基线已更新"；`baseline.json` 不存在 → 写入初始基线并输出"初始基线已创建"；否则执行退化检测
+    - _需求：8.1, 8.3, 8.4, 8.5, 8.6, 15.1, 15.2, 15.3_
+  - [x] 5.3 为 `BaselineManager` 编写单元测试 `BaselineManagerTest`
+    - 测试初始基线创建（文件不存在时 `load()` 返回 empty，`save()` 后可读取）
+    - 测试 `updateBaseline=true` 时强制覆盖（不执行退化检测）
+    - 测试退化检测边界值（恰好等于阈值不退化，略超阈值退化）
+    - _需求：8.3, 8.4, 8.5_
+  - [x] 5.4 为 `BaselineManager` 编写属性测试 `BaselineManagerPropertyTest`
+    - **Property 2：基线序列化 round-trip**
+    - **Validates: 需求 8.1, 17.3, 21.4, 22.3, 23.4**
+    - **Property 3：退化检测不变量（RPS + P99）**
+    - **Validates: 需求 8.3, 15.1**
+    - **Property 4：退化报告格式不变量**
+    - **Validates: 需求 8.6, 15.2, 15.3**
+  - [x] 5.5 实现 `EnvSnapshot`
+    - `capture()`：通过 `Runtime.getRuntime()` 获取 CPU 核心数和可用内存，通过 `ManagementFactory.getOperatingSystemMXBean()` 获取 load average，读取 JVM 版本和参数，写入 `target/gatling/env-snapshot.json`
+    - `checkLoadWarning(EnvSnapshotData)`：load average 超过 CPU 核心数 80% 时输出警告
+    - `captureEnd(EnvSnapshotData start)`：测试结束时再次采集 load average，与 start 对比，超过阈值时输出警告"宿主机负载过高，测试结果可能受环境干扰，建议重新测试"；将结束时快照追加写入 `env-snapshot.json`
+    - _需求：23.1, 23.2_
+  - [x] 5.6 为 `EnvSnapshot` 编写单元测试 `EnvSnapshotTest`
+    - 测试 `capture()` 返回字段非空（cpuCores > 0、availableMemoryMb > 0、osName 非空）
+    - 测试 JSON 序列化/反序列化 round-trip
+    - _需求：23.1_
+  - [x] 5.7 为 `EnvSnapshot` 编写属性测试 `EnvSnapshotPropertyTest`
+    - **Property 9：环境快照格式不变量**
+    - **Validates: 需求 23.1**
+  - [x] 5.8 实现 `WarmupHelper`
+    - `build(ScenarioBuilder scenario, int warmupUsers, int warmupDuration)`：返回 `PopulationBuilder`，使用 `constantUsersPerSec(warmupUsers).during(warmupDuration)` 开环注入
+    - 预热结束时通过 `System.out.println` 输出"预热完成，开始正式计数"
+    - `skipWarmup=true` 时跳过预热并输出警告"已跳过预热，测试数据可能包含 JIT 冷启动噪声"
+    - _需求：20.1, 20.2, 20.3, 20.5_
+  - [x] 5.9 实现 `RepeatAggregator`
+    - `aggregate(List<PerfMetrics> results, double deviationThreshold)`：计算算术平均值，当最大值与最小值之差超过平均值 `deviationThreshold` 时输出警告"结果波动较大，建议检查测试环境稳定性"
+    - Simulation 通过 `repeatCount` 参数控制重复执行次数（`repeatCount=1` 时直接返回单次结果，不执行聚合）
+    - _需求：21.1, 21.2, 21.3_
+  - [x] 5.10 为 `RepeatAggregator` 编写单元测试 `RepeatAggregatorTest`
+    - 测试平均值计算正确性（误差 < 0.01%）
+    - 测试偏差警告触发条件（偏差恰好等于 10% 不触发，超过 10% 触发）
+    - 测试 `repeatCount=1` 时直接返回单次结果
+    - _需求：21.1, 21.2, 21.3_
+  - [x] 5.11 为 `RepeatAggregator` 编写属性测试 `RepeatAggregatorPropertyTest`
+    - **Property 8：重复测试统计不变量**
+    - **Validates: 需求 21.2, 21.3**
+
+- [x] 6. 检查点 — 确认工具类编译和单元测试通过
+
+- [x] 7. 实现核心 Simulation
+  - [x] 7.1 实现 `BaseProxySimulation`
+    - 继承 `io.gatling.javaapi.core.Simulation`，从系统属性读取所有 `gatling.*` 参数
+    - 调用 `EnvSnapshot.capture()` 采集环境快照（开始），Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - 若 `baseline.json` 中存在 `kneeRps`，则以 `kneeRps × 0.7` 作为目标 RPS（需求 22.2）；否则使用 `gatling.users` 参数
+    - 使用 `WarmupHelper.build()` 构建预热阶段（`skipWarmup=false` 时），正式 Scenario 通过 `nothingFor(warmupDuration)` 延迟启动
+    - Scenario A：`GET /api/example/hello`，开环 `constantUsersPerSec(users).during(duration)`；报告中输出 P95/P99 端到端延迟
+    - Scenario B：`POST /api/example/echo`，请求体固定 JSON（不超过 1KB）；报告中输出 P95/P99 端到端延迟
+    - 开环 OOM 时降级为闭环模式并在报告中标注"已降级为闭环模式"
+    - Assertions：全局错误率 < 1%，全局 RPS ≥ targetRps
+    - 支持 `repeatCount` 多次重复执行，调用 `RepeatAggregator.aggregate()` 取平均后再传给 `BaselineManager.save()`
+    - 调用 `BaselineManager` 处理三种分支（updateBaseline / 初始基线 / 退化检测）
+    - _需求：2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 8.1, 8.3, 8.4, 8.5, 20.1, 20.2, 21.1, 21.2, 21.4, 22.2, 24.1, 24.4_
+  - [x] 7.2 实现 `JwtAuthSimulation`
+    - Simulation 启动阶段通过同步 HTTP 请求向 auth-jwt-example:8091 的 `POST /api/auth-jwt/token` 获取 JWT Token，请求体为 `{"userId": "perf-test-user"}`，提取响应体 `accessToken` 字段
+    - Auth_Service 返回非 200 时抛出异常终止，输出"JWT Token 获取失败，无法执行认证场景"
+    - 调用 `EnvSnapshot.capture()` 采集环境快照，Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - 使用 `WarmupHelper.build()` 构建预热阶段（`skipWarmup=false` 时），正式 Scenario 通过 `nothingFor(warmupDuration)` 延迟启动
+    - Scenario A（JWT 认证）：携带 `Authorization: Bearer <token>` 向 `GET /api/example/private/profile` 发送请求，开环注入；报告中输出 P95/P99
+    - Scenario B（非认证对比）：向 `GET /api/example/hello` 发送请求，开环注入；报告中输出 P95/P99，供人工对比认证层引入的延迟开销
+    - Assertions：错误率 < 1%，RPS ≥ targetRps
+    - _需求：5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 20.4_
+  - [x] 7.3 实现 `RateLimitSimulation`
+    - 调用 `EnvSnapshot.capture()` 采集环境快照，Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - 使用 `WarmupHelper.build()` 构建预热阶段（`skipWarmup=false` 时），正式 Scenario 通过 `nothingFor(warmupDuration)` 延迟启动
+    - Scenario：以超过 rateLimitRps 的速率向 `GET /api/perf/hello` 发送请求
+    - 将 HTTP 429 视为预期响应（通过 `.check(status().in(200, 429))`），不计入错误
+    - 限流场景结束后通过独立 Scenario 向 `/health/live` 发送请求，校验响应码 200
+    - Assertions：2xx + 429 合计比例 > 99%
+    - _需求：3.3, 3.4, 3.5, 3.6, 20.4_
+  - [x] 7.4 实现 `FileTransferSimulation`
+    - 调用 `EnvSnapshot.capture()` 采集环境快照，Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - 使用 `WarmupHelper.build()` 构建预热阶段（`skipWarmup=false` 时），正式 Scenario 通过 `nothingFor(warmupDuration)` 延迟启动
+    - 上传 Scenario：向 `POST /api/example/upload` 上传 1MB 二进制文件（`ByteArrayBody` 生成随机字节）
+    - 下载 Scenario：向 `GET /api/example/download` 下载文件
+    - 两个 Scenario 均使用较低并发 `fileUsers`（默认 10）
+    - Assertions：错误率 < 1%
+    - _需求：4.1, 4.2, 4.3, 4.4, 20.4_
+
+- [x] 8. 检查点 — 确认核心 Simulation 编译通过
+
+- [x] 9. 实现高级 Simulation
+  - [x] 9.1 实现 `DelaySimulation`
+    - 调用 `EnvSnapshot.capture()` 采集环境快照，Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - 使用 `WarmupHelper.build()` 构建预热阶段（`skipWarmup=false` 时），正式 Scenario 通过 `nothingFor(warmupDuration)` 延迟启动
+    - 固定延迟 Scenario：`GET /api/example/delay/fixed?ms=50`，开环注入
+    - 随机延迟 Scenario：`GET /api/example/delay/random?min=0&max=100`，开环注入
+    - 慢上游 Scenario：`GET /api/example/delay/slow`，并发 `slowUsers`（默认 10）
+    - Assertions：全局错误率 < 1%；固定延迟 Scenario P99 ≤ `50 + maxProxyOverheadMs`（默认 70ms）
+    - _需求：9.6, 9.7, 20.4_
+  - [x] 9.2 实现 `ConnectionPoolSimulation`
+    - 调用 `EnvSnapshot.capture()` 采集环境快照，Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - 使用 `WarmupHelper.build()` 构建预热阶段（`skipWarmup=false` 时），正式 Scenario 通过 `nothingFor(warmupDuration)` 延迟启动
+    - Scenario：以超过连接池最大连接数（20）的并发向 `GET /api/example/hello` 发送请求，触发 borrow/requite 竞争
+    - 压测前通过 `/health/live` 记录活跃连接数快照，压测后再次查询，差值超过 `maxConnectionLeak` 时输出连接泄漏告警并使构建失败
+    - Assertions：全局错误率 < 1%；503/连接超时比例 < 5%
+    - _需求：10.1, 10.2, 10.3, 10.4, 20.4_
+  - [x] 9.3 实现 `SpikeSimulation`
+    - 调用 `EnvSnapshot.capture()` 采集环境快照，Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - 开环注入模式：`constantUsersPerSec(10).during(5s)` → `rampUsersPerSec(10).to(spikeUsers).during(5s)` → `constantUsersPerSec(spikeUsers).during(spikeDuration)` → `rampUsersPerSec(spikeUsers).to(10).during(5s)` → `nothingFor(60s)`（恢复观察期）
+    - Assertions：spike 期间错误率 < 5%；5xx 比例 < 5%；恢复期 P99 ≤ 基线 P99 × 120%
+    - _需求：11.1, 11.2, 11.3, 11.4, 20.4_
+  - [x] 9.4 实现 `SoakSimulation`
+    - 调用 `EnvSnapshot.capture()` 采集环境快照，Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - Scenario：持续 `soakDuration` 秒，并发 `soakUsers`，向 `GET /api/example/hello` 发送请求，开环 `constantUsersPerSec`
+    - Assertions：错误率 < 1%
+    - 说明：堆内存采样由 `profile.sh` 负责（`jcmd GC.heap_info` 每 60 秒采样），Simulation 只负责触发压测流量；需求 12.4 要求的"堆内存≤起始 150%"校验由 profile.sh 在压测结束后读取 resource-usage.csv 计算并输出警告，若超出则以非零退出码退出
+    - _需求：12.1, 12.2, 12.4, 12.5, 20.4_
+  - [x] 9.5 实现 `FaultToleranceSimulation`
+    - 调用 `EnvSnapshot.capture()` 采集环境快照，Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - 使用 `WarmupHelper.build()` 构建预热阶段（`skipWarmup=false` 时），正式 Scenario 通过 `nothingFor(warmupDuration)` 延迟启动
+    - 场景 A（慢上游超时）：向 `GET /api/perf/slow`（通过 `perf-slow-timeout` 路由转发到 `/api/example/delay/slow`）发送请求，Assertion 校验响应码为 504
+    - 场景 B（上游宕机）：向 `GET /api/perf/unreachable` 发送请求，Assertion 校验响应码为 502
+    - 场景 C（混合流量）：50% 请求发往 `/api/example/hello`，50% 发往 `/api/example/delay/slow`，Assertion 校验正常请求 P99 ≤ 基线 P99 × 120%
+    - Assertion：502/504 响应率与注入故障比例误差 < 5%
+    - _需求：13.1, 13.2, 13.3, 13.4, 20.4_
+  - [x] 9.6 实现 `RouteCountSimulation`
+    - 调用 `EnvSnapshot.capture()` 采集环境快照，Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - 使用 `WarmupHelper.build()` 构建预热阶段（`skipWarmup=false` 时），正式 Scenario 通过 `nothingFor(warmupDuration)` 延迟启动
+    - 分别在 1 条、10 条、50 条路由配置下向对应路由（`/api/perf/route1`、`/api/perf/route2` 等）发送相同负载请求
+    - 通过 `gatling.routeCountVariants` 参数化路由数量变体（默认 `1,10,50`）
+    - Assertion：50 条路由 RPS 退化不超过 1 条路由 RPS 的 10%
+    - _需求：14.2, 14.3, 14.4, 20.4_
+  - [x] 9.7 实现 `MockBaselineSimulation`
+    - 调用 `EnvSnapshot.capture()` 采集环境快照，Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - 使用 `WarmupHelper.build()` 构建预热阶段（`skipWarmup=false` 时），正式 Scenario 通过 `nothingFor(warmupDuration)` 延迟启动
+    - Scenario：以最大并发向 `GET /api/example/mock` 发送请求，开环注入
+    - 将 mockRps 写入 `baseline.json` 的 `mockRps` 字段
+    - Assertion：错误率 < 1%；本场景 RPS > BaseProxySimulation RPS（否则输出警告"Mock 场景 RPS 未高于基础代理场景，测试环境可能存在问题"并使构建失败）
+    - _需求：17.2, 17.3, 17.4, 20.4_
+  - [x] 9.8 实现 `ConnectionModeSimulation`
+    - 调用 `EnvSnapshot.capture()` 采集环境快照，Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - 使用 `WarmupHelper.build()` 构建预热阶段（`skipWarmup=false` 时），正式 Scenario 通过 `nothingFor(warmupDuration)` 延迟启动
+    - 场景 A（Keep-Alive）：HTTP/1.1 长连接（Gatling 默认），向 `GET /api/example/hello` 发送请求，开环注入
+    - 场景 B（短连接）：每次请求携带 `Connection: close` 头，向同一接口发送请求，开环注入
+    - 两个 Scenario 使用相同并发和持续时间
+    - Simulation 结束后在日志中输出两种模式的 RPS 对比和 P99 延迟对比（通过 Gatling 报告中各 Scenario 独立统计实现），量化连接建立/销毁开销
+    - Assertions：两个场景错误率均 < 1%
+    - _需求：18.1, 18.2, 18.3, 18.4, 20.4, 24.1_
+  - [x] 9.9 实现 `KneeDetectionSimulation`
+    - 调用 `EnvSnapshot.capture()` 采集环境快照，Simulation 结束时调用 `EnvSnapshot.captureEnd()` 二次采集
+    - 从 10 用户开始，每 15 秒递增 10 用户（通过 `incrementUsersPerSec` 或分段 `rampUsersPerSec` 实现）
+    - 当 P99 超过前一阶段 P99 的 150% 或错误率超过 1% 时停止递增，记录当前 RPS 为膝点 RPS
+    - 将 kneeRps 写入 `baseline.json` 的 `kneeRps` 字段，并输出膝点 RPS 值
+    - _需求：22.1, 22.3, 20.4_
+  - [x] 9.10 为 `KneeDetectionSimulation` 的膝点探测逻辑编写属性测试 `KneeDetectionPropertyTest`
+    - **Property 10：膝点探测停止条件不变量**
+    - **Validates: 需求 22.1**
+
+- [x] 10. 检查点 — 确认所有 Simulation 编译通过
+
+- [x] 11. 实现 profile.sh 和 docker-compose.yml
+  - [x] 11.1 实现 `gateway-perf/scripts/profile.sh`
+    - 接受 `<gateway-pid> [duration-seconds]` 参数
+    - 启动前校验：PID 不存在则输出"错误：PID $GATEWAY_PID 不存在"并以非零退出码退出；`ASYNC_PROFILER_HOME` 未设置或 `asprof` 不可执行则输出错误并退出
+    - 并行启动 async-profiler CPU 采集（输出 `target/profiling/cpu-flamegraph.svg`）和分配采集（输出 `target/profiling/alloc-flamegraph.svg`）
+    - 启动 JFR 录制（`settings=profile`，启用 `jdk.ObjectAllocationSample`、`jdk.GarbageCollection`、`jdk.GCPhasePause`、`jdk.ThreadPark`、`jdk.MonitorWait`、`jdk.CPULoad`、`jdk.ObjectAllocationInNewTLAB`、`jdk.ObjectAllocationOutsideTLAB`、`jdk.ClassLoad`，输出 `target/profiling/gateway.jfr`）
+    - 每 5 秒采样 CPU%（`ps -p $PID -o %cpu=`）和堆内存（`jcmd $PID GC.heap_info`），写入 `target/profiling/resource-usage.csv`（格式：`timestamp,cpu_percent,heap_used_mb,heap_max_mb`）
+    - Soak 测试期间每 60 秒额外通过 `jcmd GC.heap_info` 采样堆内存，追加写入 resource-usage.csv
+    - 压测结束后输出摘要（峰值 CPU%、平均 CPU%、峰值堆内存 MB）；输出内存趋势摘要（起始堆占用、结束堆占用、最大堆占用）
+    - 读取 resource-usage.csv 计算堆内存增长比例：WHEN 结束堆占用 > 起始堆占用 × 150% 时，输出警告"堆内存增长超过 150%，可能存在内存泄漏"并以非零退出码退出（对应需求 12.4 的 Assertion）
+    - CPU 利用率低于 50% 时输出警告"网关 CPU 利用率过低，测试可能未达到性能瓶颈，建议增加并发用户数"
+    - jcmd 不可用时输出警告"警告：jcmd 不可用，跳过 JFR 录制和堆内存采样"并继续执行
+    - _需求：16.1, 16.2, 16.3, 16.4, 16.5, 16.7, 12.2, 12.3, 19.1, 19.2, 19.3_
+  - [x] 11.2 创建 `gateway-perf/docker-compose.yml`
+    - 声明 `gateway-example` 服务（`eclipse-temurin:21-jre`，挂载 `../gateway-example/target`，端口 8082:8082，healthcheck 检查 `/api/example/hello`，interval 5s，retries 10）
+    - 声明 `gateway-app` 服务（`eclipse-temurin:21-jre`，挂载 `../gateway-app/target` 和 `../gateway-app/src/main/resources`，JVM 参数 `-Xmx3g -XX:+UseG1GC -XX:+FlightRecorder`，`--spring.profiles.active=perf`，端口 8080:8080，`depends_on: gateway-example: condition: service_healthy`）
+    - 通过启动参数 `--gateway.routes[N].upstream=http://gateway-example:8082` 覆盖所有测试路由的 upstream 为容器 hostname
+    - _需求：7.3, 7.4, 7.5, 16.6_
+
+- [x] 12. 创建 `gateway-perf/README.md`
+  - 说明场景 A（本地 loopback）启动步骤：先启动 gateway-example 和 gateway-app（`--spring.profiles.active=perf`），再执行 `mvn gatling:test -pl gateway-perf`（运行所有 Simulation）
+  - 说明场景 B（Docker bridge）启动步骤：`mvn package -pl gateway-example,gateway-app -DskipTests`，然后 `docker compose up -d`，再执行 `mvn gatling:test -pl gateway-perf -DbaseUrl=http://localhost:8080`
+  - 说明推荐执行顺序：先运行 `KneeDetectionSimulation` 确定膝点 RPS，再运行 `BaseProxySimulation`（会自动读取 kneeRps 以 70% 负载执行）
+  - 说明所有 `gatling.*` 参数的含义和默认值
+  - 说明 CI 集成方式（`-DsimulationClass` 指定单个 Simulation，`-DrepeatCount=1` 缩短执行时间）
+  - 说明开环 vs 闭环负载模型的区别：闭环在高延迟时自动减少并发导致 RPS 下降，掩盖真实瓶颈；开环保持固定注入速率，能真实暴露排队和超时行为
+  - 说明膝点测量的意义：在膝点以下测量的 P99 才能反映正常生产负载下的真实延迟，而非排队延迟
+  - _需求：6.2, 6.3, 7.6, 22.4, 24.3_
+
+- [x] 13. 最终检查点 — 确认完整构建通过
+
+## 备注
+
+- 所有属性测试使用 jqwik（与项目现有测试框架一致），最少 100 次迭代
+- Gatling Simulation 类本身不编写 JUnit 测试，通过实际运行验证
+- `gateway-perf` 中 Checkstyle 和 forbiddenapis 均跳过，Simulation 类无需符合项目 Java 代码规范
+- Docker bridge 场景（需求 7）下 upstream 地址通过启动参数覆盖，无需单独的 `application-perf-docker.yml`
+- 需求 12.4（Soak 堆内存 ≤ 起始 150%）由 profile.sh 在压测结束后读取 resource-usage.csv 计算并校验，超出则以非零退出码退出；Simulation 本身无法直接获取 JVM 堆内存数据

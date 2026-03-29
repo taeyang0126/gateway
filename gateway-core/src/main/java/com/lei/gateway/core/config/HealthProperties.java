@@ -30,6 +30,38 @@ public class HealthProperties {
     @Min(1)
     private int warmupTimeoutSeconds = 10;
 
+    /**
+     * 内部热路径预热时，每条路由的基准迭代次数。
+     *
+     * <p>最终单路由迭代会结合 {@code warmupInternalMaxTotalIterations}
+     * 和 {@code warmupInternalMinIterationsPerRoute} 计算，避免路由规模增大后
+     * 启动时间呈线性放大。
+     */
+    @Min(1)
+    private int warmupInternalBaseIterationsPerRoute = 100000;
+
+    /**
+     * 内部热路径预热的总迭代上限。
+     *
+     * <p>用于控制大路由表场景下的预热成本，避免 O(N^2) 级放大。
+     */
+    @Min(1)
+    private int warmupInternalMaxTotalIterations = 1000000;
+
+    /**
+     * 内部热路径预热时每条路由的最小迭代次数。
+     *
+     * <p>用于保证路由规模较大时仍有最低 JIT 触发热度。
+     */
+    @Min(1)
+    private int warmupInternalMinIterationsPerRoute = 10000;
+
+    /**
+     * 每个 upstream 在启动预热阶段主动 acquire/release 的次数。
+     */
+    @Min(1)
+    private int warmupUpstreamAcquireCount = 1;
+
     public int getStartupDelaySeconds() {
         return startupDelaySeconds;
     }
@@ -44,5 +76,42 @@ public class HealthProperties {
 
     public void setWarmupTimeoutSeconds(int warmupTimeoutSeconds) {
         this.warmupTimeoutSeconds = warmupTimeoutSeconds;
+    }
+
+    public int getWarmupInternalBaseIterationsPerRoute() {
+        return warmupInternalBaseIterationsPerRoute;
+    }
+
+    public void setWarmupInternalBaseIterationsPerRoute(
+            int warmupInternalBaseIterationsPerRoute) {
+        this.warmupInternalBaseIterationsPerRoute =
+                warmupInternalBaseIterationsPerRoute;
+    }
+
+    public int getWarmupInternalMaxTotalIterations() {
+        return warmupInternalMaxTotalIterations;
+    }
+
+    public void setWarmupInternalMaxTotalIterations(
+            int warmupInternalMaxTotalIterations) {
+        this.warmupInternalMaxTotalIterations = warmupInternalMaxTotalIterations;
+    }
+
+    public int getWarmupInternalMinIterationsPerRoute() {
+        return warmupInternalMinIterationsPerRoute;
+    }
+
+    public void setWarmupInternalMinIterationsPerRoute(
+            int warmupInternalMinIterationsPerRoute) {
+        this.warmupInternalMinIterationsPerRoute =
+                warmupInternalMinIterationsPerRoute;
+    }
+
+    public int getWarmupUpstreamAcquireCount() {
+        return warmupUpstreamAcquireCount;
+    }
+
+    public void setWarmupUpstreamAcquireCount(int warmupUpstreamAcquireCount) {
+        this.warmupUpstreamAcquireCount = warmupUpstreamAcquireCount;
     }
 }

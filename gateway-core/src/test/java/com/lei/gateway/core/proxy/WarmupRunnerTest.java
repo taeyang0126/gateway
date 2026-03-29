@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -124,6 +125,31 @@ class WarmupRunnerTest {
 
         assertThatCode(() -> warmupRunner.runWarmup()).doesNotThrowAnyException();
         verify(connectionPool).acquire("myhost", 80);
+        verify(connectionPool).release(channel);
+    }
+
+    @Test
+    void runWarmupDeduplicatesSameUpstreamAcrossRoutes() {
+        Route routeA = new Route();
+        routeA.setId("a");
+        routeA.setPathPrefix("/a/**");
+        routeA.setUpstream("http://localhost:8081");
+
+        Route routeB = new Route();
+        routeB.setId("b");
+        routeB.setPathPrefix("/b/**");
+        routeB.setUpstream("http://localhost:8081");
+
+        when(gatewayProperties.getRoutes()).thenReturn(List.of(routeA, routeB));
+        when(routeResolver.resolve(anyString())).thenReturn(Optional.of(routeA));
+
+        Channel channel = mock(Channel.class);
+        when(channel.isActive()).thenReturn(true);
+        when(connectionPool.acquire("localhost", 8081))
+                .thenReturn(CompletableFuture.completedFuture(channel));
+
+        assertThatCode(() -> warmupRunner.runWarmup()).doesNotThrowAnyException();
+        verify(connectionPool, times(1)).acquire("localhost", 8081);
         verify(connectionPool).release(channel);
     }
 }

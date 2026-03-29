@@ -49,7 +49,7 @@ mvn spring-boot:run -pl gateway-app
 
 ```bash
 # 完整构建（Checkstyle + forbidden-apis + 测试 + 覆盖率）
-mvn clean verify -T 1C -U
+mvn clean verify -T 2C -U -pl '!gateway-perf'
 
 # 日常开发：跳过集成测试
 mvn clean test -Dexclude="**/*IntegrationTest.java" -T 1C

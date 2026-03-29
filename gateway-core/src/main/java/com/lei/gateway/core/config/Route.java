@@ -18,6 +18,20 @@ public class Route {
     private Long maxRequestSize;
     /** 路由优先级，数字越小优先级越高，默认 0。 */
     private int priority = 0;
+    /**
+     * 路径重写正则表达式（Java 正则），匹配请求路径（含 query string）。
+     * 与 {@link #rewriteReplacement} 配合使用，为空则不做路径重写。
+     * 示例：{@code ^/api/perf/route1(.*)}
+     */
+    private String rewritePath;
+
+    /**
+     * 路径重写替换字符串，支持数字捕获组引用（如 {@code $1}、{@code $2}）。
+     * 注意：不支持命名捕获组引用（{@code ${name}}），YAML 中会被 Spring 当 placeholder 解析。
+     * 示例：{@code /api/example$1}
+     */
+    private String rewriteReplacement;
+
     @Valid
     private RouteSecurityProperties security;
 
@@ -75,5 +89,21 @@ public class Route {
 
     public void setSecurity(RouteSecurityProperties security) {
         this.security = security;
+    }
+
+    public String getRewritePath() {
+        return rewritePath;
+    }
+
+    public void setRewritePath(String rewritePath) {
+        this.rewritePath = rewritePath;
+    }
+
+    public String getRewriteReplacement() {
+        return rewriteReplacement;
+    }
+
+    public void setRewriteReplacement(String rewriteReplacement) {
+        this.rewriteReplacement = rewriteReplacement;
     }
 }

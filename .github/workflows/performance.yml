@@ -1,0 +1,102 @@
+name: Performance Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      simulation:
+        description: 'Simulation class to run'
+        type: choice
+        required: true
+        default: 'BaseProxySimulation'
+        options:
+          - BaseProxySimulation
+          - JwtAuthSimulation
+          - RateLimitSimulation
+          - DelaySimulation
+          - ConnectionPoolSimulation
+          - SpikeSimulation
+          - FaultToleranceSimulation
+          - RouteCountSimulation
+          - MockBaselineSimulation
+          - ConnectionModeSimulation
+          - KneeDetectionSimulation
+      updateBaseline:
+        description: 'Update baseline after test'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  perf-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build modules
+        run: mvn clean package -pl gateway-example,gateway-app -am -DskipTests -B
+
+      - name: Start upstream service
+        run: |
+          cd gateway-example
+          java -jar target/gateway-example-*.jar &
+          echo $! > /tmp/gateway-example.pid
+          sleep 15
+          curl -s http://localhost:8082/api/example/hello || exit 1
+
+      - name: Start gateway
+        run: |
+          cd gateway-app
+          java -Xmx2g -jar target/gateway-app-*.jar --spring.profiles.active=perf &
+          echo $! > /tmp/gateway-app.pid
+          sleep 10
+          curl -s http://localhost:8080/api/example/hello || exit 1
+
+      - name: Run performance test
+        run: |
+          cd gateway-perf
+          if [ "${{ github.event.inputs.updateBaseline }}" == "true" ]; then
+            mvn gatling:test \
+              -Dgatling.simulationClass=com.lei.gateway.perf.simulation.${{ github.event.inputs.simulation }} \
+              -Dgatling.updateBaseline=true \
+              -Dgatling.repeatCount=1 \
+              -Dgatling.warmupDuration=10 \
+              -B
+          else
+            mvn gatling:test \
+              -Dgatling.simulationClass=com.lei.gateway.perf.simulation.${{ github.event.inputs.simulation }} \
+              -Dgatling.repeatCount=1 \
+              -Dgatling.warmupDuration=10 \
+              -B
+          fi
+
+      - name: Upload Gatling report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gatling-report-${{ github.event.inputs.simulation }}
+          path: gateway-perf/target/gatling/
+          retention-days: 30
+
+      - name: Upload regression report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: regression-report
+          path: gateway-perf/target/gatling/regression-report.txt
+          retention-days: 30
+
+      - name: Stop services
+        if: always()
+        run: |
+          if [ -f /tmp/gateway-app.pid ]; then kill $(cat /tmp/gateway-app.pid) 2>/dev/null; fi
+          if [ -f /tmp/gateway-example.pid ]; then kill $(cat /tmp/gateway-example.pid) 2>/dev/null; fi

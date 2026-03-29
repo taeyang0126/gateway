@@ -13,6 +13,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -384,21 +385,45 @@ class ConcurrentPoolTest {
         }
     }
 
-    // ---- borrowAsync 异步创建失败后进入等待队列 ----
+    // ---- borrowAsync 异步创建失败直接返回原始异常 ----
 
     @Test
-    void borrowAsync_whenAsyncCreateFails_enqueuesWaiter() throws Exception {
+    void borrowAsync_whenAsyncCreateFails_shouldPropagateCreateFailure() throws Exception {
         PoolEntryFactory<TestPoolEntry> asyncFailFactory =
                 () -> CompletableFuture.failedFuture(new RuntimeException("async create failed"));
 
         try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, asyncFailFactory)) {
-            // borrowAsync 触发异步创建失败，进入等待队列，最终超时
+            // borrowAsync 触发异步创建失败，应直接返回创建异常而非池等待超时
             CompletableFuture<TestPoolEntry> future = pool.borrowAsync(100, TimeUnit.MILLISECONDS);
 
             ExecutionException ex = org.junit.jupiter.api.Assertions.assertThrows(
                     ExecutionException.class,
                     () -> future.get(500, TimeUnit.MILLISECONDS));
-            assertThat(ex.getCause()).isInstanceOf(IllegalStateException.class);
+            assertThat(ex.getCause()).isInstanceOf(RuntimeException.class)
+                    .hasMessageContaining("async create failed");
+        }
+    }
+
+    @Test
+    void borrowAsync_whenAsyncCreateFailsButPoolHasEntry_shouldWaitForRequite()
+            throws Exception {
+        config.setMaxPoolSize(2);
+        AtomicInteger createCount = new AtomicInteger();
+        PoolEntryFactory<TestPoolEntry> flakyFactory = () -> {
+            if (createCount.incrementAndGet() == 1) {
+                return CompletableFuture.completedFuture(new TestPoolEntry());
+            }
+            return CompletableFuture.failedFuture(new RuntimeException("async create failed"));
+        };
+
+        try (ConcurrentPool<TestPoolEntry> pool = new ConcurrentPool<>(config, flakyFactory)) {
+            TestPoolEntry held = borrowSync(pool, 100, TimeUnit.MILLISECONDS);
+            CompletableFuture<TestPoolEntry> waiter = pool.borrowAsync(200, TimeUnit.MILLISECONDS);
+
+            pool.requite(held);
+
+            TestPoolEntry acquired = waiter.get(500, TimeUnit.MILLISECONDS);
+            assertThat(acquired).isSameAs(held);
         }
     }
 

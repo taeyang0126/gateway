@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.lei</groupId>
+        <artifactId>netty-gateway</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>gateway-perf</artifactId>
+    <name>gateway-perf</name>
+    <description>Gatling performance test suite for netty-gateway</description>
+
+    <properties>
+        <!-- Gatling 版本 -->
+        <gatling.version>3.10.5</gatling.version>
+        <gatling-maven-plugin.version>4.9.6</gatling-maven-plugin.version>
+
+        <!-- 可通过 -D 覆盖的默认参数 -->
+        <gatling.baseUrl>http://localhost:8080</gatling.baseUrl>
+        <gatling.users>50</gatling.users>
+        <gatling.duration>60</gatling.duration>
+        <gatling.targetRps>5000</gatling.targetRps>
+        <gatling.rateLimitRps>100</gatling.rateLimitRps>
+        <gatling.fileUsers>10</gatling.fileUsers>
+        <gatling.slowUsers>10</gatling.slowUsers>
+        <gatling.spikeUsers>200</gatling.spikeUsers>
+        <gatling.spikeDuration>30</gatling.spikeDuration>
+        <gatling.soakDuration>1800</gatling.soakDuration>
+        <gatling.soakUsers>50</gatling.soakUsers>
+        <gatling.warmupDuration>30</gatling.warmupDuration>
+        <gatling.warmupUsers>10</gatling.warmupUsers>
+        <gatling.skipWarmup>false</gatling.skipWarmup>
+        <gatling.repeatCount>3</gatling.repeatCount>
+        <gatling.updateBaseline>false</gatling.updateBaseline>
+        <gatling.rpsRegressionThreshold>0.10</gatling.rpsRegressionThreshold>
+        <gatling.p99RegressionThreshold>0.20</gatling.p99RegressionThreshold>
+        <gatling.maxProxyOverheadMs>20</gatling.maxProxyOverheadMs>
+        <gatling.maxConnectionLeak>0</gatling.maxConnectionLeak>
+        <gatling.upstreamTimeoutMs>2000</gatling.upstreamTimeoutMs>
+        <gatling.routeCountVariants>1,10,50</gatling.routeCountVariants>
+    </properties>
+
+    <dependencies>
+        <!-- Gatling -->
+        <dependency>
+            <groupId>io.gatling.highcharts</groupId>
+            <artifactId>gatling-charts-highcharts</artifactId>
+            <version>${gatling.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Jackson：BaselineManager 读写 baseline.json -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- jqwik：属性测试（版本由父 pom dependencyManagement 管理） -->
+        <dependency>
+            <groupId>net.jqwik</groupId>
+            <artifactId>jqwik</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Spring Boot Test：DelayController 单元测试的 MockMvc -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Gatling Maven Plugin -->
+            <plugin>
+                <groupId>io.gatling</groupId>
+                <artifactId>gatling-maven-plugin</artifactId>
+                <version>${gatling-maven-plugin.version}</version>
+                <configuration>
+                    <resultsFolder>${project.build.directory}/gatling</resultsFolder>
+                    <runMultipleSimulations>true</runMultipleSimulations>
+                    <jvmArgs>
+                        <jvmArg>-DbaseUrl=${gatling.baseUrl}</jvmArg>
+                        <jvmArg>-Dusers=${gatling.users}</jvmArg>
+                        <jvmArg>-Dduration=${gatling.duration}</jvmArg>
+                        <jvmArg>-DtargetRps=${gatling.targetRps}</jvmArg>
+                        <jvmArg>-DrateLimitRps=${gatling.rateLimitRps}</jvmArg>
+                        <jvmArg>-DfileUsers=${gatling.fileUsers}</jvmArg>
+                        <jvmArg>-DslowUsers=${gatling.slowUsers}</jvmArg>
+                        <jvmArg>-DspikeUsers=${gatling.spikeUsers}</jvmArg>
+                        <jvmArg>-DspikeDuration=${gatling.spikeDuration}</jvmArg>
+                        <jvmArg>-DsoakDuration=${gatling.soakDuration}</jvmArg>
+                        <jvmArg>-DsoakUsers=${gatling.soakUsers}</jvmArg>
+                        <jvmArg>-DwarmupDuration=${gatling.warmupDuration}</jvmArg>
+                        <jvmArg>-DwarmupUsers=${gatling.warmupUsers}</jvmArg>
+                        <jvmArg>-DskipWarmup=${gatling.skipWarmup}</jvmArg>
+                        <jvmArg>-DrepeatCount=${gatling.repeatCount}</jvmArg>
+                        <jvmArg>-DupdateBaseline=${gatling.updateBaseline}</jvmArg>
+                        <jvmArg>-DrpsRegressionThreshold=${gatling.rpsRegressionThreshold}</jvmArg>
+                        <jvmArg>-Dp99RegressionThreshold=${gatling.p99RegressionThreshold}</jvmArg>
+                        <jvmArg>-DmaxProxyOverheadMs=${gatling.maxProxyOverheadMs}</jvmArg>
+                        <jvmArg>-DmaxConnectionLeak=${gatling.maxConnectionLeak}</jvmArg>
+                        <jvmArg>-DupstreamTimeoutMs=${gatling.upstreamTimeoutMs}</jvmArg>
+                        <jvmArg>-DrouteCountVariants=${gatling.routeCountVariants}</jvmArg>
+                    </jvmArgs>
+                </configuration>
+            </plugin>
+
+            <!-- Surefire：运行工具类单元测试，排除 Simulation 类 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <parallel>classes</parallel>
+                    <threadCount>4</threadCount>
+                    <perCoreThreadCount>false</perCoreThreadCount>
+                    <excludes>
+                        <exclude>**/simulation/**</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <!-- Checkstyle：跳过，Simulation 类不符合项目 Java 代码规范 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+
+            <!-- forbiddenapis：跳过，Gatling 内部使用部分受限 API -->
+            <plugin>
+                <groupId>de.thetaphi</groupId>
+                <artifactId>forbiddenapis</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

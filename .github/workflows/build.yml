@@ -23,7 +23,7 @@ jobs:
           cache: 'maven'
 
       - name: Package (skip tests)
-        run: mvn clean package -pl gateway-app -am -DskipTests -B
+        run: mvn clean package -pl 'gateway-app,!gateway-perf' -am -DskipTests -B
 
       - name: Prepare distribution
         run: |

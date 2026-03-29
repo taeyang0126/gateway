@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -116,6 +117,7 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             return CompletableFuture.failedFuture(
                     new IllegalStateException("Pool is closed"));
         }
+        final long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
 
         // 第一级：ThreadLocal 快速路径（borrowAsync 由 EventLoop 线程调用，requite 也在同一线程，ThreadLocal 有效）
         List<WeakReference<T>> localList = threadLocalList.get();
@@ -169,37 +171,61 @@ public class ConcurrentPool<T extends PoolEntry> implements AutoCloseable {
             }
         }
         if (reserved) {
-            return factory.createAsync().thenApply(entry -> {
+            CompletableFuture<T> created = new CompletableFuture<>();
+            factory.createAsync().whenComplete((entry, throwable) -> {
+                if (throwable != null) {
+                    totalEntries.decrementAndGet();
+                    Throwable cause = throwable instanceof CompletionException
+                            && throwable.getCause() != null ? throwable.getCause() : throwable;
+                    log.error("异步创建池化条目失败", cause);
+                    // 混合策略：
+                    // 1) 池里仍有连接（通常是被占用中的连接）时，允许等待归还；
+                    // 2) 池已空且创建失败时，直接暴露原始连接异常，避免被“池等待超时”覆盖。
+                    if (!closed && totalEntries.get() > 0) {
+                        enqueueWaiterWithDeadline(deadlineNanos)
+                                .whenComplete((waitedEntry, waitErr) -> completeFromWaiter(
+                                        created, waitedEntry, waitErr));
+                    } else {
+                        created.completeExceptionally(cause);
+                    }
+                    return;
+                }
                 if (closed) {
                     // close 与 createAsync 并发时，关闭后完成的条目必须直接销毁，避免泄漏。
                     totalEntries.decrementAndGet();
                     entry.close();
-                    return null;
+                    created.completeExceptionally(new IllegalStateException("Pool is closed"));
+                    return;
                 }
                 entry.compareAndSet(PoolEntry.STATE_NOT_IN_USE, PoolEntry.STATE_IN_USE);
                 entry.setLastAccessTime(System.nanoTime());
                 sharedList.add(entry);
                 log.info("连接已创建(async) {} total={}", entry, totalEntries.get());
-                return entry;
-            }).exceptionally(e -> {
-                totalEntries.decrementAndGet();
-                log.error("异步创建池化条目失败", e);
-                return null;
-            }).thenCompose(entry -> {
-                if (entry != null) {
-                    return CompletableFuture.completedFuture(entry);
-                }
-                // 创建失败，进入等待队列
-                if (closed) {
-                    return CompletableFuture.failedFuture(
-                            new IllegalStateException("Pool is closed"));
-                }
-                return enqueueWaiter(timeout, unit);
+                created.complete(entry);
             });
+            return created;
         }
 
         // 第三级：池满，进入等待队列
-        return enqueueWaiter(timeout, unit);
+        return enqueueWaiterWithDeadline(deadlineNanos);
+    }
+
+    private CompletableFuture<T> enqueueWaiterWithDeadline(long deadlineNanos) {
+        long remainingNanos = deadlineNanos - System.nanoTime();
+        if (remainingNanos <= 0) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Timeout waiting for available pool entry"));
+        }
+        return enqueueWaiter(remainingNanos, TimeUnit.NANOSECONDS);
+    }
+
+    private void completeFromWaiter(CompletableFuture<T> created,
+            T waitedEntry, Throwable waitErr) {
+        if (waitErr != null) {
+            created.completeExceptionally(waitErr);
+        } else {
+            created.complete(waitedEntry);
+        }
     }
 
     private CompletableFuture<T> enqueueWaiter(long timeout, TimeUnit unit) {

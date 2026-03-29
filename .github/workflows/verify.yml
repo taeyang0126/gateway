@@ -24,7 +24,7 @@ jobs:
           cache: 'maven'
 
       - name: Checkstyle + Test + Coverage
-        run: mvn clean verify -B
+        run: mvn clean verify -pl '!gateway-perf' -B
 
       - name: Upload JaCoCo Reports
         if: always()

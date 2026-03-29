@@ -1,0 +1,324 @@
+gateway:
+  # 需求 10：覆盖连接池，生产配置 max-connections-per-host=1 不足以触发 borrow/requite 竞争
+  connection-pool:
+    max-connections-per-host: 20
+
+  # perf 配置下路由规模大，预热预算与连接预热强度需要显式放宽
+  health:
+    warmup-timeout-seconds: 45
+    warmup-internal-max-total-iterations: 120000
+    warmup-internal-min-iterations-per-route: 1000
+    warmup-upstream-acquire-count: 4
+
+  routes:
+    # 基础业务路由：供 BaseProxy/JWT/Delay/FileTransfer 等场景使用
+    - id: example-service
+      path-prefix: /api/example/**
+      upstream: http://localhost:8082
+
+    # JWT 业务路由：与默认配置保持一致
+    - id: example-service-jwt
+      path-prefix: /api/example/private/**
+      upstream: http://localhost:8082
+      security:
+        enabled: true
+        auth:
+          enabled: true
+          type: JWT
+          providers:
+            jwt:
+              issuer: example-issuer
+              audience: example-audience
+              # 与 auth-jwt-example 的 auth.jwt.public-key 保持一致。
+              public-key: |
+                -----BEGIN PUBLIC KEY-----
+                MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6I25MXjpwwaXaDp0ilnr
+                5GQr/XioqlIJFjx9MMCD2Dk9T+SM1gNzRfoptZl13fQvImErCkdK9/CEEP9R2L0x
+                PwYdoZq6yoNQlwYg/cFh/VyVQB1t8+KDkUfrUlfGTZHErFpvpwMLtQ7c1aJECChD
+                gWAC0yF0PRIvfuEDEOFwWJXpumlUYMIEMSA5Li2o1SAxznFY88mtMcnJo4EzKYcT
+                6kA7MZVwXwI9EpCr+2XXiN/8NUMwNJUjYPhG34pYESqJ+5giZofggxD/+TquqakR
+                VpBK5pvbnDSZ55yix/zgG83es4AyGY3mje/8B4mnayJf3FsoOg/WOiYupl+jNSC7
+                LwIDAQAB
+                -----END PUBLIC KEY-----
+
+    # 需求 3：限流测试专用路由（独立路径 /api/perf/hello，不覆盖业务路由）
+    - id: perf-rate-limit-test
+      path-prefix: /api/perf/hello
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/hello(.*)"
+      rewrite-replacement: "/api/example/hello$1"
+      security:
+        enabled: true
+        rate-limit:
+          ip:
+            enabled: true
+            permits-per-second: 100
+
+    # 需求 13：慢上游超时测试路由（timeout-seconds=1，上游 500ms 慢接口触发 504）
+    - id: perf-slow-timeout
+      path-prefix: /api/perf/slow
+      upstream: http://localhost:8082
+      timeout-seconds: 1
+      rewrite-path: "^/api/perf/slow(.*)"
+      rewrite-replacement: "/api/example/delay/slow$1"
+
+    # 需求 13：不可达上游路由（用于 502 测试）
+    - id: perf-unreachable
+      path-prefix: /api/perf/unreachable
+      upstream: http://localhost:19999
+
+    # 需求 14：路由规则数量性能对比 — 1 条基准路由
+    - id: perf-route-1
+      path-prefix: /api/perf/route1/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route1(.*)"
+      rewrite-replacement: "/api/example$1"
+
+    # 需求 14：路由规则数量性能对比 — 10 条路由（perf-route-2 ~ perf-route-10）
+    - id: perf-route-2
+      path-prefix: /api/perf/route2/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route2(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-3
+      path-prefix: /api/perf/route3/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route3(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-4
+      path-prefix: /api/perf/route4/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route4(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-5
+      path-prefix: /api/perf/route5/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route5(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-6
+      path-prefix: /api/perf/route6/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route6(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-7
+      path-prefix: /api/perf/route7/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route7(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-8
+      path-prefix: /api/perf/route8/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route8(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-9
+      path-prefix: /api/perf/route9/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route9(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-10
+      path-prefix: /api/perf/route10/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route10(.*)"
+      rewrite-replacement: "/api/example$1"
+
+    # 需求 14：路由规则数量性能对比 — 50 条路由（perf-route-11 ~ perf-route-50）
+    - id: perf-route-11
+      path-prefix: /api/perf/route11/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route11(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-12
+      path-prefix: /api/perf/route12/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route12(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-13
+      path-prefix: /api/perf/route13/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route13(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-14
+      path-prefix: /api/perf/route14/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route14(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-15
+      path-prefix: /api/perf/route15/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route15(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-16
+      path-prefix: /api/perf/route16/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route16(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-17
+      path-prefix: /api/perf/route17/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route17(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-18
+      path-prefix: /api/perf/route18/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route18(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-19
+      path-prefix: /api/perf/route19/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route19(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-20
+      path-prefix: /api/perf/route20/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route20(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-21
+      path-prefix: /api/perf/route21/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route21(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-22
+      path-prefix: /api/perf/route22/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route22(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-23
+      path-prefix: /api/perf/route23/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route23(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-24
+      path-prefix: /api/perf/route24/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route24(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-25
+      path-prefix: /api/perf/route25/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route25(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-26
+      path-prefix: /api/perf/route26/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route26(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-27
+      path-prefix: /api/perf/route27/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route27(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-28
+      path-prefix: /api/perf/route28/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route28(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-29
+      path-prefix: /api/perf/route29/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route29(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-30
+      path-prefix: /api/perf/route30/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route30(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-31
+      path-prefix: /api/perf/route31/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route31(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-32
+      path-prefix: /api/perf/route32/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route32(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-33
+      path-prefix: /api/perf/route33/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route33(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-34
+      path-prefix: /api/perf/route34/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route34(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-35
+      path-prefix: /api/perf/route35/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route35(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-36
+      path-prefix: /api/perf/route36/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route36(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-37
+      path-prefix: /api/perf/route37/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route37(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-38
+      path-prefix: /api/perf/route38/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route38(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-39
+      path-prefix: /api/perf/route39/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route39(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-40
+      path-prefix: /api/perf/route40/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route40(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-41
+      path-prefix: /api/perf/route41/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route41(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-42
+      path-prefix: /api/perf/route42/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route42(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-43
+      path-prefix: /api/perf/route43/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route43(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-44
+      path-prefix: /api/perf/route44/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route44(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-45
+      path-prefix: /api/perf/route45/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route45(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-46
+      path-prefix: /api/perf/route46/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route46(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-47
+      path-prefix: /api/perf/route47/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route47(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-48
+      path-prefix: /api/perf/route48/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route48(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-49
+      path-prefix: /api/perf/route49/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route49(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: perf-route-50
+      path-prefix: /api/perf/route50/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route50(.*)"
+      rewrite-replacement: "/api/example$1"

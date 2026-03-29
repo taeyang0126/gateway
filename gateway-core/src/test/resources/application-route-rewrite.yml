@@ -1,0 +1,11 @@
+gateway:
+  port: 8080
+  routes:
+    - id: rewrite-route
+      path-prefix: /api/perf/route1/**
+      upstream: http://localhost:8082
+      rewrite-path: "^/api/perf/route1(.*)"
+      rewrite-replacement: "/api/example$1"
+    - id: no-rewrite-route
+      path-prefix: /api/example/**
+      upstream: http://localhost:8082

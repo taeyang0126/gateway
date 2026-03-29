@@ -194,7 +194,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         }
 
         DefaultHttpRequest upstreamRequest = new DefaultHttpRequest(
-                HttpVersion.HTTP_1_1, request.method(), request.uri(),
+                HttpVersion.HTTP_1_1, request.method(), rewriteUri(request.uri()),
                 request.headers());
 
         log.debug("traceId={} acquire upstream {}:{}", traceId,
@@ -615,6 +615,16 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                 HttpHeaderValues.CLOSE);
         ctx.writeAndFlush(response)
                 .addListener(ChannelFutureListener.CLOSE);
+    }
+
+    /**
+     * 根据路由的 rewritePath/rewriteReplacement 配置对请求 URI 做路径重写。
+     *
+     * @param uri 原始请求 URI（含 query string）
+     * @return 重写后的 URI
+     */
+    private String rewriteUri(String uri) {
+        return PathRewriter.rewrite(uri, route.getRewritePath(), route.getRewriteReplacement());
     }
 
     private static String escapeJson(String value) {
