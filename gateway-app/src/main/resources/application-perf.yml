@@ -322,3 +322,7 @@ gateway:
       upstream: http://localhost:8082
       rewrite-path: "^/api/perf/route50(.*)"
       rewrite-replacement: "/api/example$1"
+
+logging:
+  level:
+    com.lei.gateway: INFO

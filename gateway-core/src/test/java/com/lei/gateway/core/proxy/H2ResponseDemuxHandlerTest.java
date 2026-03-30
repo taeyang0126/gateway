@@ -123,6 +123,7 @@ class H2ResponseDemuxHandlerTest {
         // 注册 10 个 stream 后应不可再创建
         for (int ii = 0; ii < 10; ii++) {
             assertThat(hc.handler.canCreateStream()).isTrue();
+            hc.handler.incrementActiveStream();
             hc.handler.register(ii * 2 + 1, mock(ProxyHandler.class));
         }
         assertThat(hc.handler.canCreateStream()).isFalse();
@@ -139,6 +140,7 @@ class H2ResponseDemuxHandlerTest {
         hc.channel.writeInbound(new DefaultHttp2SettingsFrame(settings));
 
         // 默认 Integer.MAX_VALUE，canCreateStream 应仍为 true
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, mock(ProxyHandler.class));
         assertThat(hc.handler.canCreateStream()).isTrue();
 
@@ -151,7 +153,9 @@ class H2ResponseDemuxHandlerTest {
 
         // 先设为 2
         hc.channel.writeInbound(new DefaultHttp2SettingsFrame(new Http2Settings().maxConcurrentStreams(2)));
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, mock(ProxyHandler.class));
+        hc.handler.incrementActiveStream();
         hc.handler.register(3, mock(ProxyHandler.class));
         assertThat(hc.handler.canCreateStream()).isFalse();
 
@@ -173,6 +177,7 @@ class H2ResponseDemuxHandlerTest {
         hc.channel.writeInbound(new DefaultHttp2SettingsFrame(new Http2Settings().maxConcurrentStreams(1)));
 
         assertThat(hc.handler.canCreateStream()).isTrue();
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, mock(ProxyHandler.class));
         assertThat(hc.handler.canCreateStream()).isFalse();
 
@@ -193,6 +198,7 @@ class H2ResponseDemuxHandlerTest {
     void headersFrameRoutesToRegisteredHandler() {
         var hc = createHandler();
         ProxyHandler ph = mock(ProxyHandler.class);
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, ph);
 
         Http2Headers headers = new DefaultHttp2Headers().status("200").add("x-custom", "val");
@@ -214,6 +220,7 @@ class H2ResponseDemuxHandlerTest {
     void headersFrameWithEndStreamSendsLastContentAndRemoves() {
         var hc = createHandler();
         ProxyHandler ph = mock(ProxyHandler.class);
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, ph);
 
         hc.handler.channelRead(handlerCtx(hc), mockHeadersFrame(1, true));
@@ -247,6 +254,7 @@ class H2ResponseDemuxHandlerTest {
     void dataFrameRoutesToRegisteredHandler() {
         var hc = createHandler();
         ProxyHandler ph = mock(ProxyHandler.class);
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, ph);
 
         ByteBuf content = Unpooled.copiedBuffer("hello", StandardCharsets.UTF_8);
@@ -267,6 +275,7 @@ class H2ResponseDemuxHandlerTest {
     void dataFrameWithEndStreamSendsLastContentAndRemoves() {
         var hc = createHandler();
         ProxyHandler ph = mock(ProxyHandler.class);
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, ph);
 
         ByteBuf content = Unpooled.copiedBuffer("done", StandardCharsets.UTF_8);
@@ -306,6 +315,7 @@ class H2ResponseDemuxHandlerTest {
     void resetFrameTriggersOnH2ErrorAndRemovesStream() {
         var hc = createHandler();
         ProxyHandler ph = mock(ProxyHandler.class);
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, ph);
 
         hc.handler.channelRead(handlerCtx(hc), mockResetFrame(1, 8));
@@ -337,7 +347,9 @@ class H2ResponseDemuxHandlerTest {
         var hc = createHandler();
         ProxyHandler ph1 = mock(ProxyHandler.class);
         ProxyHandler ph3 = mock(ProxyHandler.class);
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, ph1);
+        hc.handler.incrementActiveStream();
         hc.handler.register(3, ph3);
 
         hc.handler.channelRead(handlerCtx(hc), mockResetFrame(1, 2));
@@ -362,8 +374,11 @@ class H2ResponseDemuxHandlerTest {
         ProxyHandler ph1 = mock(ProxyHandler.class);
         ProxyHandler ph3 = mock(ProxyHandler.class);
         ProxyHandler ph5 = mock(ProxyHandler.class);
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, ph1);
+        hc.handler.incrementActiveStream();
         hc.handler.register(3, ph3);
+        hc.handler.incrementActiveStream();
         hc.handler.register(5, ph5);
 
         // GOAWAY lastStreamId=3: stream 1,3 存活，stream 5 被驱逐
@@ -390,6 +405,7 @@ class H2ResponseDemuxHandlerTest {
         var hc = createHandler(pool);
 
         ProxyHandler ph1 = mock(ProxyHandler.class);
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, ph1);
 
         // GOAWAY lastStreamId=0: 所有 stream 被驱逐
@@ -409,7 +425,9 @@ class H2ResponseDemuxHandlerTest {
 
         ProxyHandler ph1 = mock(ProxyHandler.class);
         ProxyHandler ph3 = mock(ProxyHandler.class);
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, ph1);
+        hc.handler.incrementActiveStream();
         hc.handler.register(3, ph3);
 
         // GOAWAY lastStreamId=3: 两个 stream 都存活
@@ -444,6 +462,7 @@ class H2ResponseDemuxHandlerTest {
         var hc = createHandler(pool);
 
         ProxyHandler ph5 = mock(ProxyHandler.class);
+        hc.handler.incrementActiveStream();
         hc.handler.register(5, ph5);
 
         hc.handler.channelRead(handlerCtx(hc), mockGoAwayFrame(3, 11));
@@ -470,8 +489,11 @@ class H2ResponseDemuxHandlerTest {
         ProxyHandler ph1 = mock(ProxyHandler.class);
         ProxyHandler ph3 = mock(ProxyHandler.class);
         ProxyHandler ph5 = mock(ProxyHandler.class);
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, ph1);
+        hc.handler.incrementActiveStream();
         hc.handler.register(3, ph3);
+        hc.handler.incrementActiveStream();
         hc.handler.register(5, ph5);
 
         hc.channel.close();
@@ -495,6 +517,7 @@ class H2ResponseDemuxHandlerTest {
     void channelInactiveAfterRemoveDoesNotDoubleNotify() {
         var hc = createHandler();
         ProxyHandler ph = mock(ProxyHandler.class);
+        hc.handler.incrementActiveStream();
         hc.handler.register(1, ph);
 
         // 先手动 remove

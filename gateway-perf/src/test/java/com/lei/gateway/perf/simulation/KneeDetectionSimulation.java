@@ -33,10 +33,10 @@ import static io.gatling.javaapi.http.HttpDsl.status;
  */
 public class KneeDetectionSimulation extends Simulation {
 
-    private static final int START_USERS = 10;
-    private static final int STEP_USERS = 10;
+    private static final int START_USERS = 100;
+    private static final int STEP_USERS = 200;
     private static final int STEP_DURATION_SECONDS = 15;
-    private static final int MAX_STEPS = 10;
+    private static final int MAX_STEPS = 5;
 
     private final String baseUrl = System.getProperty("baseUrl", "http://localhost:8080");
 

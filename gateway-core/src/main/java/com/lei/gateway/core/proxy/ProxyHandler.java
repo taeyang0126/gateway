@@ -88,6 +88,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
     // H2 模式状态
     private int streamId;
+    private volatile boolean streamReserved;
     private Channel h2Channel;
     private Http2FrameStream h2FrameStream;
     private H2ResponseDemuxHandler demuxHandler;
@@ -243,8 +244,8 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         ChannelPoolEntry entry = channel.attr(ChannelPoolEntry.POOL_ENTRY_KEY).get();
         H2ResponseDemuxHandler demux = channel.pipeline().get(H2ResponseDemuxHandler.class);
 
-        // 1. MAX_CONCURRENT_STREAMS 流控检查
-        if (!demux.canCreateStream()) {
+        // 1. 原子性检查并预占 stream 槽位（CAS 消除 check-then-act 竞态）
+        if (!demux.tryReserveStream()) {
             connectionPool.release(channel);
             if (++acquireRetryCount > MAX_ACQUIRE_RETRIES) {
                 log.warn("traceId={} 所有连接 MAX_CONCURRENT_STREAMS 已满，重试 {} 次后放弃",
@@ -256,10 +257,13 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             reacquire(ctx, upstreamRequest);
             return;
         }
+        streamReserved = true;
 
         // 2. 分配 streamId（溢出检查——与 codec 内部自增同步）
         int sid = entry.nextStreamId();
         if (sid == -1) {
+            demux.decrementActiveStream();
+            streamReserved = false;
             connectionPool.retire(channel);
             reacquire(ctx, upstreamRequest);
             return;
@@ -270,11 +274,10 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                 .get(Http2FrameCodec.class);
         Http2FrameStream frameStream = Http2FrameCodecAccess.newStream(codec);
 
-        // 4. 保存引用
+        // 4. 保存引用（保持 connectingToUpstream = true，直到 streamId 分配完成）
         this.h2Channel = channel;
         this.h2FrameStream = frameStream;
         this.demuxHandler = demux;
-        connectingToUpstream = false;
 
         // 5. 构造 H2 HEADERS
         long contentLength = HttpUtil.getContentLength(upstreamRequest, -1L);
@@ -282,7 +285,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         // 仅凭请求头判断是否有 body，不依赖 pendingContent 状态（acquire 可能比 body 到达更快）
         boolean endStream = !chunked && contentLength <= 0;
 
-        // 6. 归还连接（独占结束）——在写帧之前归还，因为写帧会切到 H2 event loop
+        // 6. 归还连接（独占结束）——槽位已在步骤 1 原子预占
         connectionPool.release(channel);
         this.headersEndStream = endStream;
 
@@ -303,38 +306,74 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         }
         final Queue<HttpContent> pendingToWrite = buffered;
 
-        channel.eventLoop().execute(() -> {
-            // 写 HEADERS 帧——通过 channel.write() 让消息经过 Http2FrameCodec.write() 处理
-            Http2Headers h2Headers = H2HeaderConverter.toH2Headers(upstreamRequest);
-            DefaultHttp2HeadersFrame headersFrame =
-                    new DefaultHttp2HeadersFrame(h2Headers, endStream);
-            headersFrame.stream(frameStream);
-            channel.write(headersFrame).addListener(future -> {
-                if (!future.isSuccess()) {
-                    log.error("traceId={} 写 HEADERS 帧失败, streamId={}",
-                            traceId, streamId, future.cause());
-                    demux.remove(streamId);
-                    ctx.channel().eventLoop().execute(() ->
-                            sendErrorAndCleanup(ctx, HttpResponseStatus.BAD_GATEWAY,
-                                    "Failed to write H2 HEADERS to upstream"));
+        try {
+            channel.eventLoop().execute(() -> {
+                // 写 HEADERS 帧——通过 channel.write() 让消息经过 Http2FrameCodec.write() 处理
+                // codec 在 write 时同步分配 stream ID，write 完成后 frameStream.id() 才有值
+                Http2Headers h2Headers = H2HeaderConverter.toH2Headers(upstreamRequest);
+                DefaultHttp2HeadersFrame headersFrame =
+                        new DefaultHttp2HeadersFrame(h2Headers, endStream);
+                headersFrame.stream(frameStream);
+                channel.write(headersFrame).addListener(future -> {
+                    if (!future.isSuccess()) {
+                        // write 完成后 codec 已分配 streamId，用 frameStream.id() 获取
+                        int failedStreamId = frameStream.id();
+                        log.error("traceId={} 写 HEADERS 帧失败, streamId={}",
+                                traceId, failedStreamId, future.cause());
+                        if (failedStreamId > 0) {
+                            demux.remove(failedStreamId);
+                        } else {
+                            // codec 未分配 ID（极端情况），直接归还预占的槽位
+                            demux.decrementActiveStream();
+                        }
+                        streamReserved = false;
+                        ctx.channel().eventLoop().execute(() ->
+                                sendErrorAndCleanup(ctx, HttpResponseStatus.BAD_GATEWAY,
+                                        "Failed to write H2 HEADERS to upstream"));
+                    }
+                });
+
+                // codec 在 write 时同步分配了 stream ID，获取并注册映射
+                this.streamId = frameStream.id();
+                log.debug("traceId={} acquired upstream={} streamId={}",
+                        traceId, channel.id(), streamId);
+                demux.register(streamId, this);
+
+                // 写缓冲的请求体 DATA 帧
+                if (pendingToWrite != null) {
+                    HttpContent content;
+                    while ((content = pendingToWrite.poll()) != null) {
+                        writeDataFrame(content);
+                    }
                 }
+                channel.flush();
+
+                // streamId 已分配，回到客户端 EventLoop 解除缓冲并 drain 新到达的 content
+                ctx.channel().eventLoop().execute(() -> {
+                    connectingToUpstream = false;
+                    if (!headersEndStream && pendingContent != null) {
+                        Queue<HttpContent> latePending = pendingContent;
+                        pendingContent = null;
+                        HttpContent late;
+                        while ((late = latePending.poll()) != null) {
+                            writeDataFrame(late);
+                        }
+                    }
+                });
             });
-
-            // codec 同步分配了 stream ID，获取并注册映射
-            this.streamId = frameStream.id();
-            log.debug("traceId={} acquired upstream={} streamId={}",
-                    traceId, channel.id(), streamId);
-            demux.register(streamId, this);
-
-            // 写缓冲的请求体 DATA 帧
+        } catch (java.util.concurrent.RejectedExecutionException re) {
+            // H2 channel 的 event loop 已关闭，回退预占的 stream 槽位
+            demux.decrementActiveStream();
+            streamReserved = false;
             if (pendingToWrite != null) {
-                HttpContent content;
-                while ((content = pendingToWrite.poll()) != null) {
-                    writeDataFrame(content);
+                HttpContent item;
+                while ((item = pendingToWrite.poll()) != null) {
+                    ReferenceCountUtil.release(item);
                 }
             }
-            channel.flush();
-        });
+            sendErrorAndCleanup(ctx, HttpResponseStatus.BAD_GATEWAY,
+                    "Upstream H2 channel closed before stream creation");
+        }
     }
 
     /**
@@ -445,7 +484,8 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                     io.netty.handler.codec.http.EmptyHttpHeaders.INSTANCE);
             clientCtx.writeAndFlush(fullResponse).addListener(future -> {
                 if (!future.isSuccess()) {
-                    log.error("写出响应头到客户端失败", future.cause());
+                    log.warn("traceId={} 写出响应头到客户端失败（客户端可能已断开）",
+                            traceId, future.cause());
                 }
                 completeRequest(clientCtx);
             });
@@ -477,7 +517,8 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         if (content instanceof LastHttpContent) {
             clientCtx.writeAndFlush(content).addListener(future -> {
                 if (!future.isSuccess()) {
-                    log.error("写出响应到客户端失败", future.cause());
+                    log.warn("traceId={} 写出响应到客户端失败（客户端可能已断开）",
+                            traceId, future.cause());
                 }
                 completeRequest(clientCtx);
             });
@@ -541,8 +582,14 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         if (wasNotCompleted) {
             inFlightTracker.decrement();
         }
-        if (demuxHandler != null && streamId > 0) {
-            demuxHandler.remove(streamId);
+        if (demuxHandler != null) {
+            if (streamId > 0) {
+                demuxHandler.remove(streamId);
+                streamReserved = false;
+            } else if (streamReserved) {
+                demuxHandler.decrementActiveStream();
+                streamReserved = false;
+            }
         }
         releasePendingContent();
         super.channelInactive(ctx);
@@ -581,8 +628,16 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         if (wasNotCompleted) {
             inFlightTracker.decrement();
         }
-        if (demuxHandler != null && streamId > 0) {
-            demuxHandler.remove(streamId);
+        if (demuxHandler != null) {
+            if (streamId > 0) {
+                demuxHandler.remove(streamId);
+                streamReserved = false;
+            } else if (streamReserved) {
+                // tryReserveStream 成功但 streamId 尚未分配（codec 还没 write），
+                // 直接归还预占的槽位，防止 activeStreamCount 泄漏
+                demuxHandler.decrementActiveStream();
+                streamReserved = false;
+            }
         }
         releasePendingContent();
     }

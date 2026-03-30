@@ -68,14 +68,54 @@ public class H2ResponseDemuxHandler extends ChannelInboundHandlerAdapter {
     }
 
     /**
-     * 注册 streamId 到 ProxyHandler 的映射，同时递增活跃计数。
+     * 原子性检查并预占一个 stream 槽位。
+     *
+     * <p>CAS 循环确保 check + increment 不可分割，消除
+     * {@code canCreateStream()} 与 {@code incrementActiveStream()} 之间的竞态窗口。
+     * 如果最终未能成功创建 stream（如 HEADERS 写失败），调用方必须调用
+     * {@link #decrementActiveStream()} 归还槽位。
+     *
+     * @return true 表示成功预占，false 表示已达 maxConcurrentStreams 上限
+     */
+    public boolean tryReserveStream() {
+        while (true) {
+            int current = activeStreamCount.get();
+            if (current >= maxConcurrentStreams) {
+                return false;
+            }
+            if (activeStreamCount.compareAndSet(current, current + 1)) {
+                return true;
+            }
+        }
+    }
+
+    /**
+     * 预占一个 stream 槽位，递增活跃计数。
+     *
+     * @deprecated 使用 {@link #tryReserveStream()} 代替，避免 check-then-act 竞态。
+     */
+    @Deprecated
+    public void incrementActiveStream() {
+        activeStreamCount.incrementAndGet();
+    }
+
+    /**
+     * 归还一个预占的 stream 槽位（未成功创建 stream 时的回退路径）。
+     */
+    public void decrementActiveStream() {
+        activeStreamCount.decrementAndGet();
+    }
+
+    /**
+     * 注册 streamId 到 ProxyHandler 的映射。
+     *
+     * <p>调用前必须已通过 {@link #incrementActiveStream()} 预占槽位。
      *
      * @param streamId H2 stream ID
      * @param handler  处理该 stream 响应的 ProxyHandler
      */
     public void register(int streamId, ProxyHandler handler) {
         streamHandlers.put(streamId, handler);
-        activeStreamCount.incrementAndGet();
     }
 
     /**
@@ -144,7 +184,7 @@ public class H2ResponseDemuxHandler extends ChannelInboundHandlerAdapter {
         Long maxStreams = settingsFrame.settings().maxConcurrentStreams();
         if (maxStreams != null) {
             this.maxConcurrentStreams = maxStreams.intValue();
-            log.debug("更新 MAX_CONCURRENT_STREAMS: {}", this.maxConcurrentStreams);
+            log.info("更新 MAX_CONCURRENT_STREAMS: {}", this.maxConcurrentStreams);
         }
     }
 

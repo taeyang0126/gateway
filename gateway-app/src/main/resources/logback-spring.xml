@@ -1,19 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 
-  <!-- 从 Spring Environment 读取应用名和日志目录，支持外部覆盖 -->
   <springProperty name="LOG_DIR" source="logging.file.path" defaultValue="gateway-app/logs"/>
 
-  <!-- ===== Appenders ===== -->
+  <!-- ===== 基础 Appenders ===== -->
 
-  <!-- 控制台：开发时用，生产可通过 logback 配置关闭 -->
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
       <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %highlight(%5level) [%magenta(%thread)] %cyan(%logger{36}) : %msg%n</pattern>
     </encoder>
   </appender>
 
-  <!-- access.log：仅收录 access logger，按天滚动，保留 30 天 -->
   <appender name="ACCESS_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
     <file>${LOG_DIR}/access.log</file>
     <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
@@ -25,7 +22,6 @@
     </encoder>
   </appender>
 
-  <!-- warn.log：WARN 及以上，所有 logger，按天滚动，保留 30 天 -->
   <appender name="WARN_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
     <file>${LOG_DIR}/warn.log</file>
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
@@ -40,7 +36,6 @@
     </encoder>
   </appender>
 
-  <!-- error.log：ERROR 及以上，所有 logger，按天滚动，保留 30 天 -->
   <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
     <file>${LOG_DIR}/error.log</file>
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
@@ -55,19 +50,57 @@
     </encoder>
   </appender>
 
-  <!-- ===== Loggers ===== -->
+  <!-- ===== 异步 Appenders（所有 profile 共用） ===== -->
 
-  <!-- access logger：写 access.log + 控制台，不向上传播（不进 warn/error.log） -->
-  <logger name="access" level="INFO" additivity="false">
-    <appender-ref ref="ACCESS_FILE"/>
-    <appender-ref ref="CONSOLE"/>
-  </logger>
-
-  <!-- root：控制台 + warn.log + error.log -->
-  <root level="INFO">
-    <appender-ref ref="CONSOLE"/>
+  <appender name="ASYNC_WARN_FILE" class="ch.qos.logback.classic.AsyncAppender">
+    <queueSize>1024</queueSize>
+    <discardingThreshold>0</discardingThreshold>
+    <neverBlock>true</neverBlock>
     <appender-ref ref="WARN_FILE"/>
+  </appender>
+
+  <appender name="ASYNC_ERROR_FILE" class="ch.qos.logback.classic.AsyncAppender">
+    <queueSize>1024</queueSize>
+    <discardingThreshold>0</discardingThreshold>
+    <neverBlock>true</neverBlock>
     <appender-ref ref="ERROR_FILE"/>
-  </root>
+  </appender>
+
+  <appender name="ASYNC_ACCESS_FILE" class="ch.qos.logback.classic.AsyncAppender">
+    <queueSize>1024</queueSize>
+    <discardingThreshold>0</discardingThreshold>
+    <neverBlock>true</neverBlock>
+    <appender-ref ref="ACCESS_FILE"/>
+  </appender>
+
+  <!-- ===== 默认 profile（开发）：控制台 + 异步文件 ===== -->
+  <springProfile name="!perf">
+
+    <logger name="access" level="INFO" additivity="false">
+      <appender-ref ref="ASYNC_ACCESS_FILE"/>
+      <appender-ref ref="CONSOLE"/>
+    </logger>
+
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+      <appender-ref ref="ASYNC_WARN_FILE"/>
+      <appender-ref ref="ASYNC_ERROR_FILE"/>
+    </root>
+
+  </springProfile>
+
+  <!-- ===== perf profile：仅异步文件，无控制台 ===== -->
+  <springProfile name="perf">
+
+    <logger name="access" level="INFO" additivity="false">
+      <appender-ref ref="ASYNC_ACCESS_FILE"/>
+    </logger>
+
+    <root level="INFO">
+      <appender-ref ref="ASYNC_WARN_FILE"/>
+      <appender-ref ref="ASYNC_ERROR_FILE"/>
+    </root>
+
+  </springProfile>
 
 </configuration>

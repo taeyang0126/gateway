@@ -82,6 +82,7 @@ class H2ResponseDemuxHandlerPropertyTest {
 
         for (int id : ids) {
             ProxyHandler ph = mockProxyHandler();
+            handler.incrementActiveStream();
             handler.register(id, ph);
             registered.put(id, ph);
             assertThat(handler.activeStreamCount())
@@ -116,6 +117,7 @@ class H2ResponseDemuxHandlerPropertyTest {
         List<Integer> ids = generateStreamIds(streamCount);
 
         for (int id : ids) {
+            handler.incrementActiveStream();
             handler.register(id, mockProxyHandler());
         }
 
@@ -151,6 +153,7 @@ class H2ResponseDemuxHandlerPropertyTest {
             assertThat(handler.canCreateStream())
                     .as("注册 %d 个 stream 后 canCreateStream (max=%d)", ii, maxStreams)
                     .isEqualTo(expectedCanCreate);
+            handler.incrementActiveStream();
             handler.register(ii * 2 + 1, mockProxyHandler());
         }
 
@@ -195,6 +198,7 @@ class H2ResponseDemuxHandlerPropertyTest {
                     }
                     for (int ii = 0; ii < idsPerThread; ii++) {
                         int id = nextId.getAndAdd(2);
+                        handler.incrementActiveStream();
                         handler.register(id, mockProxyHandler());
                         allRegistered.add(id);
                     }
@@ -261,6 +265,7 @@ class H2ResponseDemuxHandlerPropertyTest {
         List<ProxyHandler> handlers = new ArrayList<>(streamCount);
         for (int ii = 0; ii < streamCount; ii++) {
             ProxyHandler ph = mockProxyHandler();
+            handler.incrementActiveStream();
             handler.register(ii * 2 + 1, ph);
             handlers.add(ph);
         }
@@ -325,6 +330,7 @@ class H2ResponseDemuxHandlerPropertyTest {
 
         for (int id : ids) {
             ProxyHandler ph = mockProxyHandler();
+            handler.incrementActiveStream();
             handler.register(id, ph);
             registered.put(id, ph);
         }
@@ -380,6 +386,7 @@ class H2ResponseDemuxHandlerPropertyTest {
 
         for (int id : ids) {
             ProxyHandler ph = mockProxyHandler();
+            handler.incrementActiveStream();
             handler.register(id, ph);
             handlers.add(ph);
         }
@@ -411,6 +418,7 @@ class H2ResponseDemuxHandlerPropertyTest {
         List<ProxyHandler> handlers = new ArrayList<>(streamCount);
         for (int ii = 0; ii < streamCount; ii++) {
             ProxyHandler ph = mockProxyHandler();
+            handler.incrementActiveStream();
             handler.register(ii * 2 + 1, ph);
             handlers.add(ph);
         }

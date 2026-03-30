@@ -91,6 +91,7 @@
                     <resultsFolder>${project.build.directory}/gatling</resultsFolder>
                     <runMultipleSimulations>true</runMultipleSimulations>
                     <jvmArgs>
+                        <jvmArg>-XX:-MaxFDLimit</jvmArg>
                         <jvmArg>-DbaseUrl=${gatling.baseUrl}</jvmArg>
                         <jvmArg>-Dusers=${gatling.users}</jvmArg>
                         <jvmArg>-Dduration=${gatling.duration}</jvmArg>

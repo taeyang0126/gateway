@@ -106,7 +106,7 @@ class ProxyHandlerTest {
 
         // mock H2ResponseDemuxHandler
         H2ResponseDemuxHandler demux = mock(H2ResponseDemuxHandler.class);
-        when(demux.canCreateStream()).thenReturn(true);
+        when(demux.tryReserveStream()).thenReturn(true);
 
         // mock Http2FrameCodec（通过 Http2TestHelper 访问 package-private newStream()）
         Http2FrameCodec codec = Http2TestHelper.mockFrameCodec(1);
@@ -306,7 +306,7 @@ class ProxyHandlerTest {
         clientChannel.runPendingTasks();
 
         // 验证流控检查
-        verify(upstream.demux).canCreateStream();
+        verify(upstream.demux).tryReserveStream();
         // 验证 streamId 分配
         verify(upstream.entry).nextStreamId();
         // 验证注册映射（streamId 由 frameStream.id() 返回 = 1）
@@ -333,7 +333,7 @@ class ProxyHandlerTest {
         Route route = createRoute("svc", "/api", "http://localhost:8081");
         MockH2Upstream upstream = mockH2Upstream();
         // 所有连接都满
-        when(upstream.demux.canCreateStream()).thenReturn(false);
+        when(upstream.demux.tryReserveStream()).thenReturn(false);
         when(connectionPool.acquire("localhost", 8081))
                 .thenReturn(CompletableFuture.completedFuture(upstream.channel));
         ProxyHandler handler = createHandler(route);
