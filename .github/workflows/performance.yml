@@ -43,21 +43,21 @@ jobs:
           cache: 'maven'
 
       - name: Build modules
-        run: mvn clean package -pl gateway-example,gateway-app -am -DskipTests -B
+        run: mvn clean package -pl example-upstream,gateway -am -DskipTests -B
 
       - name: Start upstream service
         run: |
-          cd gateway-example
-          java -jar target/gateway-example-*.jar &
-          echo $! > /tmp/gateway-example.pid
+          cd example-upstream
+          java -jar target/example-upstream-*.jar &
+          echo $! > /tmp/example-upstream.pid
           sleep 15
           curl -s http://localhost:8082/api/example/hello || exit 1
 
       - name: Start gateway
         run: |
-          cd gateway-app
-          java -Xmx2g -jar target/gateway-app-*.jar --spring.profiles.active=perf &
-          echo $! > /tmp/gateway-app.pid
+          cd gateway
+          java -Xmx2g -jar target/gateway-*.jar --spring.profiles.active=perf &
+          echo $! > /tmp/gateway.pid
           sleep 10
           curl -s http://localhost:8080/api/example/hello || exit 1
 
@@ -98,5 +98,5 @@ jobs:
       - name: Stop services
         if: always()
         run: |
-          if [ -f /tmp/gateway-app.pid ]; then kill $(cat /tmp/gateway-app.pid) 2>/dev/null; fi
-          if [ -f /tmp/gateway-example.pid ]; then kill $(cat /tmp/gateway-example.pid) 2>/dev/null; fi
+          if [ -f /tmp/gateway.pid ]; then kill $(cat /tmp/gateway.pid) 2>/dev/null; fi
+          if [ -f /tmp/example-upstream.pid ]; then kill $(cat /tmp/example-upstream.pid) 2>/dev/null; fi

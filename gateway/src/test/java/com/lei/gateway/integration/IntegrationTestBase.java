@@ -1,0 +1,246 @@
+package com.lei.gateway.integration;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lei.gateway.config.ConnectionPoolProperties;
+import com.lei.gateway.config.GatewayProperties;
+import com.lei.gateway.config.HealthProperties;
+import com.lei.gateway.config.ObservabilityProperties;
+import com.lei.gateway.config.RequestLimitProperties;
+import com.lei.gateway.config.Route;
+import com.lei.gateway.config.RouteResolver;
+import com.lei.gateway.observability.AccessLogWriter;
+import com.lei.gateway.observability.MetricsCollector;
+import com.lei.gateway.observability.TraceContextHandler;
+import com.lei.gateway.proxy.DrainHandler;
+import com.lei.gateway.proxy.GatewayChannelInitializer;
+import com.lei.gateway.proxy.InFlightRequestTracker;
+import com.lei.gateway.proxy.RoutingContext;
+import com.lei.gateway.proxy.RoutingHandler;
+import com.lei.gateway.proxy.UpstreamConnectionPool;
+import com.lei.gateway.plugin.GatewayPluginProcessor;
+import com.lei.gateway.plugin.PluginChain;
+import com.lei.gateway.plugin.PluginConfigResolver;
+import com.lei.gateway.plugin.PluginRegistry;
+import com.lei.gateway.plugin.RealIpPlugin;
+import com.lei.gateway.plugin.IpAccessPlugin;
+import com.lei.gateway.plugin.IpRateLimitPlugin;
+import com.lei.gateway.plugin.AuthPlugin;
+import com.lei.gateway.plugin.UserRateLimitPlugin;
+import com.lei.gateway.security.CidrMatcher;
+import com.lei.gateway.security.ClientIpResolver;
+import com.lei.gateway.security.JwksKeyProvider;
+import com.lei.gateway.security.JwtAuthProvider;
+import com.lei.gateway.security.LocalTokenBucketRateLimiter;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+
+/**
+ * 集成测试基类，启动真实的 Netty 网关和 mock upstream 服务。
+ */
+abstract class IntegrationTestBase {
+
+    protected MockUpstreamServer upstreamServer;
+    protected int upstreamPort;
+    protected int gatewayPort;
+    protected HttpClient httpClient;
+
+    protected EventLoopGroup bossGroup;
+    protected EventLoopGroup workerGroup;
+    protected Channel serverChannel;
+
+    protected GatewayProperties gatewayProperties;
+    protected RequestLimitProperties requestLimitProperties;
+    protected ConnectionPoolProperties connectionPoolProperties;
+    protected ObservabilityProperties observabilityProperties;
+    protected PrometheusMeterRegistry meterRegistry;
+    protected MetricsCollector metricsCollector;
+    protected AccessLogWriter accessLogWriter;
+    protected UpstreamConnectionPool connectionPool;
+    protected AtomicInteger activeConnections;
+
+    @BeforeEach
+    void setUpBase() throws Exception {
+        // 1. 启动 mock upstream
+        upstreamServer = createUpstreamServer();
+        upstreamServer.start();
+        upstreamPort = upstreamServer.getPort();
+
+        // 2. 配置
+        gatewayProperties = createGatewayProperties();
+        requestLimitProperties = createRequestLimitProperties();
+        connectionPoolProperties = createConnectionPoolProperties();
+        observabilityProperties = createObservabilityProperties();
+
+        // 3. 可观测性
+        meterRegistry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        metricsCollector = new MetricsCollector(
+                meterRegistry, observabilityProperties);
+        accessLogWriter = new AccessLogWriter(observabilityProperties, new ObjectMapper());
+
+        // 4. Netty 基础设施
+        bossGroup = new NioEventLoopGroup(1);
+        workerGroup = new NioEventLoopGroup(2);
+        connectionPool = new UpstreamConnectionPool(
+                connectionPoolProperties, metricsCollector, workerGroup);
+        activeConnections = new AtomicInteger(0);
+
+        // 5. 注册指标
+        metricsCollector.registerActiveConnections(activeConnections);
+        metricsCollector.registerJvmMetrics();
+        metricsCollector.registerNettyMetrics(
+                workerGroup, ByteBufAllocator.DEFAULT);
+
+        // 6. 启动网关
+        startGateway();
+
+        // 7. HTTP 客户端
+        httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
+    }
+
+    @AfterEach
+    void tearDownBase() throws Exception {
+        if (serverChannel != null) {
+            serverChannel.close().syncUninterruptibly();
+        }
+        if (connectionPool != null) {
+            connectionPool.closeAll();
+        }
+        if (bossGroup != null) {
+            bossGroup.shutdownGracefully().sync();
+        }
+        if (workerGroup != null) {
+            workerGroup.shutdownGracefully().sync();
+        }
+        if (upstreamServer != null) {
+            upstreamServer.stop();
+        }
+        if (httpClient != null) {
+            httpClient.close();
+        }
+    }
+
+    /** 子类可覆盖以自定义 upstream 行为。 */
+    protected MockUpstreamServer createUpstreamServer() {
+        return new MockUpstreamServer();
+    }
+
+    private void startGateway() throws InterruptedException {
+        RouteResolver routeResolver = new RouteResolver(gatewayProperties);
+        Instant startTime = Instant.now();
+        TraceContextHandler traceHandler =
+                new TraceContextHandler(observabilityProperties);
+        InFlightRequestTracker inFlightTracker = new InFlightRequestTracker();
+        DrainHandler drainHandler = new DrainHandler();
+        HealthProperties healthProperties =
+                new HealthProperties();
+        RoutingContext routingCtx = new RoutingContext(
+                routeResolver, requestLimitProperties, connectionPool,
+                metricsCollector, accessLogWriter, observabilityProperties,
+                buildPluginProcessor(),
+                inFlightTracker, drainHandler, healthProperties);
+        RoutingHandler routingHandler = new RoutingHandler(
+                routingCtx, activeConnections, startTime);
+        GatewayChannelInitializer initializer =
+                new GatewayChannelInitializer(
+                        traceHandler, routingHandler,
+                        requestLimitProperties, drainHandler);
+
+        ServerBootstrap bootstrap = new ServerBootstrap()
+                .group(bossGroup, workerGroup)
+                .channel(NioServerSocketChannel.class)
+                .option(ChannelOption.SO_BACKLOG, 128)
+                .childOption(ChannelOption.SO_KEEPALIVE, true)
+                .childHandler(initializer);
+
+        serverChannel = bootstrap.bind(0).sync().channel();
+        gatewayPort = ((InetSocketAddress)
+                serverChannel.localAddress()).getPort();
+    }
+
+    private GatewayPluginProcessor buildPluginProcessor() {
+        PluginRegistry registry = new PluginRegistry();
+        CidrMatcher cidrMatcher = new CidrMatcher();
+        registry.register(new RealIpPlugin(new ClientIpResolver(cidrMatcher)));
+        registry.register(new IpAccessPlugin(cidrMatcher));
+        registry.register(new IpRateLimitPlugin(new LocalTokenBucketRateLimiter()));
+        registry.register(new AuthPlugin(new JwtAuthProvider(new JwksKeyProvider())));
+        registry.register(new UserRateLimitPlugin(new LocalTokenBucketRateLimiter()));
+        PluginConfigResolver configResolver = new PluginConfigResolver(registry, new ObjectMapper());
+        PluginChain pluginChain = new PluginChain(metricsCollector);
+        return new GatewayPluginProcessor(registry, configResolver,
+                pluginChain, gatewayProperties.getPlugins());
+    }
+
+    /** 构建网关 URL。 */
+    protected URI gatewayUri(String path) {
+        return URI.create("http://localhost:" + gatewayPort + path);
+    }
+
+    /** 默认网关配置。子类可覆盖。 */
+    protected GatewayProperties createGatewayProperties() {
+        GatewayProperties props = new GatewayProperties();
+        props.setPort(0);
+        List<Route> routes = new ArrayList<>();
+        routes.add(createRoute("example-service",
+                "/api/example/**",
+                "http://localhost:" + upstreamPort));
+        props.setRoutes(routes);
+        return props;
+    }
+
+    /** 默认请求限制配置。子类可覆盖。 */
+    protected RequestLimitProperties createRequestLimitProperties() {
+        RequestLimitProperties props = new RequestLimitProperties();
+        props.setMaxRequestSize(10240L); // 10KB for testing
+        props.setTimeoutSeconds(5);
+        return props;
+    }
+
+    /** 默认连接池配置。子类可覆盖。 */
+    protected ConnectionPoolProperties createConnectionPoolProperties() {
+        ConnectionPoolProperties props = new ConnectionPoolProperties();
+        props.setMaxConnectionsPerHost(5);
+        props.setMaxIdleTimeSeconds(30);
+        props.setSlowConnectThresholdMillis(50);
+        props.setConnectTimeoutMillis(2000);
+        return props;
+    }
+
+    /** 默认可观测性配置。子类可覆盖。 */
+    protected ObservabilityProperties createObservabilityProperties() {
+        ObservabilityProperties props = new ObservabilityProperties();
+        props.setMetricsEnabled(true);
+        props.setAccessLogEnabled(true);
+        props.setTracingEnabled(true);
+        return props;
+    }
+
+    /** 创建路由。 */
+    protected static Route createRoute(String id, String pathPrefix,
+            String upstream) {
+        Route route = new Route();
+        route.setId(id);
+        route.setPathPrefix(pathPrefix);
+        route.setUpstream(upstream);
+        return route;
+    }
+}

@@ -25,7 +25,7 @@ inclusion: always
 ```bash
 mvn clean verify -T 1C -U          # 完整构建
 mvn clean verify -T 1C '-Dsurefire.excludes=**/*IntegrationTest.java'  # 跳过集成测试
-mvn test -pl gateway-core           # 单模块
+mvn test -pl gateway           # 单模块
 mvn checkstyle:check                # 仅 Checkstyle
 ```
 

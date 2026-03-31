@@ -10,11 +10,10 @@ ulimit -n 65536
 mvn install -DskipTests
 
 # 终端1：启动上游服务
-mvn spring-boot:run -pl gateway-example \
-  -Dspring-boot.run.jvmArguments="-Xms512m -Xmx512m"
+mvn spring-boot:run -pl example-upstream -Dspring-boot.run.jvmArguments="-Xms512m -Xmx512m"
 
 # 终端2：启动网关（perf profile：连接池 20、异步日志、关闭控制台输出）
-mvn spring-boot:run -pl gateway-app \
+mvn spring-boot:run -pl gateway \
   -Dspring-boot.run.jvmArguments="-Xms1g -Xmx1g" \
   -Dspring-boot.run.arguments="--spring.profiles.active=perf"
 ```
@@ -25,7 +24,6 @@ mvn spring-boot:run -pl gateway-app \
 
 ```bash
 # 第1步：探测膝点（必须先跑，约 5~10 分钟）
-# 膝点 = 再加负载延迟就暴涨的临界 RPS，结果写入 baseline.json
 mvn gatling:test -pl gateway-perf \
   -Dgatling.simulationClass=com.lei.gateway.perf.simulation.KneeDetectionSimulation
 
@@ -94,7 +92,7 @@ mvn gatling:test -pl gateway-perf \
 
 ```bash
 # 1. 构建 JAR
-mvn package -pl gateway-example,gateway-app,auth-jwt-example -DskipTests
+mvn package -pl example-upstream,gateway,example-auth -DskipTests
 
 # 2. 启动容器
 cd gateway-perf
@@ -135,32 +133,34 @@ Docker bridge 网络有额外开销，`targetRps` 建议设 3000（本地回环�
 压测期间网关和上游的 WARN/ERROR 日志自动写入项目内：
 
 ```bash
-cat gateway-app/gateway-app/logs/error.log
-cat gateway-app/gateway-app/logs/warn.log
-cat gateway-example/gateway-example/logs/warn.log
+cat gateway/gateway/logs/error.log
+cat gateway/gateway/logs/warn.log
+cat example-upstream/example-upstream/logs/warn.log
 ```
 
 常见错误速查：
 
-| 日志关键词 | 含义 | 排查方向 |
-|---|---|---|
-| `MAX_CONCURRENT_STREAMS 已满` | 所有 H2 连接的 stream 槽位用完 | 增大 `max-connections-per-host` 或检查 activeStreamCount 是否泄漏 |
-| `H2 stream reset, errorCode=11` | 上游 ENHANCE_YOUR_CALM | Tomcat overhead 计数超限，检查是否有大量异常帧 |
-| `H2 connection closed unexpectedly` | 上游关闭了 H2 连接 | 检查上游日志，可能是 GOAWAY 或 overhead 超限 |
-| `写 DATA 帧失败, streamId=0` | DATA 帧在 streamId 分配前发出 | 网关 bug，检查 connectingToUpstream 时序 |
-| 大量 `503` | 网关过载 | 连接池、并发流、限流配置 |
-| 大量 `502` | 上游不可达或连接失败 | 确认上游服务是否正常运行 |
+
+| 日志关键词                          | 含义                           | 排查方向                                                         |
+| ----------------------------------- | ------------------------------ | ---------------------------------------------------------------- |
+| `MAX_CONCURRENT_STREAMS 已满`       | 所有 H2 连接的 stream 槽位用完 | 增大`max-connections-per-host` 或检查 activeStreamCount 是否泄漏 |
+| `H2 stream reset, errorCode=11`     | 上游 ENHANCE_YOUR_CALM         | Tomcat overhead 计数超限，检查是否有大量异常帧                   |
+| `H2 connection closed unexpectedly` | 上游关闭了 H2 连接             | 检查上游日志，可能是 GOAWAY 或 overhead 超限                     |
+| `写 DATA 帧失败, streamId=0`        | DATA 帧在 streamId 分配前发出  | 网关 bug，检查 connectingToUpstream 时序                         |
+| 大量`503`                           | 网关过载                       | 连接池、并发流、限流配置                                         |
+| 大量`502`                           | 上游不可达或连接失败           | 确认上游服务是否正常运行                                         |
 
 ## 常用参数
 
 通过 `-D参数名=值` 传入：
 
-| 参数 | 默认值 | 说明 |
-|---|---|---|
-| `baseUrl` | `http://localhost:8080` | 网关地址 |
-| `users` | `50` | 开环注入速率（users/sec） |
-| `duration` | `60` | 测试持续秒数 |
-| `targetRps` | `5000` | RPS 断言阈值 |
-| `warmupDuration` | `30` | 预热秒数 |
-| `skipWarmup` | `false` | 跳过预热（数据含 JIT 噪声） |
-| `updateBaseline` | `false` | 强制覆盖 baseline.json |
+
+| 参数             | 默认值                  | 说明                        |
+| ---------------- | ----------------------- | --------------------------- |
+| `baseUrl`        | `http://localhost:8080` | 网关地址                    |
+| `users`          | `50`                    | 开环注入速率（users/sec）   |
+| `duration`       | `60`                    | 测试持续秒数                |
+| `targetRps`      | `5000`                  | RPS 断言阈值                |
+| `warmupDuration` | `30`                    | 预热秒数                    |
+| `skipWarmup`     | `false`                 | 跳过预热（数据含 JIT 噪声） |
+| `updateBaseline` | `false`                 | 强制覆盖 baseline.json      |

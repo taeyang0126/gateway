@@ -1,11 +1,11 @@
 services:
-  gateway-example:
+  example-upstream:
     image: eclipse-temurin:21-jre
     working_dir: /app
     volumes:
-      - ../gateway-example/target:/app
+      - ../example-upstream/target:/app
     command: >
-      java -jar gateway-example-1.0.0-SNAPSHOT.jar
+      java -jar example-upstream-1.0.0-SNAPSHOT.jar
     ports:
       - "8082:8082"
     healthcheck:
@@ -14,72 +14,72 @@ services:
       timeout: 3s
       retries: 10
 
-  gateway-app:
+  gateway:
     image: eclipse-temurin:21-jre
     working_dir: /app
     volumes:
-      - ../gateway-app/target:/app
-      - ../gateway-app/src/main/resources:/app/config
+      - ../gateway/target:/app
+      - ../gateway/src/main/resources:/app/config
     command: >
       java
       -Xmx3g -XX:+UseG1GC -XX:+FlightRecorder
-      -jar gateway-app-1.0.0-SNAPSHOT.jar
+      -jar gateway-1.0.0-SNAPSHOT.jar
       --spring.profiles.active=perf
       --spring.config.additional-location=file:/app/config/
-      --gateway.routes[0].upstream=http://gateway-example:8082
-      --gateway.routes[1].upstream=http://gateway-example:8082
-      --gateway.routes[3].upstream=http://gateway-example:8082
-      --gateway.routes[4].upstream=http://gateway-example:8082
-      --gateway.routes[5].upstream=http://gateway-example:8082
-      --gateway.routes[6].upstream=http://gateway-example:8082
-      --gateway.routes[7].upstream=http://gateway-example:8082
-      --gateway.routes[8].upstream=http://gateway-example:8082
-      --gateway.routes[9].upstream=http://gateway-example:8082
-      --gateway.routes[10].upstream=http://gateway-example:8082
-      --gateway.routes[11].upstream=http://gateway-example:8082
-      --gateway.routes[12].upstream=http://gateway-example:8082
-      --gateway.routes[13].upstream=http://gateway-example:8082
-      --gateway.routes[14].upstream=http://gateway-example:8082
-      --gateway.routes[15].upstream=http://gateway-example:8082
-      --gateway.routes[16].upstream=http://gateway-example:8082
-      --gateway.routes[17].upstream=http://gateway-example:8082
-      --gateway.routes[18].upstream=http://gateway-example:8082
-      --gateway.routes[19].upstream=http://gateway-example:8082
-      --gateway.routes[20].upstream=http://gateway-example:8082
-      --gateway.routes[21].upstream=http://gateway-example:8082
-      --gateway.routes[22].upstream=http://gateway-example:8082
-      --gateway.routes[23].upstream=http://gateway-example:8082
-      --gateway.routes[24].upstream=http://gateway-example:8082
-      --gateway.routes[25].upstream=http://gateway-example:8082
-      --gateway.routes[26].upstream=http://gateway-example:8082
-      --gateway.routes[27].upstream=http://gateway-example:8082
-      --gateway.routes[28].upstream=http://gateway-example:8082
-      --gateway.routes[29].upstream=http://gateway-example:8082
-      --gateway.routes[30].upstream=http://gateway-example:8082
-      --gateway.routes[31].upstream=http://gateway-example:8082
-      --gateway.routes[32].upstream=http://gateway-example:8082
-      --gateway.routes[33].upstream=http://gateway-example:8082
-      --gateway.routes[34].upstream=http://gateway-example:8082
-      --gateway.routes[35].upstream=http://gateway-example:8082
-      --gateway.routes[36].upstream=http://gateway-example:8082
-      --gateway.routes[37].upstream=http://gateway-example:8082
-      --gateway.routes[38].upstream=http://gateway-example:8082
-      --gateway.routes[39].upstream=http://gateway-example:8082
-      --gateway.routes[40].upstream=http://gateway-example:8082
-      --gateway.routes[41].upstream=http://gateway-example:8082
-      --gateway.routes[42].upstream=http://gateway-example:8082
-      --gateway.routes[43].upstream=http://gateway-example:8082
-      --gateway.routes[44].upstream=http://gateway-example:8082
-      --gateway.routes[45].upstream=http://gateway-example:8082
-      --gateway.routes[46].upstream=http://gateway-example:8082
-      --gateway.routes[47].upstream=http://gateway-example:8082
-      --gateway.routes[48].upstream=http://gateway-example:8082
-      --gateway.routes[49].upstream=http://gateway-example:8082
-      --gateway.routes[50].upstream=http://gateway-example:8082
-      --gateway.routes[51].upstream=http://gateway-example:8082
-      --gateway.routes[52].upstream=http://gateway-example:8082
+      --gateway.routes[0].upstream=http://example-upstream:8082
+      --gateway.routes[1].upstream=http://example-upstream:8082
+      --gateway.routes[3].upstream=http://example-upstream:8082
+      --gateway.routes[4].upstream=http://example-upstream:8082
+      --gateway.routes[5].upstream=http://example-upstream:8082
+      --gateway.routes[6].upstream=http://example-upstream:8082
+      --gateway.routes[7].upstream=http://example-upstream:8082
+      --gateway.routes[8].upstream=http://example-upstream:8082
+      --gateway.routes[9].upstream=http://example-upstream:8082
+      --gateway.routes[10].upstream=http://example-upstream:8082
+      --gateway.routes[11].upstream=http://example-upstream:8082
+      --gateway.routes[12].upstream=http://example-upstream:8082
+      --gateway.routes[13].upstream=http://example-upstream:8082
+      --gateway.routes[14].upstream=http://example-upstream:8082
+      --gateway.routes[15].upstream=http://example-upstream:8082
+      --gateway.routes[16].upstream=http://example-upstream:8082
+      --gateway.routes[17].upstream=http://example-upstream:8082
+      --gateway.routes[18].upstream=http://example-upstream:8082
+      --gateway.routes[19].upstream=http://example-upstream:8082
+      --gateway.routes[20].upstream=http://example-upstream:8082
+      --gateway.routes[21].upstream=http://example-upstream:8082
+      --gateway.routes[22].upstream=http://example-upstream:8082
+      --gateway.routes[23].upstream=http://example-upstream:8082
+      --gateway.routes[24].upstream=http://example-upstream:8082
+      --gateway.routes[25].upstream=http://example-upstream:8082
+      --gateway.routes[26].upstream=http://example-upstream:8082
+      --gateway.routes[27].upstream=http://example-upstream:8082
+      --gateway.routes[28].upstream=http://example-upstream:8082
+      --gateway.routes[29].upstream=http://example-upstream:8082
+      --gateway.routes[30].upstream=http://example-upstream:8082
+      --gateway.routes[31].upstream=http://example-upstream:8082
+      --gateway.routes[32].upstream=http://example-upstream:8082
+      --gateway.routes[33].upstream=http://example-upstream:8082
+      --gateway.routes[34].upstream=http://example-upstream:8082
+      --gateway.routes[35].upstream=http://example-upstream:8082
+      --gateway.routes[36].upstream=http://example-upstream:8082
+      --gateway.routes[37].upstream=http://example-upstream:8082
+      --gateway.routes[38].upstream=http://example-upstream:8082
+      --gateway.routes[39].upstream=http://example-upstream:8082
+      --gateway.routes[40].upstream=http://example-upstream:8082
+      --gateway.routes[41].upstream=http://example-upstream:8082
+      --gateway.routes[42].upstream=http://example-upstream:8082
+      --gateway.routes[43].upstream=http://example-upstream:8082
+      --gateway.routes[44].upstream=http://example-upstream:8082
+      --gateway.routes[45].upstream=http://example-upstream:8082
+      --gateway.routes[46].upstream=http://example-upstream:8082
+      --gateway.routes[47].upstream=http://example-upstream:8082
+      --gateway.routes[48].upstream=http://example-upstream:8082
+      --gateway.routes[49].upstream=http://example-upstream:8082
+      --gateway.routes[50].upstream=http://example-upstream:8082
+      --gateway.routes[51].upstream=http://example-upstream:8082
+      --gateway.routes[52].upstream=http://example-upstream:8082
     ports:
       - "8080:8080"
     depends_on:
-      gateway-example:
+      example-upstream:
         condition: service_healthy

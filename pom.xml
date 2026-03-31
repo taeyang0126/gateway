@@ -13,10 +13,9 @@
 
     <modules>
         <module>gateway-pool</module>
-        <module>gateway-core</module>
-        <module>gateway-app</module>
-        <module>gateway-example</module>
-        <module>auth-jwt-example</module>
+        <module>gateway</module>
+        <module>example-upstream</module>
+        <module>example-auth</module>
         <module>gateway-perf</module>
     </modules>
 
@@ -69,7 +68,7 @@
             </dependency>
             <dependency>
                 <groupId>com.lei</groupId>
-                <artifactId>gateway-core</artifactId>
+                <artifactId>gateway</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

@@ -4,7 +4,7 @@
 
 ## 定位
 
-提供与框架无关的高性能资源池实现，仅依赖 SLF4J，不依赖 Spring 或 Netty。gateway-core 中的上游连接池基于此模块构建。
+提供与框架无关的高性能资源池实现，仅依赖 SLF4J，不依赖 Spring 或 Netty。
 
 ## 核心组件
 

@@ -28,19 +28,18 @@
 | 模块 | 说明 |
 |---|---|
 | `gateway-pool` | 通用并发资源池（无 Spring 依赖），灵感来自 HikariCP ConcurrentBag |
-| `gateway-core` | 网关核心：路由、代理转发、连接池、安全、可观测性、优雅停机 |
-| `gateway-app` | 网关启动入口（端口 8080） |
-| `gateway-example` | Mock 上游服务（端口 8082），用于本地开发测试 |
-| `auth-jwt-example` | JWT 认证示例服务（端口 8091），签发/验证 JWT token |
+| `gateway` | 网关本体：路由、代理转发、连接池、安全、可观测性、优雅停机（端口 8080） |
+| `example-upstream` | Mock 上游服务（端口 8082），用于本地开发测试 |
+| `example-auth` | JWT 认证示例服务（端口 8091），签发/验证 JWT token |
 
 ## 快速开始
 
 ```bash
 # 终端 1：启动 mock 上游服务
-mvn spring-boot:run -pl gateway-example
+mvn spring-boot:run -pl example-upstream
 
 # 终端 2：启动网关
-mvn spring-boot:run -pl gateway-app
+mvn spring-boot:run -pl gateway
 ```
 
 网关监听 `8080`，将 `/api/example/**` 路由到 `http://localhost:8082`。
@@ -56,10 +55,10 @@ mvn clean test -Dexclude="**/*IntegrationTest.java" -T 1C
 
 # 单模块测试
 mvn test -pl gateway-pool
-mvn test -pl gateway-core
+mvn test -pl gateway
 ```
 
-覆盖率报告：`gateway-core/target/site/jacoco/index.html`
+覆盖率报告：`gateway/target/site/jacoco/index.html`
 
 ## 代码质量
 

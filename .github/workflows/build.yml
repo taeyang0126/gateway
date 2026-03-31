@@ -23,17 +23,17 @@ jobs:
           cache: 'maven'
 
       - name: Package (skip tests)
-        run: mvn clean package -pl gateway-app -am -DskipTests -B
+        run: mvn clean package -pl gateway -am -DskipTests -B
 
       - name: Prepare distribution
         run: |
           mkdir -p dist/config
-          cp gateway-app/target/gateway-app-*.jar dist/gateway-app.jar
-          cp gateway-app/src/main/resources/application.yml dist/config/application.yml
+          cp gateway/target/gateway-*.jar dist/gateway.jar
+          cp gateway/src/main/resources/application.yml dist/config/application.yml
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gateway-app
+          name: gateway
           path: dist/
           retention-days: 30

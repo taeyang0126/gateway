@@ -146,7 +146,7 @@ public enum PluginResultType {
 ```java
 package com.lei.gateway.core.plugin;
 
-import com.lei.gateway.core.config.Route;
+import config.com.lei.gateway.Route;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;
 import java.util.Map;
@@ -204,7 +204,7 @@ public class PluginConfig {
 ```java
 package com.lei.gateway.core.plugin;
 
-import com.lei.gateway.core.observability.MetricsCollector;
+import observability.com.lei.gateway.MetricsCollector;
 import java.util.List;
 
 public class PluginChain {
@@ -271,7 +271,7 @@ public class PluginRegistry {
 ```java
 package com.lei.gateway.core.plugin;
 
-import com.lei.gateway.core.config.Route;
+import config.com.lei.gateway.Route;
 import java.util.List;
 import java.util.Map;
 
@@ -312,8 +312,8 @@ public class PluginConfigEntry {
 ```java
 package com.lei.gateway.core.plugin;
 
-import com.lei.gateway.core.config.Route;
-import com.lei.gateway.core.observability.MetricsCollector;
+import config.com.lei.gateway.Route;
+import observability.com.lei.gateway.MetricsCollector;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;
 
