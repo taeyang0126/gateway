@@ -112,7 +112,7 @@ class HealthEndpointPropertyTest {
                 routeResolver, requestLimitProperties, null,
                 metricsCollector, accessLogWriter, observabilityProperties,
                 new GatewayPluginProcessor(new PluginRegistry(),
-                        new PluginConfigResolver(new PluginRegistry()),
+                        new PluginConfigResolver(new PluginRegistry(), new ObjectMapper()),
                         new PluginChain(metricsCollector), List.of()),
                 inFlightTracker, drainHandler, healthProperties);
         return new RoutingHandler(routingCtx,

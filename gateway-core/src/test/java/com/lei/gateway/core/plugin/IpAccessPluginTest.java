@@ -36,8 +36,8 @@ class IpAccessPluginTest {
     @Test
     void denyListBlocksMatchingIp() {
         PluginContext context = createContext("192.168.1.100");
-        PluginConfig config = new PluginConfig("ip-access", true, 2000,
-                Map.of("deny-list", List.of("192.168.1.100")));
+        PluginConfig config = PluginConfig.of("ip-access", true, 2000,
+                Map.of("deny-list", List.of("192.168.1.100")), IpAccessPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -49,9 +49,9 @@ class IpAccessPluginTest {
     @Test
     void denyListTakesPriorityOverAllowList() {
         PluginContext context = createContext("192.168.1.100");
-        PluginConfig config = new PluginConfig("ip-access", true, 2000,
+        PluginConfig config = PluginConfig.of("ip-access", true, 2000,
                 Map.of("deny-list", List.of("192.168.1.0/24"),
-                        "allow-list", List.of("192.168.1.0/24")));
+                        "allow-list", List.of("192.168.1.0/24")), IpAccessPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -62,8 +62,8 @@ class IpAccessPluginTest {
     @Test
     void allowListBlocksNonMatchingIp() {
         PluginContext context = createContext("10.0.0.1");
-        PluginConfig config = new PluginConfig("ip-access", true, 2000,
-                Map.of("allow-list", List.of("192.168.1.0/24")));
+        PluginConfig config = PluginConfig.of("ip-access", true, 2000,
+                Map.of("allow-list", List.of("192.168.1.0/24")), IpAccessPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -75,8 +75,8 @@ class IpAccessPluginTest {
     @Test
     void allowListPermitsMatchingIp() {
         PluginContext context = createContext("192.168.1.50");
-        PluginConfig config = new PluginConfig("ip-access", true, 2000,
-                Map.of("allow-list", List.of("192.168.1.0/24")));
+        PluginConfig config = PluginConfig.of("ip-access", true, 2000,
+                Map.of("allow-list", List.of("192.168.1.0/24")), IpAccessPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -86,9 +86,9 @@ class IpAccessPluginTest {
     @Test
     void shadowModeDenyReturnsContine() {
         PluginContext context = createContext("192.168.1.100");
-        PluginConfig config = new PluginConfig("ip-access", true, 2000,
+        PluginConfig config = PluginConfig.of("ip-access", true, 2000,
                 Map.of("shadow", true,
-                        "deny-list", List.of("192.168.1.100")));
+                        "deny-list", List.of("192.168.1.100")), IpAccessPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -98,9 +98,9 @@ class IpAccessPluginTest {
     @Test
     void shadowModeNotInAllowListReturnsContinue() {
         PluginContext context = createContext("10.0.0.1");
-        PluginConfig config = new PluginConfig("ip-access", true, 2000,
+        PluginConfig config = PluginConfig.of("ip-access", true, 2000,
                 Map.of("shadow", true,
-                        "allow-list", List.of("192.168.1.0/24")));
+                        "allow-list", List.of("192.168.1.0/24")), IpAccessPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -110,9 +110,9 @@ class IpAccessPluginTest {
     @Test
     void disabledReturnsContinue() {
         PluginContext context = createContext("192.168.1.100");
-        PluginConfig config = new PluginConfig("ip-access", true, 2000,
+        PluginConfig config = PluginConfig.of("ip-access", true, 2000,
                 Map.of("enabled", false,
-                        "deny-list", List.of("192.168.1.100")));
+                        "deny-list", List.of("192.168.1.100")), IpAccessPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -122,7 +122,7 @@ class IpAccessPluginTest {
     @Test
     void emptyListsAllowAll() {
         PluginContext context = createContext("10.0.0.1");
-        PluginConfig config = new PluginConfig("ip-access", true, 2000, Map.of());
+        PluginConfig config = PluginConfig.of("ip-access", true, 2000, Map.of(), IpAccessPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 

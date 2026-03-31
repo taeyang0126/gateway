@@ -2,6 +2,7 @@ package com.lei.gateway.core.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lei.gateway.core.config.PluginConfigEntry;
 import com.lei.gateway.core.config.Route;
 import java.util.List;
@@ -24,7 +25,7 @@ class PluginConfigResolverTest {
         registry.register(stubPlugin("ip-access", PluginPhase.REQUEST, 2000));
         registry.register(stubPlugin("auth", PluginPhase.REQUEST, 4000));
 
-        resolver = new PluginConfigResolver(registry);
+        resolver = new PluginConfigResolver(registry, new ObjectMapper());
     }
 
     @Test

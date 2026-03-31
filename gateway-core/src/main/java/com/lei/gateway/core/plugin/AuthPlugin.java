@@ -1,12 +1,11 @@
 package com.lei.gateway.core.plugin;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.lei.gateway.core.config.SecurityProperties;
 import com.lei.gateway.core.security.AuthProvider;
 import com.lei.gateway.core.security.AuthenticationResult;
 import com.lei.gateway.core.security.EffectiveSecurityConfig;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.util.Collections;
-import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,37 +47,35 @@ public class AuthPlugin implements Plugin {
     }
 
     @Override
-    public PluginResult execute(PluginContext context, PluginConfig config) {
-        Map<String, Object> configMap = config.getConfig();
-        if (configMap == null) {
-            configMap = Collections.emptyMap();
-        }
+    public Class<?> configType() {
+        return Config.class;
+    }
 
-        boolean enabled = toBoolean(configMap.get("enabled"), true);
-        if (!enabled) {
+    @Override
+    public PluginResult execute(PluginContext context, PluginConfig pluginConfig) {
+        Config cfg = pluginConfig.getTypedConfig(Config.class);
+
+        if (!cfg.enabled) {
             context.setAttribute("authRequired", false);
             context.setAttribute("authPassed", false);
             return PluginResult.doContinue();
         }
 
         context.setAttribute("authRequired", true);
-        boolean shadow = toBoolean(configMap.get("shadow"), false);
-        boolean failClosed = toBoolean(configMap.get("fail-closed"), true);
-
         context.getRequest().headers().remove(USER_ID_HEADER);
 
-        EffectiveSecurityConfig.Auth authConfig = buildAuthConfig(configMap);
+        EffectiveSecurityConfig.Auth authConfig = cfg.toEffectiveAuth();
 
         AuthenticationResult authResult;
         try {
             authResult = authProvider.authenticate(context.getRequest(), authConfig);
         } catch (Exception ex) {
             log.error("认证提供方执行异常 routeId={}", context.getRoute().getId(), ex);
-            if (shadow) {
+            if (cfg.shadow) {
                 context.setAttribute("authPassed", false);
                 return PluginResult.doContinue();
             }
-            if (failClosed) {
+            if (cfg.failClosed) {
                 context.setAttribute("authPassed", false);
                 return PluginResult.shortCircuit(HttpResponseStatus.UNAUTHORIZED,
                         "Unauthorized", NAME, "auth_provider_error", null);
@@ -97,11 +94,11 @@ public class AuthPlugin implements Plugin {
             return PluginResult.doContinue();
         }
 
-        if (shadow) {
+        if (cfg.shadow) {
             context.setAttribute("authPassed", false);
             return PluginResult.doContinue();
         }
-        if (failClosed) {
+        if (cfg.failClosed) {
             context.setAttribute("authPassed", false);
             return PluginResult.shortCircuit(HttpResponseStatus.UNAUTHORIZED,
                     "Unauthorized", NAME, authResult.getReason(), null);
@@ -110,70 +107,212 @@ public class AuthPlugin implements Plugin {
         return PluginResult.doContinue();
     }
 
-    @SuppressWarnings("unchecked")
-    private static EffectiveSecurityConfig.Auth buildAuthConfig(Map<String, Object> configMap) {
-        boolean enabled = toBoolean(configMap.get("enabled"), true);
-        boolean shadow = toBoolean(configMap.get("shadow"), false);
-        boolean failClosed = toBoolean(configMap.get("fail-closed"), true);
+    /**
+     * Auth 插件配置。
+     */
+    public static class Config {
 
-        String typeStr = toString(configMap.get("type"), "JWT");
-        SecurityProperties.AuthType authType = SecurityProperties.AuthType.valueOf(typeStr);
+        private boolean enabled = true;
+        private boolean shadow = false;
 
-        Map<String, Object> tokenExtractorMap =
-                (Map<String, Object>) configMap.getOrDefault("token-extractor", Collections.emptyMap());
-        String tokenHeaderName = toString(tokenExtractorMap.get("token-header-name"), "Authorization");
-        String tokenValuePrefix = toString(tokenExtractorMap.get("token-value-prefix"), "Bearer ");
-        EffectiveSecurityConfig.TokenExtractor tokenExtractor =
-                new EffectiveSecurityConfig.TokenExtractor(tokenHeaderName, tokenValuePrefix);
+        @JsonProperty("fail-closed")
+        private boolean failClosed = true;
 
-        Map<String, Object> providersMap =
-                (Map<String, Object>) configMap.getOrDefault("providers", Collections.emptyMap());
-        Map<String, Object> jwtMap =
-                (Map<String, Object>) providersMap.getOrDefault("jwt", Collections.emptyMap());
+        private String type = "JWT";
 
-        EffectiveSecurityConfig.Jwt jwtConfig = new EffectiveSecurityConfig.Jwt(
-                toString(jwtMap.get("issuer"), null),
-                toString(jwtMap.get("audience"), null),
-                toString(jwtMap.get("public-key"), null),
-                toString(jwtMap.get("jwks-url"), null),
-                toInt(jwtMap.get("jwks-refresh-seconds"), 300),
-                toInt(jwtMap.get("jwks-connect-timeout-millis"), 500),
-                toInt(jwtMap.get("jwks-read-timeout-millis"), 1000));
+        @JsonProperty("token-extractor")
+        private TokenExtractorConfig tokenExtractor = new TokenExtractorConfig();
 
-        EffectiveSecurityConfig.Providers providers =
-                new EffectiveSecurityConfig.Providers(jwtConfig);
+        private ProvidersConfig providers = new ProvidersConfig();
 
-        return new EffectiveSecurityConfig.Auth(
-                enabled, shadow, failClosed, authType, tokenExtractor, providers);
+        /**
+         * 转换为 EffectiveSecurityConfig.Auth 供 AuthProvider 使用。
+         */
+        public EffectiveSecurityConfig.Auth toEffectiveAuth() {
+            SecurityProperties.AuthType authType = SecurityProperties.AuthType.valueOf(type);
+
+            EffectiveSecurityConfig.TokenExtractor te = new EffectiveSecurityConfig.TokenExtractor(
+                    tokenExtractor.tokenHeaderName, tokenExtractor.tokenValuePrefix);
+
+            JwtConfig jc = providers.jwt;
+            EffectiveSecurityConfig.Jwt jwt = new EffectiveSecurityConfig.Jwt(
+                    jc.issuer, jc.audience, jc.publicKey, jc.jwksUrl,
+                    jc.jwksRefreshSeconds, jc.jwksConnectTimeoutMillis, jc.jwksReadTimeoutMillis);
+
+            EffectiveSecurityConfig.Providers pr = new EffectiveSecurityConfig.Providers(jwt);
+            return new EffectiveSecurityConfig.Auth(enabled, shadow, failClosed, authType, te, pr);
+        }
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public boolean isShadow() {
+            return shadow;
+        }
+
+        public void setShadow(boolean shadow) {
+            this.shadow = shadow;
+        }
+
+        public boolean isFailClosed() {
+            return failClosed;
+        }
+
+        public void setFailClosed(boolean failClosed) {
+            this.failClosed = failClosed;
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public void setType(String type) {
+            this.type = type;
+        }
+
+        public TokenExtractorConfig getTokenExtractor() {
+            return tokenExtractor;
+        }
+
+        public void setTokenExtractor(TokenExtractorConfig tokenExtractor) {
+            this.tokenExtractor = tokenExtractor;
+        }
+
+        public ProvidersConfig getProviders() {
+            return providers;
+        }
+
+        public void setProviders(ProvidersConfig providers) {
+            this.providers = providers;
+        }
     }
 
-    private static boolean toBoolean(Object value, boolean defaultValue) {
-        if (value instanceof Boolean boolVal) {
-            return boolVal;
+    /**
+     * Token 提取配置。
+     */
+    public static class TokenExtractorConfig {
+
+        @JsonProperty("token-header-name")
+        private String tokenHeaderName = "Authorization";
+
+        @JsonProperty("token-value-prefix")
+        private String tokenValuePrefix = "Bearer ";
+
+        public String getTokenHeaderName() {
+            return tokenHeaderName;
         }
-        if (value instanceof String str) {
-            return Boolean.parseBoolean(str);
+
+        public void setTokenHeaderName(String tokenHeaderName) {
+            this.tokenHeaderName = tokenHeaderName;
         }
-        return defaultValue;
+
+        public String getTokenValuePrefix() {
+            return tokenValuePrefix;
+        }
+
+        public void setTokenValuePrefix(String tokenValuePrefix) {
+            this.tokenValuePrefix = tokenValuePrefix;
+        }
     }
 
-    private static String toString(Object value, String defaultValue) {
-        if (value instanceof String str) {
-            return str;
+    /**
+     * 认证提供器配置。
+     */
+    public static class ProvidersConfig {
+
+        private JwtConfig jwt = new JwtConfig();
+
+        public JwtConfig getJwt() {
+            return jwt;
         }
-        return defaultValue;
+
+        public void setJwt(JwtConfig jwt) {
+            this.jwt = jwt;
+        }
     }
 
-    private static int toInt(Object value, int defaultValue) {
-        if (value instanceof Integer intVal) {
-            return intVal;
+    /**
+     * JWT 提供器配置。
+     */
+    public static class JwtConfig {
+
+        private String issuer;
+        private String audience;
+
+        @JsonProperty("public-key")
+        private String publicKey;
+
+        @JsonProperty("jwks-url")
+        private String jwksUrl;
+
+        @JsonProperty("jwks-refresh-seconds")
+        private int jwksRefreshSeconds = 300;
+
+        @JsonProperty("jwks-connect-timeout-millis")
+        private int jwksConnectTimeoutMillis = 500;
+
+        @JsonProperty("jwks-read-timeout-millis")
+        private int jwksReadTimeoutMillis = 1000;
+
+        public String getIssuer() {
+            return issuer;
         }
-        if (value instanceof Number number) {
-            return number.intValue();
+
+        public void setIssuer(String issuer) {
+            this.issuer = issuer;
         }
-        if (value instanceof String str && !str.isBlank()) {
-            return Integer.parseInt(str);
+
+        public String getAudience() {
+            return audience;
         }
-        return defaultValue;
+
+        public void setAudience(String audience) {
+            this.audience = audience;
+        }
+
+        public String getPublicKey() {
+            return publicKey;
+        }
+
+        public void setPublicKey(String publicKey) {
+            this.publicKey = publicKey;
+        }
+
+        public String getJwksUrl() {
+            return jwksUrl;
+        }
+
+        public void setJwksUrl(String jwksUrl) {
+            this.jwksUrl = jwksUrl;
+        }
+
+        public int getJwksRefreshSeconds() {
+            return jwksRefreshSeconds;
+        }
+
+        public void setJwksRefreshSeconds(int jwksRefreshSeconds) {
+            this.jwksRefreshSeconds = jwksRefreshSeconds;
+        }
+
+        public int getJwksConnectTimeoutMillis() {
+            return jwksConnectTimeoutMillis;
+        }
+
+        public void setJwksConnectTimeoutMillis(int jwksConnectTimeoutMillis) {
+            this.jwksConnectTimeoutMillis = jwksConnectTimeoutMillis;
+        }
+
+        public int getJwksReadTimeoutMillis() {
+            return jwksReadTimeoutMillis;
+        }
+
+        public void setJwksReadTimeoutMillis(int jwksReadTimeoutMillis) {
+            this.jwksReadTimeoutMillis = jwksReadTimeoutMillis;
+        }
     }
 }

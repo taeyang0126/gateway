@@ -10,6 +10,7 @@ import com.lei.gateway.core.plugin.IpRateLimitPlugin;
 import com.lei.gateway.core.plugin.Plugin;
 import com.lei.gateway.core.plugin.PluginChain;
 import com.lei.gateway.core.plugin.PluginConfigResolver;
+import com.lei.gateway.core.plugin.PluginConfigValidator;
 import com.lei.gateway.core.plugin.PluginRegistry;
 import com.lei.gateway.core.plugin.RealIpPlugin;
 import com.lei.gateway.core.plugin.UserRateLimitPlugin;
@@ -103,8 +104,8 @@ public class GatewayAutoConfiguration {
 
     /** 插件配置解析器。 */
     @Bean
-    public PluginConfigResolver pluginConfigResolver(PluginRegistry pluginRegistry) {
-        return new PluginConfigResolver(pluginRegistry);
+    public PluginConfigResolver pluginConfigResolver(PluginRegistry pluginRegistry, ObjectMapper objectMapper) {
+        return new PluginConfigResolver(pluginRegistry, objectMapper);
     }
 
     /** 网关插件处理器。 */
@@ -117,6 +118,13 @@ public class GatewayAutoConfiguration {
         return new GatewayPluginProcessor(pluginRegistry, configResolver,
                 new PluginChain(metricsCollector),
                 gatewayProperties.getPlugins());
+    }
+
+    /** 启动时校验所有插件配置。 */
+    @Bean
+    public PluginConfigValidator pluginConfigValidator(GatewayProperties gatewayProperties,
+            PluginConfigResolver configResolver) {
+        return new PluginConfigValidator(gatewayProperties, configResolver);
     }
 
     /** CIDR 匹配器。 */

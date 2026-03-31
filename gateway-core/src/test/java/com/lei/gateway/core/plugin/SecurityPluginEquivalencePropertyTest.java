@@ -145,20 +145,21 @@ class SecurityPluginEquivalencePropertyTest {
                 new UserRateLimitPlugin(userEngine));
 
         Map<String, PluginConfig> configs = new HashMap<>();
-        configs.put("real-ip", new PluginConfig("real-ip", true, 1000, Map.of()));
+        configs.put("real-ip", PluginConfig.of("real-ip", true, 1000, Map.of(), RealIpPlugin.Config.class));
 
         Map<String, Object> ipAccessCfg = new HashMap<>();
         ipAccessCfg.put("deny-list", List.of("10.0.0.0/8"));
         if (scenario.hasAllowList) {
             ipAccessCfg.put("allow-list", List.of("192.168.1.0/24"));
         }
-        configs.put("ip-access", new PluginConfig("ip-access", true, 2000, ipAccessCfg));
-        configs.put("ip-rate-limit", new PluginConfig("ip-rate-limit", true, 3000,
-                Map.of("permits-per-second", 100, "burst-capacity", 200)));
-        configs.put("auth", new PluginConfig("auth", true, 4000,
-                Map.of("fail-closed", true)));
-        configs.put("user-rate-limit", new PluginConfig("user-rate-limit", true, 5000,
-                Map.of("permits-per-second", 50, "burst-capacity", 100)));
+        configs.put("ip-access", PluginConfig.of("ip-access", true, 2000, ipAccessCfg,
+                IpAccessPlugin.Config.class));
+        configs.put("ip-rate-limit", PluginConfig.of("ip-rate-limit", true, 3000,
+                Map.of("permits-per-second", 100, "burst-capacity", 200), IpRateLimitPlugin.Config.class));
+        configs.put("auth", PluginConfig.of("auth", true, 4000,
+                Map.of("fail-closed", true), AuthPlugin.Config.class));
+        configs.put("user-rate-limit", PluginConfig.of("user-rate-limit", true, 5000,
+                Map.of("permits-per-second", 50, "burst-capacity", 100), UserRateLimitPlugin.Config.class));
 
         PluginContext context = createPluginContext();
         return chain.execute(plugins, configs, context, "test-route");

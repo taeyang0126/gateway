@@ -13,6 +13,7 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.EventLoop;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -482,12 +483,20 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                     response.protocolVersion(), response.status(),
                     Unpooled.EMPTY_BUFFER, response.headers(),
                     io.netty.handler.codec.http.EmptyHttpHeaders.INSTANCE);
-            clientCtx.writeAndFlush(fullResponse).addListener(future -> {
-                if (!future.isSuccess()) {
-                    log.warn("traceId={} 写出响应头到客户端失败（客户端可能已断开）",
-                            traceId, future.cause());
+            writeToClient(() -> {
+                if (!clientCtx.channel().isActive()) {
+                    ReferenceCountUtil.release(fullResponse);
+                    log.debug("traceId={} 客户端已断开，跳过写出 no-body 响应", traceId);
+                    completeRequest(clientCtx);
+                    return;
                 }
-                completeRequest(clientCtx);
+                clientCtx.writeAndFlush(fullResponse).addListener(future -> {
+                    if (!future.isSuccess()) {
+                        log.warn("traceId={} 写出响应头到客户端失败（客户端可能已断开）",
+                                traceId, future.cause());
+                    }
+                    completeRequest(clientCtx);
+                });
             });
             return;
         }
@@ -500,7 +509,14 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             clientCtx.channel().attr(RoutingHandler.CONNECTION_CLOSE_KEY)
                     .set(Boolean.TRUE);
         }
-        clientCtx.writeAndFlush(response);
+        writeToClient(() -> {
+            if (!clientCtx.channel().isActive()) {
+                ReferenceCountUtil.release(response);
+                log.debug("traceId={} 客户端已断开，跳过写出响应头", traceId);
+                return;
+            }
+            clientCtx.write(response);
+        });
     }
 
     /**
@@ -515,15 +531,46 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         }
         responseBodySize += content.content().readableBytes();
         if (content instanceof LastHttpContent) {
-            clientCtx.writeAndFlush(content).addListener(future -> {
-                if (!future.isSuccess()) {
-                    log.warn("traceId={} 写出响应到客户端失败（客户端可能已断开）",
-                            traceId, future.cause());
+            writeToClient(() -> {
+                if (!clientCtx.channel().isActive()) {
+                    ReferenceCountUtil.release(content);
+                    log.debug("traceId={} 客户端已断开，跳过写出响应体", traceId);
+                    completeRequest(clientCtx);
+                    return;
                 }
-                completeRequest(clientCtx);
+                clientCtx.writeAndFlush(content).addListener(future -> {
+                    if (!future.isSuccess()) {
+                        log.warn("traceId={} 写出响应到客户端失败（客户端可能已断开）",
+                                traceId, future.cause());
+                    }
+                    completeRequest(clientCtx);
+                });
             });
         } else {
-            clientCtx.writeAndFlush(content);
+            writeToClient(() -> {
+                if (!clientCtx.channel().isActive()) {
+                    ReferenceCountUtil.release(content);
+                    log.debug("traceId={} 客户端已断开，跳过写出响应体块", traceId);
+                    return;
+                }
+                clientCtx.writeAndFlush(content);
+            });
+        }
+    }
+
+    /**
+     * 将写操作切到客户端 EventLoop 执行，避免跨线程写导致的竞态。
+     *
+     * <p>从上游 EventLoop 调用 writeAndFlush 时，每次调用都会独立提交任务到客户端 EventLoop 队列，
+     * 任务之间可能插入其他事件处理（如检测到客户端断开），导致后续 write 失败。
+     * 切到客户端 EventLoop 后，可以在同一任务内先检查 channel 状态再写，消除竞态。
+     */
+    private void writeToClient(Runnable writeTask) {
+        EventLoop clientLoop = clientCtx.channel().eventLoop();
+        if (clientLoop.inEventLoop()) {
+            writeTask.run();
+        } else {
+            clientLoop.execute(writeTask);
         }
     }
 

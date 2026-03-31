@@ -46,8 +46,8 @@ class UserRateLimitPluginTest {
                 .thenReturn(RateLimitResult.allowed());
 
         PluginContext context = createContext("user-123");
-        PluginConfig config = new PluginConfig("user-rate-limit", true, 5000,
-                Map.of("permits-per-second", 50, "burst-capacity", 100));
+        PluginConfig config = PluginConfig.of("user-rate-limit", true, 5000,
+                Map.of("permits-per-second", 50, "burst-capacity", 100), UserRateLimitPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -60,8 +60,8 @@ class UserRateLimitPluginTest {
                 .thenReturn(RateLimitResult.denied(10));
 
         PluginContext context = createContext("user-123");
-        PluginConfig config = new PluginConfig("user-rate-limit", true, 5000,
-                Map.of("permits-per-second", 50, "burst-capacity", 100));
+        PluginConfig config = PluginConfig.of("user-rate-limit", true, 5000,
+                Map.of("permits-per-second", 50, "burst-capacity", 100), UserRateLimitPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -74,8 +74,8 @@ class UserRateLimitPluginTest {
     @Test
     void noUserIdSkipsRateLimit() {
         PluginContext context = createContext(null);
-        PluginConfig config = new PluginConfig("user-rate-limit", true, 5000,
-                Map.of("permits-per-second", 50, "burst-capacity", 100));
+        PluginConfig config = PluginConfig.of("user-rate-limit", true, 5000,
+                Map.of("permits-per-second", 50, "burst-capacity", 100), UserRateLimitPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -86,8 +86,8 @@ class UserRateLimitPluginTest {
     @Test
     void blankUserIdSkipsRateLimit() {
         PluginContext context = createContext("  ");
-        PluginConfig config = new PluginConfig("user-rate-limit", true, 5000,
-                Map.of("permits-per-second", 50, "burst-capacity", 100));
+        PluginConfig config = PluginConfig.of("user-rate-limit", true, 5000,
+                Map.of("permits-per-second", 50, "burst-capacity", 100), UserRateLimitPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -101,8 +101,8 @@ class UserRateLimitPluginTest {
                 .thenReturn(RateLimitResult.denied(5));
 
         PluginContext context = createContext("user-123");
-        PluginConfig config = new PluginConfig("user-rate-limit", true, 5000,
-                Map.of("shadow", true, "permits-per-second", 50, "burst-capacity", 100));
+        PluginConfig config = PluginConfig.of("user-rate-limit", true, 5000,
+                Map.of("shadow", true, "permits-per-second", 50, "burst-capacity", 100), UserRateLimitPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -112,8 +112,8 @@ class UserRateLimitPluginTest {
     @Test
     void disabledReturnsContinue() {
         PluginContext context = createContext("user-123");
-        PluginConfig config = new PluginConfig("user-rate-limit", true, 5000,
-                Map.of("enabled", false));
+        PluginConfig config = PluginConfig.of("user-rate-limit", true, 5000,
+                Map.of("enabled", false), UserRateLimitPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 

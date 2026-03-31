@@ -78,8 +78,8 @@ class AuthPluginTest {
                 .thenReturn(AuthenticationResult.failed("token_expired"));
 
         PluginContext context = createContextWithAuthHeader("Bearer expired-token");
-        PluginConfig config = new PluginConfig("auth", true, 4000,
-                Map.of("shadow", true, "fail-closed", true));
+        PluginConfig config = PluginConfig.of("auth", true, 4000,
+                Map.of("shadow", true, "fail-closed", true), AuthPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -90,8 +90,8 @@ class AuthPluginTest {
     @Test
     void disabledAuthReturnsContinue() {
         PluginContext context = createContextWithAuthHeader("Bearer any-token");
-        PluginConfig config = new PluginConfig("auth", true, 4000,
-                Map.of("enabled", false));
+        PluginConfig config = PluginConfig.of("auth", true, 4000,
+                Map.of("enabled", false), AuthPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -120,8 +120,8 @@ class AuthPluginTest {
                 .thenThrow(new RuntimeException("simulated error"));
 
         PluginContext context = createContextWithAuthHeader("Bearer token");
-        PluginConfig config = new PluginConfig("auth", true, 4000,
-                Map.of("shadow", true));
+        PluginConfig config = PluginConfig.of("auth", true, 4000,
+                Map.of("shadow", true), AuthPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -129,8 +129,8 @@ class AuthPluginTest {
     }
 
     private PluginConfig createAuthConfig() {
-        return new PluginConfig("auth", true, 4000,
-                Map.of("fail-closed", true));
+        return PluginConfig.of("auth", true, 4000,
+                Map.of("fail-closed", true), AuthPlugin.Config.class);
     }
 
     private PluginContext createContextWithAuthHeader(String authHeader) {

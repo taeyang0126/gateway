@@ -522,7 +522,7 @@ class RoutingHandlerTest {
         registry.register(new UserRateLimitPlugin(
                 new com.lei.gateway.core.security.LocalTokenBucketRateLimiter()));
         PluginConfigResolver configResolver = new PluginConfigResolver(
-                registry);
+                registry, new ObjectMapper());
         PluginChain pluginChain = new PluginChain(metricsCollector);
         return new GatewayPluginProcessor(registry, configResolver,
                 pluginChain, gatewayProperties.getPlugins());

@@ -184,7 +184,7 @@ abstract class IntegrationTestBase {
         registry.register(new IpRateLimitPlugin(new LocalTokenBucketRateLimiter()));
         registry.register(new AuthPlugin(new JwtAuthProvider(new JwksKeyProvider())));
         registry.register(new UserRateLimitPlugin(new LocalTokenBucketRateLimiter()));
-        PluginConfigResolver configResolver = new PluginConfigResolver(registry);
+        PluginConfigResolver configResolver = new PluginConfigResolver(registry, new ObjectMapper());
         PluginChain pluginChain = new PluginChain(metricsCollector);
         return new GatewayPluginProcessor(registry, configResolver,
                 pluginChain, gatewayProperties.getPlugins());

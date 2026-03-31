@@ -1,5 +1,6 @@
 package com.lei.gateway.core.plugin;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lei.gateway.core.config.PluginConfigEntry;
 import com.lei.gateway.core.config.Route;
 import java.util.ArrayList;
@@ -21,12 +22,14 @@ public class PluginConfigResolver {
     private static final Logger log = LoggerFactory.getLogger(PluginConfigResolver.class);
 
     private final PluginRegistry pluginRegistry;
+    private final ObjectMapper objectMapper;
 
     /**
      * 创建插件配置解析器。
      */
-    public PluginConfigResolver(PluginRegistry pluginRegistry) {
+    public PluginConfigResolver(PluginRegistry pluginRegistry, ObjectMapper objectMapper) {
         this.pluginRegistry = pluginRegistry;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -74,9 +77,12 @@ public class PluginConfigResolver {
             Plugin plugin = pluginOpt.get();
             int priority = entry.getPriority() != null
                     ? entry.getPriority() : plugin.defaultPriority();
+            Map<String, Object> configMap = entry.getConfig() != null ? entry.getConfig() : Map.of();
+
+            Object typedConfig = bindTypedConfig(plugin, configMap);
+
             PluginConfig config = new PluginConfig(
-                    entry.getName(), true, priority,
-                    entry.getConfig() != null ? entry.getConfig() : Map.of());
+                    entry.getName(), true, priority, configMap, typedConfig);
 
             result.computeIfAbsent(plugin.phase(), ph -> new ArrayList<>()).add(config);
         }
@@ -87,5 +93,20 @@ public class PluginConfigResolver {
         }
 
         return result;
+    }
+
+    /**
+     * 将 Map 配置绑定到插件声明的强类型 POJO。
+     */
+    private Object bindTypedConfig(Plugin plugin, Map<String, Object> configMap) {
+        Class<?> configType = plugin.configType();
+        if (configType == null) {
+            return null;
+        }
+        try {
+            return objectMapper.convertValue(configMap, configType);
+        } catch (IllegalArgumentException ex) {
+            throw new PluginConfigBindException(plugin.name(), ex.getMessage(), ex);
+        }
     }
 }

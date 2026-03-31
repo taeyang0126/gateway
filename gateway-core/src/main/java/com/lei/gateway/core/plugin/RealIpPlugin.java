@@ -1,9 +1,9 @@
 package com.lei.gateway.core.plugin;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.lei.gateway.core.security.ClientIpResolver;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 真实客户端 IP 解析插件。
@@ -40,36 +40,50 @@ public class RealIpPlugin implements Plugin {
     }
 
     @Override
-    public PluginResult execute(PluginContext context, PluginConfig config) {
-        Map<String, Object> configMap = config.getConfig();
-        if (configMap == null) {
-            configMap = Collections.emptyMap();
-        }
+    public Class<?> configType() {
+        return Config.class;
+    }
 
-        @SuppressWarnings("unchecked")
-        List<String> trustedProxies = (List<String>) configMap.get("trusted-proxies");
-        Integer trustedProxyHops = toInteger(configMap.get("trusted-proxy-hops"));
+    @Override
+    public PluginResult execute(PluginContext context, PluginConfig pluginConfig) {
+        Config cfg = pluginConfig.getTypedConfig(Config.class);
 
+        List<String> proxies = cfg.trustedProxies != null ? cfg.trustedProxies : Collections.emptyList();
         String clientIp = clientIpResolver.resolve(
                 context.getChannelHandlerContext(),
                 context.getRequest().headers(),
-                trustedProxies != null ? trustedProxies : Collections.emptyList(),
-                trustedProxyHops);
+                proxies,
+                cfg.trustedProxyHops);
         context.setClientIp(clientIp);
 
         return PluginResult.doContinue();
     }
 
-    private static Integer toInteger(Object value) {
-        if (value instanceof Integer intVal) {
-            return intVal;
+    /**
+     * RealIp 插件配置。
+     */
+    public static class Config {
+
+        @JsonProperty("trusted-proxies")
+        private List<String> trustedProxies;
+
+        @JsonProperty("trusted-proxy-hops")
+        private Integer trustedProxyHops;
+
+        public List<String> getTrustedProxies() {
+            return trustedProxies;
         }
-        if (value instanceof Number number) {
-            return number.intValue();
+
+        public void setTrustedProxies(List<String> trustedProxies) {
+            this.trustedProxies = trustedProxies;
         }
-        if (value instanceof String str && !str.isBlank()) {
-            return Integer.parseInt(str);
+
+        public Integer getTrustedProxyHops() {
+            return trustedProxyHops;
         }
-        return null;
+
+        public void setTrustedProxyHops(Integer trustedProxyHops) {
+            this.trustedProxyHops = trustedProxyHops;
+        }
     }
 }

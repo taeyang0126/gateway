@@ -45,8 +45,8 @@ class RealIpPluginTest {
                 .thenReturn("192.168.1.100");
 
         PluginContext context = createContext();
-        PluginConfig config = new PluginConfig("real-ip", true, 1000,
-                Map.of("trusted-proxies", proxies));
+        PluginConfig config = PluginConfig.of("real-ip", true, 1000,
+                Map.of("trusted-proxies", proxies), RealIpPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -60,8 +60,8 @@ class RealIpPluginTest {
                 .thenReturn("172.16.0.50");
 
         PluginContext context = createContext();
-        PluginConfig config = new PluginConfig("real-ip", true, 1000,
-                Map.of("trusted-proxy-hops", 2));
+        PluginConfig config = PluginConfig.of("real-ip", true, 1000,
+                Map.of("trusted-proxy-hops", 2), RealIpPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -75,7 +75,7 @@ class RealIpPluginTest {
                 .thenReturn("127.0.0.1");
 
         PluginContext context = createContext();
-        PluginConfig config = new PluginConfig("real-ip", true, 1000, Map.of());
+        PluginConfig config = PluginConfig.of("real-ip", true, 1000, Map.of(), RealIpPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -89,7 +89,7 @@ class RealIpPluginTest {
                 .thenReturn("127.0.0.1");
 
         PluginContext context = createContext();
-        PluginConfig config = new PluginConfig("real-ip", true, 1000, null);
+        PluginConfig config = PluginConfig.of("real-ip", true, 1000, null, RealIpPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 

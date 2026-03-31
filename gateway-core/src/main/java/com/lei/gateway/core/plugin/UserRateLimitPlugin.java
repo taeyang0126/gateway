@@ -1,10 +1,9 @@
 package com.lei.gateway.core.plugin;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.lei.gateway.core.security.RateLimitResult;
 import com.lei.gateway.core.security.RateLimiterEngine;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.util.Collections;
-import java.util.Map;
 
 /**
  * 按 userId 限流插件。
@@ -15,8 +14,6 @@ public class UserRateLimitPlugin implements Plugin {
 
     private static final String NAME = "user-rate-limit";
     private static final int DEFAULT_PRIORITY = 5000;
-    private static final int DEFAULT_PERMITS_PER_SECOND = 50;
-    private static final int DEFAULT_BURST_CAPACITY = 100;
 
     private final RateLimiterEngine rateLimiterEngine;
 
@@ -43,14 +40,15 @@ public class UserRateLimitPlugin implements Plugin {
     }
 
     @Override
-    public PluginResult execute(PluginContext context, PluginConfig config) {
-        Map<String, Object> configMap = config.getConfig();
-        if (configMap == null) {
-            configMap = Collections.emptyMap();
-        }
+    public Class<?> configType() {
+        return Config.class;
+    }
 
-        boolean enabled = toBoolean(configMap.get("enabled"), true);
-        if (!enabled) {
+    @Override
+    public PluginResult execute(PluginContext context, PluginConfig pluginConfig) {
+        Config cfg = pluginConfig.getTypedConfig(Config.class);
+
+        if (!cfg.enabled) {
             return PluginResult.doContinue();
         }
 
@@ -59,18 +57,14 @@ public class UserRateLimitPlugin implements Plugin {
             return PluginResult.doContinue();
         }
 
-        boolean shadow = toBoolean(configMap.get("shadow"), false);
-        int permitsPerSecond = toInt(configMap.get("permits-per-second"), DEFAULT_PERMITS_PER_SECOND);
-        int burstCapacity = toInt(configMap.get("burst-capacity"), DEFAULT_BURST_CAPACITY);
-
         String key = "user:" + userId;
-        RateLimitResult result = rateLimiterEngine.allow(key, permitsPerSecond, burstCapacity);
+        RateLimitResult result = rateLimiterEngine.allow(key, cfg.permitsPerSecond, cfg.burstCapacity);
 
         if (result.isAllowed()) {
             return PluginResult.doContinue();
         }
 
-        if (shadow) {
+        if (cfg.shadow) {
             return PluginResult.doContinue();
         }
 
@@ -79,26 +73,50 @@ public class UserRateLimitPlugin implements Plugin {
                 result.getRetryAfterSeconds());
     }
 
-    private static boolean toBoolean(Object value, boolean defaultValue) {
-        if (value instanceof Boolean boolVal) {
-            return boolVal;
-        }
-        if (value instanceof String str) {
-            return Boolean.parseBoolean(str);
-        }
-        return defaultValue;
-    }
+    /**
+     * UserRateLimit 插件配置。
+     */
+    public static class Config {
 
-    private static int toInt(Object value, int defaultValue) {
-        if (value instanceof Integer intVal) {
-            return intVal;
+        private boolean enabled = true;
+        private boolean shadow = false;
+
+        @JsonProperty("permits-per-second")
+        private int permitsPerSecond = 50;
+
+        @JsonProperty("burst-capacity")
+        private int burstCapacity = 100;
+
+        public boolean isEnabled() {
+            return enabled;
         }
-        if (value instanceof Number number) {
-            return number.intValue();
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
         }
-        if (value instanceof String str && !str.isBlank()) {
-            return Integer.parseInt(str);
+
+        public boolean isShadow() {
+            return shadow;
         }
-        return defaultValue;
+
+        public void setShadow(boolean shadow) {
+            this.shadow = shadow;
+        }
+
+        public int getPermitsPerSecond() {
+            return permitsPerSecond;
+        }
+
+        public void setPermitsPerSecond(int permitsPerSecond) {
+            this.permitsPerSecond = permitsPerSecond;
+        }
+
+        public int getBurstCapacity() {
+            return burstCapacity;
+        }
+
+        public void setBurstCapacity(int burstCapacity) {
+            this.burstCapacity = burstCapacity;
+        }
     }
 }

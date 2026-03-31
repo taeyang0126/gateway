@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lei.gateway.core.config.PluginConfigEntry;
 import com.lei.gateway.core.config.Route;
 import com.lei.gateway.core.observability.MetricsCollector;
@@ -40,7 +41,7 @@ class GatewayPluginProcessorPropertyTest {
 
         MetricsCollector metricsCollector = mock(MetricsCollector.class);
         PluginRegistry registry = new PluginRegistry();
-        PluginConfigResolver resolver = new PluginConfigResolver(registry);
+        PluginConfigResolver resolver = new PluginConfigResolver(registry, new ObjectMapper());
         PluginChain chain = new PluginChain(metricsCollector);
 
         List<PluginConfigEntry> globalConfigs = new ArrayList<>();
@@ -103,7 +104,7 @@ class GatewayPluginProcessorPropertyTest {
 
         MetricsCollector metricsCollector = mock(MetricsCollector.class);
         PluginRegistry registry = new PluginRegistry();
-        PluginConfigResolver resolver = new PluginConfigResolver(registry);
+        PluginConfigResolver resolver = new PluginConfigResolver(registry, new ObjectMapper());
         PluginChain chain = new PluginChain(metricsCollector);
 
         List<PluginConfigEntry> globalConfigs = new ArrayList<>();

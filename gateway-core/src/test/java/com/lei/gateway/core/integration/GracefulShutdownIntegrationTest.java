@@ -143,7 +143,7 @@ class GracefulShutdownIntegrationTest {
 
         GatewayPluginProcessor pluginProcessor = new GatewayPluginProcessor(
                 new PluginRegistry(),
-                new PluginConfigResolver(new PluginRegistry()),
+                new PluginConfigResolver(new PluginRegistry(), new ObjectMapper()),
                 new PluginChain(metricsCollector),
                 java.util.List.of());
         RouteResolver routeResolver = new RouteResolver(gatewayProps);

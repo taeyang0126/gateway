@@ -3,6 +3,7 @@ package com.lei.gateway.core.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lei.gateway.core.config.PluginConfigEntry;
 import com.lei.gateway.core.config.Route;
 import com.lei.gateway.core.observability.MetricsCollector;
@@ -31,7 +32,7 @@ class GatewayPluginProcessorTest {
     void setUp() {
         metricsCollector = mock(MetricsCollector.class);
         registry = new PluginRegistry();
-        resolver = new PluginConfigResolver(registry);
+        resolver = new PluginConfigResolver(registry, new ObjectMapper());
         chain = new PluginChain(metricsCollector);
     }
 

@@ -44,8 +44,8 @@ class IpRateLimitPluginTest {
                 .thenReturn(RateLimitResult.allowed());
 
         PluginContext context = createContext("10.0.0.1");
-        PluginConfig config = new PluginConfig("ip-rate-limit", true, 3000,
-                Map.of("permits-per-second", 100, "burst-capacity", 200));
+        PluginConfig config = PluginConfig.of("ip-rate-limit", true, 3000,
+                Map.of("permits-per-second", 100, "burst-capacity", 200), IpRateLimitPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -58,8 +58,8 @@ class IpRateLimitPluginTest {
                 .thenReturn(RateLimitResult.denied(5));
 
         PluginContext context = createContext("10.0.0.1");
-        PluginConfig config = new PluginConfig("ip-rate-limit", true, 3000,
-                Map.of("permits-per-second", 100, "burst-capacity", 200));
+        PluginConfig config = PluginConfig.of("ip-rate-limit", true, 3000,
+                Map.of("permits-per-second", 100, "burst-capacity", 200), IpRateLimitPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -75,8 +75,8 @@ class IpRateLimitPluginTest {
                 .thenReturn(RateLimitResult.denied(3));
 
         PluginContext context = createContext("10.0.0.1");
-        PluginConfig config = new PluginConfig("ip-rate-limit", true, 3000,
-                Map.of("shadow", true, "permits-per-second", 100, "burst-capacity", 200));
+        PluginConfig config = PluginConfig.of("ip-rate-limit", true, 3000,
+                Map.of("shadow", true, "permits-per-second", 100, "burst-capacity", 200), IpRateLimitPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 
@@ -86,8 +86,8 @@ class IpRateLimitPluginTest {
     @Test
     void disabledReturnsContinue() {
         PluginContext context = createContext("10.0.0.1");
-        PluginConfig config = new PluginConfig("ip-rate-limit", true, 3000,
-                Map.of("enabled", false));
+        PluginConfig config = PluginConfig.of("ip-rate-limit", true, 3000,
+                Map.of("enabled", false), IpRateLimitPlugin.Config.class);
 
         PluginResult result = plugin.execute(context, config);
 

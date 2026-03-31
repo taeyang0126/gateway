@@ -2,6 +2,7 @@ package com.lei.gateway.core.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lei.gateway.core.config.PluginConfigEntry;
 import com.lei.gateway.core.config.Route;
 import java.util.ArrayList;
@@ -35,7 +36,7 @@ class PluginConfigResolverPropertyTest {
         PluginRegistry registry = new PluginRegistry();
         registry.register(stubPlugin("test-plugin", PluginPhase.REQUEST, priority));
 
-        PluginConfigResolver resolver = new PluginConfigResolver(registry);
+        PluginConfigResolver resolver = new PluginConfigResolver(registry, new ObjectMapper());
 
         PluginConfigEntry globalEntry = new PluginConfigEntry();
         globalEntry.setName("test-plugin");
@@ -65,7 +66,7 @@ class PluginConfigResolverPropertyTest {
         PluginRegistry registry = new PluginRegistry();
         registry.register(stubPlugin("merge-plugin", PluginPhase.REQUEST, globalPriority));
 
-        PluginConfigResolver resolver = new PluginConfigResolver(registry);
+        PluginConfigResolver resolver = new PluginConfigResolver(registry, new ObjectMapper());
 
         PluginConfigEntry globalEntry = new PluginConfigEntry();
         globalEntry.setName("merge-plugin");
@@ -102,7 +103,7 @@ class PluginConfigResolverPropertyTest {
         registry.register(stubPlugin("global-plugin", PluginPhase.REQUEST, globalPriority));
         registry.register(stubPlugin("route-only-plugin", PluginPhase.REQUEST, routePriority));
 
-        PluginConfigResolver resolver = new PluginConfigResolver(registry);
+        PluginConfigResolver resolver = new PluginConfigResolver(registry, new ObjectMapper());
 
         PluginConfigEntry globalEntry = new PluginConfigEntry();
         globalEntry.setName("global-plugin");
@@ -136,7 +137,7 @@ class PluginConfigResolverPropertyTest {
         PluginRegistry registry = new PluginRegistry();
         registry.register(stubPlugin("disabled-plugin", PluginPhase.REQUEST, priority));
 
-        PluginConfigResolver resolver = new PluginConfigResolver(registry);
+        PluginConfigResolver resolver = new PluginConfigResolver(registry, new ObjectMapper());
 
         PluginConfigEntry entry = new PluginConfigEntry();
         entry.setName("disabled-plugin");
@@ -171,7 +172,7 @@ class PluginConfigResolverPropertyTest {
             entries.add(entry);
         }
 
-        PluginConfigResolver resolver = new PluginConfigResolver(registry);
+        PluginConfigResolver resolver = new PluginConfigResolver(registry, new ObjectMapper());
         Route route = new Route();
 
         Map<PluginPhase, List<PluginConfig>> result = resolver.resolve(entries, route);
@@ -194,7 +195,7 @@ class PluginConfigResolverPropertyTest {
         PluginRegistry registry = new PluginRegistry();
         registry.register(stubPlugin("to-disable", PluginPhase.REQUEST, priority));
 
-        PluginConfigResolver resolver = new PluginConfigResolver(registry);
+        PluginConfigResolver resolver = new PluginConfigResolver(registry, new ObjectMapper());
 
         PluginConfigEntry globalEntry = new PluginConfigEntry();
         globalEntry.setName("to-disable");

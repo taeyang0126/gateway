@@ -21,6 +21,13 @@ public interface Plugin {
     int defaultPriority();
 
     /**
+     * 插件配置 POJO 类型，返回 null 表示不需要强类型绑定。
+     */
+    default Class<?> configType() {
+        return null;
+    }
+
+    /**
      * 执行插件逻辑。
      */
     PluginResult execute(PluginContext context, PluginConfig config);
