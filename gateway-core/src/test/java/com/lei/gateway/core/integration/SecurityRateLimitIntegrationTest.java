@@ -2,22 +2,28 @@ package com.lei.gateway.core.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.lei.gateway.core.config.SecurityProperties;
+import com.lei.gateway.core.config.GatewayProperties;
+import com.lei.gateway.core.config.PluginConfigEntry;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class SecurityRateLimitIntegrationTest extends IntegrationTestBase {
 
     @Override
-    protected SecurityProperties createSecurityProperties() {
-        SecurityProperties security = new SecurityProperties();
-        security.setEnabled(true);
-        security.getRateLimit().getIp().setEnabled(true);
-        security.getRateLimit().getIp().setMode(SecurityProperties.RateLimitMode.DISTRIBUTED);
-        security.getRateLimit().getIp().setPermitsPerSecond(1);
-        security.getRateLimit().getIp().setBurstCapacity(1);
-        return security;
+    protected GatewayProperties createGatewayProperties() {
+        GatewayProperties props = super.createGatewayProperties();
+        PluginConfigEntry realIp = new PluginConfigEntry();
+        realIp.setName("real-ip");
+        PluginConfigEntry ipRateLimit = new PluginConfigEntry();
+        ipRateLimit.setName("ip-rate-limit");
+        ipRateLimit.setConfig(Map.of(
+                "permits-per-second", 1,
+                "burst-capacity", 1));
+        props.setPlugins(List.of(realIp, ipRateLimit));
+        return props;
     }
 
     @Test
@@ -35,9 +41,9 @@ class SecurityRateLimitIntegrationTest extends IntegrationTestBase {
         assertThat(first.statusCode()).isEqualTo(200);
         assertThat(second.statusCode()).isEqualTo(429);
         assertThat(second.headers().firstValue("Retry-After")).isPresent();
-        assertThat(meterRegistry.get("gateway.security.fallbacks")
-                .counter().count()).isGreaterThan(0);
-        assertThat(meterRegistry.get("gateway.security.rate_limit.hits")
+        assertThat(meterRegistry.get("gateway.plugin.decisions")
+                .tag("plugin", "ip-rate-limit")
+                .tag("decision", "SHORT_CIRCUIT")
                 .counter().count()).isGreaterThan(0);
     }
 }

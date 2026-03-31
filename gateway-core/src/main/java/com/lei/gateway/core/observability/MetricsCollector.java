@@ -124,6 +124,37 @@ public class MetricsCollector {
     }
 
     /**
+     * 记录插件执行耗时。
+     */
+    public void recordPluginDuration(String pluginName, String routeId,
+            long durationNanos) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+        Timer.builder("gateway.plugin.duration")
+                .tag("plugin", pluginName)
+                .tag("routeId", routeId == null ? "unknown" : routeId)
+                .register(meterRegistry)
+                .record(durationNanos, TimeUnit.NANOSECONDS);
+    }
+
+    /**
+     * 记录插件执行决策。
+     */
+    public void recordPluginDecision(String pluginName, String decision,
+            String routeId) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+        Counter.builder("gateway.plugin.decisions")
+                .tag("plugin", pluginName)
+                .tag("decision", decision)
+                .tag("routeId", routeId == null ? "unknown" : routeId)
+                .register(meterRegistry)
+                .increment();
+    }
+
+    /**
      * 记录安全过滤决策计数。
      */
     public void recordSecurityFilterDecision(String filter, String decision,

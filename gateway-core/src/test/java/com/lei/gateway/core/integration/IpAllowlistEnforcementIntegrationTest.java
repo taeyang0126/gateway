@@ -2,21 +2,26 @@ package com.lei.gateway.core.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.lei.gateway.core.config.SecurityProperties;
+import com.lei.gateway.core.config.GatewayProperties;
+import com.lei.gateway.core.config.PluginConfigEntry;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class IpAllowlistEnforcementIntegrationTest extends IntegrationTestBase {
 
     @Override
-    protected SecurityProperties createSecurityProperties() {
-        SecurityProperties security = new SecurityProperties();
-        security.setEnabled(true);
-        security.getIpAccess().setEnabled(true);
-        // allowList 不包含 127.0.0.1，验证未命中白名单时拒绝。
-        security.getIpAccess().setAllowList(java.util.List.of("10.0.0.0/8"));
-        return security;
+    protected GatewayProperties createGatewayProperties() {
+        GatewayProperties props = super.createGatewayProperties();
+        PluginConfigEntry realIp = new PluginConfigEntry();
+        realIp.setName("real-ip");
+        PluginConfigEntry ipAccess = new PluginConfigEntry();
+        ipAccess.setName("ip-access");
+        ipAccess.setConfig(Map.of("allow-list", List.of("10.0.0.0/8")));
+        props.setPlugins(List.of(realIp, ipAccess));
+        return props;
     }
 
     @Test

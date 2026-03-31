@@ -6,7 +6,7 @@ import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.RouteResolver;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
-import com.lei.gateway.core.security.GatewaySecurityProcessor;
+import com.lei.gateway.core.plugin.GatewayPluginProcessor;
 
 /**
  * 聚合 {@link RoutingHandler} 的所有依赖，解决构造函数参数过多问题。
@@ -19,7 +19,7 @@ public class RoutingContext {
     private final MetricsCollector metricsCollector;
     private final AccessLogWriter accessLogWriter;
     private final ObservabilityProperties observabilityProperties;
-    private final GatewaySecurityProcessor securityProcessor;
+    private final GatewayPluginProcessor pluginProcessor;
     private final InFlightRequestTracker inFlightTracker;
     private final DrainHandler drainHandler;
     private final HealthProperties healthProperties;
@@ -31,7 +31,7 @@ public class RoutingContext {
             MetricsCollector metricsCollector,
             AccessLogWriter accessLogWriter,
             ObservabilityProperties observabilityProperties,
-            GatewaySecurityProcessor securityProcessor,
+            GatewayPluginProcessor pluginProcessor,
             InFlightRequestTracker inFlightTracker,
             DrainHandler drainHandler,
             HealthProperties healthProperties) {
@@ -41,7 +41,7 @@ public class RoutingContext {
         this.metricsCollector = metricsCollector;
         this.accessLogWriter = accessLogWriter;
         this.observabilityProperties = observabilityProperties;
-        this.securityProcessor = securityProcessor;
+        this.pluginProcessor = pluginProcessor;
         this.inFlightTracker = inFlightTracker;
         this.drainHandler = drainHandler;
         this.healthProperties = healthProperties;
@@ -71,8 +71,11 @@ public class RoutingContext {
         return observabilityProperties;
     }
 
-    public GatewaySecurityProcessor getSecurityProcessor() {
-        return securityProcessor;
+    /**
+     * 获取插件处理器。
+     */
+    public GatewayPluginProcessor getPluginProcessor() {
+        return pluginProcessor;
     }
 
     public InFlightRequestTracker getInFlightTracker() {

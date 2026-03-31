@@ -9,9 +9,10 @@ import com.lei.gateway.core.observability.AccessLogEntry;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
 import com.lei.gateway.core.observability.TraceContextHandler;
-import com.lei.gateway.core.security.GatewaySecurityProcessor;
-import com.lei.gateway.core.security.SecurityDecision;
-import com.lei.gateway.core.security.SecurityEvaluationResult;
+import com.lei.gateway.core.plugin.GatewayPluginProcessor;
+import com.lei.gateway.core.plugin.PluginContext;
+import com.lei.gateway.core.plugin.PluginExecutionResult;
+import com.lei.gateway.core.plugin.PluginResult;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
@@ -83,7 +84,7 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
     private final MetricsCollector metricsCollector;
     private final AccessLogWriter accessLogWriter;
     private final ObservabilityProperties observabilityProperties;
-    private final GatewaySecurityProcessor gatewaySecurityProcessor;
+    private final GatewayPluginProcessor pluginProcessor;
     private final InFlightRequestTracker inFlightTracker;
     private final DrainHandler drainHandler;
     private final HealthProperties healthProperties;
@@ -100,7 +101,7 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
         this.metricsCollector = ctx.getMetricsCollector();
         this.accessLogWriter = ctx.getAccessLogWriter();
         this.observabilityProperties = ctx.getObservabilityProperties();
-        this.gatewaySecurityProcessor = ctx.getSecurityProcessor();
+        this.pluginProcessor = ctx.getPluginProcessor();
         this.inFlightTracker = ctx.getInFlightTracker();
         this.drainHandler = ctx.getDrainHandler();
         this.healthProperties = ctx.getHealthProperties();
@@ -175,22 +176,23 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
             return;
         }
         Route route = matched.get();
+        String traceId = ctx.channel().attr(TraceContextHandler.TRACE_ID_KEY).get();
 
-        SecurityEvaluationResult securityResult = gatewaySecurityProcessor.evaluate(
-                ctx, request, route);
-        attachSecurityAttributes(ctx, securityResult);
-        if (securityResult.getContext().getClientIp() != null) {
-            ctx.channel().attr(CLIENT_IP_KEY).set(
-                    securityResult.getContext().getClientIp());
+        PluginExecutionResult execResult = pluginProcessor.executeRequestPhase(
+                ctx, request, route, traceId);
+        PluginContext pluginCtx = execResult.getContext();
+
+        attachPluginAttributes(ctx, execResult);
+        if (pluginCtx.getClientIp() != null) {
+            ctx.channel().attr(CLIENT_IP_KEY).set(pluginCtx.getClientIp());
         }
         if (observabilityProperties.isTracingEnabled()) {
             ctx.channel().attr(TraceContextHandler.TRACE_SECURITY_TAGS_KEY).set(
-                    securityResult.getContext().getTraceTags());
+                    pluginCtx.getTraceTags());
         }
-        if (!securityResult.getDecision().isAllowed()) {
-            writeSecurityAccessLog(ctx, request, route, securityResult,
-                    requestStartNanos);
-            sendSecurityDecision(ctx, request, securityResult.getDecision());
+        if (!execResult.isContinue()) {
+            writePluginAccessLog(ctx, request, route, execResult, requestStartNanos);
+            sendPluginResponse(ctx, request, execResult.getResult());
             return;
         }
 
@@ -300,15 +302,15 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
         }
     }
 
-    private static void sendSecurityDecision(ChannelHandlerContext ctx,
-            HttpRequest request, SecurityDecision decision) {
-        String message = "Rejected by " + decision.getFilterName()
-                + ": " + decision.getReason();
-        String json = "{\"status\":" + decision.getStatus().code()
-                + ",\"error\":\"" + decision.getStatus().reasonPhrase()
+    private static void sendPluginResponse(ChannelHandlerContext ctx,
+            HttpRequest request, PluginResult result) {
+        String message = "Rejected by " + result.getPluginName()
+                + ": " + result.getReason();
+        String json = "{\"status\":" + result.getStatus().code()
+                + ",\"error\":\"" + result.getStatus().reasonPhrase()
                 + "\",\"message\":\"" + escapeJson(message) + "\"}";
-        sendResponse(ctx, request, decision.getStatus(), json, CONTENT_TYPE_JSON,
-                decision.getRetryAfterSeconds());
+        sendResponse(ctx, request, result.getStatus(), json, CONTENT_TYPE_JSON,
+                result.getRetryAfterSeconds());
     }
 
     private static String escapeJson(String value) {
@@ -322,29 +324,30 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
                 .replace("\t", "\\t");
     }
 
-    private static void attachSecurityAttributes(ChannelHandlerContext ctx,
-            SecurityEvaluationResult securityResult) {
-        SecurityDecision decision = securityResult.getDecision();
-        Boolean authRequired = securityResult.getContext()
-                .getSecurityConfig().getAuth().isEnabled();
-        Boolean authPassed = determineAuthPassed(securityResult);
+    private static void attachPluginAttributes(ChannelHandlerContext ctx,
+            PluginExecutionResult execResult) {
+        PluginResult result = execResult.getResult();
+        PluginContext pluginCtx = execResult.getContext();
+        Boolean authRequired = pluginCtx.getAttribute("authRequired", Boolean.class);
+        Boolean authPassed = pluginCtx.getAttribute("authPassed", Boolean.class);
         ctx.channel().attr(AUTH_REQUIRED_KEY).set(authRequired);
         ctx.channel().attr(AUTH_PASSED_KEY).set(authPassed);
-        ctx.channel().attr(SECURITY_DECISION_KEY).set(decision.getType().name());
-        ctx.channel().attr(SECURITY_FILTER_KEY).set(decision.getFilterName());
-        ctx.channel().attr(SECURITY_REASON_KEY).set(decision.getReason());
+        String decision = result.isContinue() ? "ALLOW" : "DENY";
+        ctx.channel().attr(SECURITY_DECISION_KEY).set(decision);
+        ctx.channel().attr(SECURITY_FILTER_KEY).set(result.getPluginName());
+        ctx.channel().attr(SECURITY_REASON_KEY).set(result.getReason());
     }
 
-    private void writeSecurityAccessLog(ChannelHandlerContext ctx,
+    private void writePluginAccessLog(ChannelHandlerContext ctx,
             HttpRequest request, Route route,
-            SecurityEvaluationResult securityResult, long requestStartNanos) {
+            PluginExecutionResult execResult, long requestStartNanos) {
         long durationNanos = System.nanoTime() - requestStartNanos;
         AccessLogEntry logEntry = new AccessLogEntry();
         logEntry.setMethod(request.method().name());
         logEntry.setPath(request.uri());
-        logEntry.setStatusCode(securityResult.getDecision().getStatus().code());
+        logEntry.setStatusCode(execResult.getResult().getStatus().code());
         logEntry.setDurationMs(durationNanos / 1_000_000);
-        String resolvedClientIp = securityResult.getContext().getClientIp();
+        String resolvedClientIp = execResult.getContext().getClientIp();
         if (resolvedClientIp == null || resolvedClientIp.isBlank()) {
             resolvedClientIp = resolveRemoteClientIp(ctx.channel().remoteAddress());
         }
@@ -359,27 +362,6 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
         logEntry.setSecurityFilter(ctx.channel().attr(SECURITY_FILTER_KEY).get());
         logEntry.setSecurityReason(ctx.channel().attr(SECURITY_REASON_KEY).get());
         accessLogWriter.log(logEntry);
-    }
-
-    private static Boolean determineAuthPassed(
-            SecurityEvaluationResult securityResult) {
-        boolean authRequired = securityResult.getContext()
-                .getSecurityConfig().getAuth().isEnabled();
-        if (!authRequired) {
-            return null;
-        }
-        String userId = securityResult.getContext().getUserId();
-        if (userId != null && !userId.isBlank()) {
-            return Boolean.TRUE;
-        }
-        SecurityDecision decision = securityResult.getDecision();
-        if (decision.isAllowed()) {
-            return Boolean.FALSE;
-        }
-        if ("auth".equals(decision.getFilterName())) {
-            return Boolean.FALSE;
-        }
-        return null;
     }
 
     private static String resolveRemoteClientIp(SocketAddress remoteAddr) {

@@ -4,6 +4,7 @@ import com.lei.gateway.core.config.SecurityProperties;
 import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import io.netty.handler.codec.http.HttpRequest;
 import java.text.ParseException;
 import java.time.Instant;
 import java.util.Date;
@@ -28,12 +29,12 @@ public class JwtAuthProvider implements AuthProvider {
     }
 
     @Override
-    public AuthenticationResult authenticate(SecurityRequestContext context,
+    public AuthenticationResult authenticate(HttpRequest request,
             EffectiveSecurityConfig.Auth authConfig) {
         EffectiveSecurityConfig.TokenExtractor tokenExtractor =
                 authConfig.getTokenExtractor();
         String headerName = tokenExtractor.getTokenHeaderName();
-        String authorization = context.getRequest().headers().get(headerName);
+        String authorization = request.headers().get(headerName);
         if (authorization == null || authorization.isBlank()) {
             return AuthenticationResult.failed("missing_authorization_header");
         }

@@ -2,6 +2,7 @@ package com.lei.gateway.core.config;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import java.util.List;
 
 /**
  * 路由规则配置。
@@ -34,6 +35,8 @@ public class Route {
 
     @Valid
     private RouteSecurityProperties security;
+
+    private List<PluginConfigEntry> plugins;
 
     public String getId() {
         return id;
@@ -105,5 +108,13 @@ public class Route {
 
     public void setRewriteReplacement(String rewriteReplacement) {
         this.rewriteReplacement = rewriteReplacement;
+    }
+
+    public List<PluginConfigEntry> getPlugins() {
+        return plugins;
+    }
+
+    public void setPlugins(List<PluginConfigEntry> plugins) {
+        this.plugins = plugins;
     }
 }

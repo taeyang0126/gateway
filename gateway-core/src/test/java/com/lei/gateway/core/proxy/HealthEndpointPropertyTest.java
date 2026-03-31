@@ -7,10 +7,12 @@ import com.lei.gateway.core.config.HealthProperties;
 import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.RouteResolver;
-import com.lei.gateway.core.config.SecurityProperties;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
-import com.lei.gateway.core.security.GatewaySecurityProcessor;
+import com.lei.gateway.core.plugin.GatewayPluginProcessor;
+import com.lei.gateway.core.plugin.PluginChain;
+import com.lei.gateway.core.plugin.PluginConfigResolver;
+import com.lei.gateway.core.plugin.PluginRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -104,14 +106,14 @@ class HealthEndpointPropertyTest {
         GatewayProperties gatewayProperties = new GatewayProperties();
         gatewayProperties.setRoutes(List.of());
         RouteResolver routeResolver = new RouteResolver(gatewayProperties);
-        SecurityProperties securityProperties = new SecurityProperties();
         InFlightRequestTracker inFlightTracker =
                 new InFlightRequestTracker();
         RoutingContext routingCtx = new RoutingContext(
                 routeResolver, requestLimitProperties, null,
                 metricsCollector, accessLogWriter, observabilityProperties,
-                new GatewaySecurityProcessor(
-                        securityProperties, metricsCollector),
+                new GatewayPluginProcessor(new PluginRegistry(),
+                        new PluginConfigResolver(new PluginRegistry()),
+                        new PluginChain(metricsCollector), List.of()),
                 inFlightTracker, drainHandler, healthProperties);
         return new RoutingHandler(routingCtx,
                 new AtomicInteger(0), Instant.now());

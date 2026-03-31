@@ -8,7 +8,6 @@ import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.Route;
 import com.lei.gateway.core.config.RouteResolver;
-import com.lei.gateway.core.config.SecurityProperties;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
 import com.lei.gateway.core.observability.TraceContextHandler;
@@ -18,7 +17,20 @@ import com.lei.gateway.core.proxy.InFlightRequestTracker;
 import com.lei.gateway.core.proxy.RoutingContext;
 import com.lei.gateway.core.proxy.RoutingHandler;
 import com.lei.gateway.core.proxy.UpstreamConnectionPool;
-import com.lei.gateway.core.security.GatewaySecurityProcessor;
+import com.lei.gateway.core.plugin.GatewayPluginProcessor;
+import com.lei.gateway.core.plugin.PluginChain;
+import com.lei.gateway.core.plugin.PluginConfigResolver;
+import com.lei.gateway.core.plugin.PluginRegistry;
+import com.lei.gateway.core.plugin.RealIpPlugin;
+import com.lei.gateway.core.plugin.IpAccessPlugin;
+import com.lei.gateway.core.plugin.IpRateLimitPlugin;
+import com.lei.gateway.core.plugin.AuthPlugin;
+import com.lei.gateway.core.plugin.UserRateLimitPlugin;
+import com.lei.gateway.core.security.CidrMatcher;
+import com.lei.gateway.core.security.ClientIpResolver;
+import com.lei.gateway.core.security.JwksKeyProvider;
+import com.lei.gateway.core.security.JwtAuthProvider;
+import com.lei.gateway.core.security.LocalTokenBucketRateLimiter;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.netty.bootstrap.ServerBootstrap;
@@ -57,7 +69,6 @@ abstract class IntegrationTestBase {
     protected RequestLimitProperties requestLimitProperties;
     protected ConnectionPoolProperties connectionPoolProperties;
     protected ObservabilityProperties observabilityProperties;
-    protected SecurityProperties securityProperties;
     protected PrometheusMeterRegistry meterRegistry;
     protected MetricsCollector metricsCollector;
     protected AccessLogWriter accessLogWriter;
@@ -76,7 +87,6 @@ abstract class IntegrationTestBase {
         requestLimitProperties = createRequestLimitProperties();
         connectionPoolProperties = createConnectionPoolProperties();
         observabilityProperties = createObservabilityProperties();
-        securityProperties = createSecurityProperties();
 
         // 3. 可观测性
         meterRegistry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
@@ -145,7 +155,7 @@ abstract class IntegrationTestBase {
         RoutingContext routingCtx = new RoutingContext(
                 routeResolver, requestLimitProperties, connectionPool,
                 metricsCollector, accessLogWriter, observabilityProperties,
-                new GatewaySecurityProcessor(securityProperties, metricsCollector),
+                buildPluginProcessor(),
                 inFlightTracker, drainHandler, healthProperties);
         RoutingHandler routingHandler = new RoutingHandler(
                 routingCtx, activeConnections, startTime);
@@ -164,6 +174,20 @@ abstract class IntegrationTestBase {
         serverChannel = bootstrap.bind(0).sync().channel();
         gatewayPort = ((InetSocketAddress)
                 serverChannel.localAddress()).getPort();
+    }
+
+    private GatewayPluginProcessor buildPluginProcessor() {
+        PluginRegistry registry = new PluginRegistry();
+        CidrMatcher cidrMatcher = new CidrMatcher();
+        registry.register(new RealIpPlugin(new ClientIpResolver(cidrMatcher)));
+        registry.register(new IpAccessPlugin(cidrMatcher));
+        registry.register(new IpRateLimitPlugin(new LocalTokenBucketRateLimiter()));
+        registry.register(new AuthPlugin(new JwtAuthProvider(new JwksKeyProvider())));
+        registry.register(new UserRateLimitPlugin(new LocalTokenBucketRateLimiter()));
+        PluginConfigResolver configResolver = new PluginConfigResolver(registry);
+        PluginChain pluginChain = new PluginChain(metricsCollector);
+        return new GatewayPluginProcessor(registry, configResolver,
+                pluginChain, gatewayProperties.getPlugins());
     }
 
     /** 构建网关 URL。 */
@@ -208,11 +232,6 @@ abstract class IntegrationTestBase {
         props.setAccessLogEnabled(true);
         props.setTracingEnabled(true);
         return props;
-    }
-
-    /** 默认安全配置。子类可覆盖。 */
-    protected SecurityProperties createSecurityProperties() {
-        return new SecurityProperties();
     }
 
     /** 创建路由。 */

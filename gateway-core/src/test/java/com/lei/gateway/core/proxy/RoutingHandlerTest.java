@@ -9,13 +9,23 @@ import com.lei.gateway.core.config.GatewayProperties;
 import com.lei.gateway.core.config.HealthProperties;
 import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
+import com.lei.gateway.core.config.PluginConfigEntry;
 import com.lei.gateway.core.config.Route;
 import com.lei.gateway.core.config.RouteResolver;
-import com.lei.gateway.core.config.SecurityProperties;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
 import com.lei.gateway.core.observability.TraceContextHandler;
-import com.lei.gateway.core.security.GatewaySecurityProcessor;
+import com.lei.gateway.core.plugin.AuthPlugin;
+import com.lei.gateway.core.plugin.GatewayPluginProcessor;
+import com.lei.gateway.core.plugin.IpAccessPlugin;
+import com.lei.gateway.core.plugin.IpRateLimitPlugin;
+import com.lei.gateway.core.plugin.PluginChain;
+import com.lei.gateway.core.plugin.PluginConfigResolver;
+import com.lei.gateway.core.plugin.PluginRegistry;
+import com.lei.gateway.core.plugin.RealIpPlugin;
+import com.lei.gateway.core.plugin.UserRateLimitPlugin;
+import com.lei.gateway.core.security.ClientIpResolver;
+import com.lei.gateway.core.security.JwtAuthProvider;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -226,7 +236,7 @@ class RoutingHandlerTest {
         DrainHandler drainHandler = new DrainHandler();
         drainHandler.activateDrain();
         RoutingHandler handler = createHandler(List.of(),
-                new SecurityProperties(), drainHandler,
+                drainHandler,
                 new HealthProperties());
         EmbeddedChannel channel = new EmbeddedChannel(handler);
 
@@ -254,7 +264,7 @@ class RoutingHandlerTest {
         // startTime 设为当前时间，确保 startTime + 3600s 在未来
         startTime = Instant.now();
         RoutingHandler handler = createHandler(List.of(),
-                new SecurityProperties(), new DrainHandler(),
+                new DrainHandler(),
                 healthProperties);
         EmbeddedChannel channel = new EmbeddedChannel(handler);
 
@@ -283,7 +293,7 @@ class RoutingHandlerTest {
         healthProperties.setStartupDelaySeconds(3600);
         startTime = Instant.now();
         RoutingHandler handler = createHandler(List.of(),
-                new SecurityProperties(), drainHandler, healthProperties);
+                drainHandler, healthProperties);
         EmbeddedChannel channel = new EmbeddedChannel(handler);
 
         DefaultFullHttpRequest request = new DefaultFullHttpRequest(
@@ -396,6 +406,9 @@ class RoutingHandlerTest {
         observabilityProperties.setTracingEnabled(true);
         Route route = createRoute("svc", "/api/example/**",
                 "http://localhost:8081");
+        PluginConfigEntry realIpEntry = new PluginConfigEntry();
+        realIpEntry.setName("real-ip");
+        route.setPlugins(java.util.List.of(realIpEntry));
         RoutingHandler handler = createHandler(List.of(route));
         EmbeddedChannel channel = new EmbeddedChannel();
         channel.pipeline().addLast("routing", handler);
@@ -416,8 +429,7 @@ class RoutingHandlerTest {
 
         assertThat(channel.attr(TraceContextHandler.TRACE_SECURITY_TAGS_KEY).get())
                 .isNotNull()
-                .containsEntry("real-ip", "ALLOW")
-                .containsEntry("real-ip.reason", "resolved");
+                .containsEntry("real-ip", "CONTINUE");
 
         // ProxyHandler 被添加后又因异常被移除，
         // 验证 RoutingHandler 确实尝试添加了 ProxyHandler：
@@ -435,13 +447,14 @@ class RoutingHandlerTest {
         appender.start();
         accessLogger.addAppender(appender);
         try {
-            SecurityProperties securityProperties = new SecurityProperties();
-            securityProperties.setEnabled(true);
-            securityProperties.getAuth().setEnabled(true);
             Route route = createRoute("svc", "/api/example/**",
                     "http://localhost:8081");
+            PluginConfigEntry authEntry = new PluginConfigEntry();
+            authEntry.setName("auth");
+            authEntry.setConfig(java.util.Map.of("type", "JWT"));
+            route.setPlugins(java.util.List.of(authEntry));
             RoutingHandler handler = createHandler(
-                    List.of(route), securityProperties);
+                    List.of(route));
             EmbeddedChannel channel = new EmbeddedChannel(handler);
 
             DefaultFullHttpRequest request = new DefaultFullHttpRequest(
@@ -473,29 +486,46 @@ class RoutingHandlerTest {
     // ========== 辅助方法 ==========
 
     private RoutingHandler createHandler(List<Route> routes) {
-        return createHandler(routes, new SecurityProperties());
-    }
-
-    private RoutingHandler createHandler(List<Route> routes,
-            SecurityProperties securityProperties) {
-        return createHandler(routes, securityProperties,
+        return createHandler(routes,
                 new DrainHandler(), new HealthProperties());
     }
 
     private RoutingHandler createHandler(List<Route> routes,
-            SecurityProperties securityProperties,
             DrainHandler drainHandler,
             HealthProperties healthProperties) {
         GatewayProperties gatewayProperties = new GatewayProperties();
         gatewayProperties.setRoutes(routes);
         RouteResolver routeResolver = new RouteResolver(gatewayProperties);
         InFlightRequestTracker inFlightTracker = new InFlightRequestTracker();
+        GatewayPluginProcessor pluginProcessor = buildPluginProcessor(
+                gatewayProperties);
         RoutingContext routingCtx = new RoutingContext(
                 routeResolver, requestLimitProperties, null,
                 metricsCollector, accessLogWriter, observabilityProperties,
-                new GatewaySecurityProcessor(securityProperties, metricsCollector),
+                pluginProcessor,
                 inFlightTracker, drainHandler, healthProperties);
         return new RoutingHandler(routingCtx, activeConnections, startTime);
+    }
+
+    private GatewayPluginProcessor buildPluginProcessor(
+            GatewayProperties gatewayProperties) {
+        PluginRegistry registry = new PluginRegistry();
+        com.lei.gateway.core.security.CidrMatcher cidrMatcher =
+                new com.lei.gateway.core.security.CidrMatcher();
+        ClientIpResolver clientIpResolver = new ClientIpResolver(cidrMatcher);
+        registry.register(new RealIpPlugin(clientIpResolver));
+        registry.register(new IpAccessPlugin(cidrMatcher));
+        registry.register(new IpRateLimitPlugin(
+                new com.lei.gateway.core.security.LocalTokenBucketRateLimiter()));
+        registry.register(new AuthPlugin(
+                new JwtAuthProvider(new com.lei.gateway.core.security.JwksKeyProvider())));
+        registry.register(new UserRateLimitPlugin(
+                new com.lei.gateway.core.security.LocalTokenBucketRateLimiter()));
+        PluginConfigResolver configResolver = new PluginConfigResolver(
+                registry);
+        PluginChain pluginChain = new PluginChain(metricsCollector);
+        return new GatewayPluginProcessor(registry, configResolver,
+                pluginChain, gatewayProperties.getPlugins());
     }
 
     private static Route createRoute(String id, String pathPrefix,

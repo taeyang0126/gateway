@@ -1,4 +1,4 @@
-package com.lei.gateway.core.security;
+package com.lei.gateway.core.plugin;
 
 import com.lei.gateway.core.config.Route;
 import io.netty.channel.ChannelHandlerContext;
@@ -7,32 +7,29 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 安全过滤请求上下文。
+ * 插件执行上下文，在整个请求生命周期内共享。
  */
-public class SecurityRequestContext {
+public class PluginContext {
 
     private final ChannelHandlerContext channelHandlerContext;
     private final HttpRequest request;
     private final Route route;
-    private final String routeId;
-    private final EffectiveSecurityConfig securityConfig;
     private final String traceId;
 
     private String clientIp;
     private String userId;
+
+    private final Map<String, Object> attributes = new HashMap<>();
     private final Map<String, String> traceTags = new HashMap<>();
 
     /**
-     * 创建请求上下文。
+     * 创建插件执行上下文。
      */
-    public SecurityRequestContext(ChannelHandlerContext channelHandlerContext,
-            HttpRequest request, Route route,
-            EffectiveSecurityConfig securityConfig, String traceId) {
+    public PluginContext(ChannelHandlerContext channelHandlerContext,
+            HttpRequest request, Route route, String traceId) {
         this.channelHandlerContext = channelHandlerContext;
         this.request = request;
         this.route = route;
-        this.routeId = route.getId();
-        this.securityConfig = securityConfig;
         this.traceId = traceId;
     }
 
@@ -46,14 +43,6 @@ public class SecurityRequestContext {
 
     public Route getRoute() {
         return route;
-    }
-
-    public String getRouteId() {
-        return routeId;
-    }
-
-    public EffectiveSecurityConfig getSecurityConfig() {
-        return securityConfig;
     }
 
     public String getTraceId() {
@@ -76,16 +65,34 @@ public class SecurityRequestContext {
         this.userId = userId;
     }
 
-    public Map<String, String> getTraceTags() {
-        return new HashMap<>(traceTags);
+    /**
+     * 设置共享属性。
+     */
+    public void setAttribute(String key, Object value) {
+        attributes.put(key, value);
     }
 
     /**
-     * 写入过滤阶段追踪标签。
+     * 获取共享属性。
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T getAttribute(String key, Class<T> type) {
+        return (T) attributes.get(key);
+    }
+
+    /**
+     * 写入插件追踪标签。
      */
     public void putTraceTag(String key, String value) {
         if (key != null && value != null) {
             traceTags.put(key, value);
         }
+    }
+
+    /**
+     * 获取所有追踪标签的副本。
+     */
+    public Map<String, String> getTraceTags() {
+        return new HashMap<>(traceTags);
     }
 }

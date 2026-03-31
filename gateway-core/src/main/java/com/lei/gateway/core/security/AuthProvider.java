@@ -1,6 +1,7 @@
 package com.lei.gateway.core.security;
 
 import com.lei.gateway.core.config.SecurityProperties;
+import io.netty.handler.codec.http.HttpRequest;
 
 /**
  * 认证提供器 SPI。
@@ -15,6 +16,6 @@ public interface AuthProvider {
     /**
      * 执行认证。
      */
-    AuthenticationResult authenticate(SecurityRequestContext context,
+    AuthenticationResult authenticate(HttpRequest request,
             EffectiveSecurityConfig.Auth authConfig);
 }

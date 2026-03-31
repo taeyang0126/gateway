@@ -14,12 +14,9 @@ import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
-import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.KeyPair;
@@ -44,9 +41,9 @@ class JwtAuthProviderTest {
         EffectiveSecurityConfig.Auth authConfig = createAuthConfig(
                 toPem((RSAPublicKey) keyPair.getPublic()),
                 "test-issuer", "test-audience");
-        SecurityRequestContext context = createContext(token);
+        DefaultFullHttpRequest request = createRequest(token);
 
-        AuthenticationResult result = provider.authenticate(context, authConfig);
+        AuthenticationResult result = provider.authenticate(request, authConfig);
         assertThat(result.isAuthenticated()).isTrue();
         assertThat(result.getUserId()).isEqualTo("demo-user");
     }
@@ -61,9 +58,9 @@ class JwtAuthProviderTest {
         EffectiveSecurityConfig.Auth authConfig = createAuthConfig(
                 toPem((RSAPublicKey) keyPair.getPublic()),
                 "test-issuer", "a2");
-        SecurityRequestContext context = createContext(token);
+        DefaultFullHttpRequest request = createRequest(token);
 
-        AuthenticationResult result = provider.authenticate(context, authConfig);
+        AuthenticationResult result = provider.authenticate(request, authConfig);
         assertThat(result.isAuthenticated()).isFalse();
         assertThat(result.getReason()).isEqualTo("audience_mismatch");
     }
@@ -81,45 +78,18 @@ class JwtAuthProviderTest {
 
         EffectiveSecurityConfig.Auth authConfig = createAuthConfig(
                 null, "test-issuer", "test-audience");
-        SecurityRequestContext context = createContext(token);
+        DefaultFullHttpRequest request = createRequest(token);
 
-        AuthenticationResult result = provider.authenticate(context, authConfig);
+        AuthenticationResult result = provider.authenticate(request, authConfig);
         assertThat(result.isAuthenticated()).isFalse();
         assertThat(result.getReason()).isEqualTo("jwks_resolve_error");
     }
 
-    private static SecurityRequestContext createContext(String token) {
-        ChannelHandlerContext channelHandlerContext = mock(ChannelHandlerContext.class);
-        Channel channel = mock(Channel.class);
-        when(channelHandlerContext.channel()).thenReturn(channel);
-        when(channel.remoteAddress()).thenReturn(new InetSocketAddress("127.0.0.1", 8080));
-
+    private static DefaultFullHttpRequest createRequest(String token) {
         DefaultFullHttpRequest request = new DefaultFullHttpRequest(
                 HttpVersion.HTTP_1_1, HttpMethod.GET, "/api/example/hello");
         request.headers().set("Authorization", "Bearer " + token);
-
-        com.lei.gateway.core.config.Route route = new com.lei.gateway.core.config.Route();
-        route.setId("route-1");
-        route.setPathPrefix("/api/**");
-        route.setUpstream("http://localhost:8081");
-
-        EffectiveSecurityConfig config = new EffectiveSecurityConfig(
-                true,
-                java.util.List.of(),
-                null,
-                new EffectiveSecurityConfig.IpAccess(false, false, true,
-                        java.util.List.of(), java.util.List.of()),
-                createAuthConfig("unused", null, null),
-                new EffectiveSecurityConfig.RateLimit(
-                        new EffectiveSecurityConfig.IpRateLimit(false, false,
-                                com.lei.gateway.core.config.SecurityProperties
-                                        .RateLimitMode.LOCAL,
-                                100, 100, 50),
-                        new EffectiveSecurityConfig.UserRateLimit(false, false,
-                                com.lei.gateway.core.config.SecurityProperties
-                                        .RateLimitMode.LOCAL,
-                                100, 100, 50)));
-        return new SecurityRequestContext(channelHandlerContext, request, route, config, "t1");
+        return request;
     }
 
     private static EffectiveSecurityConfig.Auth createAuthConfig(

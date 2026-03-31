@@ -2,7 +2,8 @@ package com.lei.gateway.core.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.lei.gateway.core.config.SecurityProperties;
+import com.lei.gateway.core.config.GatewayProperties;
+import com.lei.gateway.core.config.PluginConfigEntry;
 import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
@@ -21,6 +22,8 @@ import java.security.interfaces.RSAPublicKey;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class JwtAuthenticationIntegrationTest extends IntegrationTestBase {
@@ -28,16 +31,18 @@ class JwtAuthenticationIntegrationTest extends IntegrationTestBase {
     private static final KeyPair KEY_PAIR = createKeyPair();
 
     @Override
-    protected SecurityProperties createSecurityProperties() {
-        SecurityProperties security = new SecurityProperties();
-        security.setEnabled(true);
-        security.getAuth().setEnabled(true);
-        security.getAuth().setType(SecurityProperties.AuthType.JWT);
-        security.getAuth().getProviders().getJwt().setIssuer("integration-issuer");
-        security.getAuth().getProviders().getJwt().setAudience("integration-audience");
-        security.getAuth().getProviders().getJwt().setPublicKey(
-                toPem((RSAPublicKey) KEY_PAIR.getPublic()));
-        return security;
+    protected GatewayProperties createGatewayProperties() {
+        GatewayProperties props = super.createGatewayProperties();
+        PluginConfigEntry auth = new PluginConfigEntry();
+        auth.setName("auth");
+        auth.setConfig(Map.of(
+                "type", "JWT",
+                "providers", Map.of("jwt", Map.of(
+                        "issuer", "integration-issuer",
+                        "audience", "integration-audience",
+                        "public-key", toPem((RSAPublicKey) KEY_PAIR.getPublic())))));
+        props.setPlugins(List.of(auth));
+        return props;
     }
 
     @Test

@@ -3,6 +3,16 @@ package com.lei.gateway.core.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
+import com.lei.gateway.core.plugin.AuthPlugin;
+import com.lei.gateway.core.plugin.GatewayPluginProcessor;
+import com.lei.gateway.core.plugin.IpAccessPlugin;
+import com.lei.gateway.core.plugin.IpRateLimitPlugin;
+import com.lei.gateway.core.plugin.Plugin;
+import com.lei.gateway.core.plugin.PluginChain;
+import com.lei.gateway.core.plugin.PluginConfigResolver;
+import com.lei.gateway.core.plugin.PluginRegistry;
+import com.lei.gateway.core.plugin.RealIpPlugin;
+import com.lei.gateway.core.plugin.UserRateLimitPlugin;
 import com.lei.gateway.core.proxy.DrainHandler;
 import com.lei.gateway.core.proxy.InFlightRequestTracker;
 import com.lei.gateway.core.proxy.NettyServerBootstrap;
@@ -11,12 +21,19 @@ import com.lei.gateway.core.proxy.RoutingContext;
 import com.lei.gateway.core.proxy.ShutdownCoordinator;
 import com.lei.gateway.core.proxy.UpstreamConnectionPool;
 import com.lei.gateway.core.proxy.WarmupRunner;
-import com.lei.gateway.core.security.GatewaySecurityProcessor;
+import com.lei.gateway.core.security.AuthProvider;
+import com.lei.gateway.core.security.CidrMatcher;
+import com.lei.gateway.core.security.ClientIpResolver;
+import com.lei.gateway.core.security.JwksKeyProvider;
+import com.lei.gateway.core.security.JwtAuthProvider;
+import com.lei.gateway.core.security.LocalTokenBucketRateLimiter;
+import com.lei.gateway.core.security.RateLimiterEngine;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
@@ -76,6 +93,90 @@ public class GatewayAutoConfiguration {
         return new DrainHandler();
     }
 
+    /** 插件注册表。 */
+    @Bean
+    public PluginRegistry pluginRegistry(List<Plugin> plugins) {
+        PluginRegistry registry = new PluginRegistry();
+        registry.discoverAndRegister(plugins);
+        return registry;
+    }
+
+    /** 插件配置解析器。 */
+    @Bean
+    public PluginConfigResolver pluginConfigResolver(PluginRegistry pluginRegistry) {
+        return new PluginConfigResolver(pluginRegistry);
+    }
+
+    /** 网关插件处理器。 */
+    @Bean
+    public GatewayPluginProcessor gatewayPluginProcessor(
+            PluginRegistry pluginRegistry,
+            PluginConfigResolver configResolver,
+            GatewayProperties gatewayProperties,
+            MetricsCollector metricsCollector) {
+        return new GatewayPluginProcessor(pluginRegistry, configResolver,
+                new PluginChain(metricsCollector),
+                gatewayProperties.getPlugins());
+    }
+
+    /** CIDR 匹配器。 */
+    @Bean
+    @ConditionalOnMissingBean
+    public CidrMatcher cidrMatcher() {
+        return new CidrMatcher();
+    }
+
+    /** 客户端 IP 解析器。 */
+    @Bean
+    @ConditionalOnMissingBean
+    public ClientIpResolver clientIpResolver(CidrMatcher cidrMatcher) {
+        return new ClientIpResolver(cidrMatcher);
+    }
+
+    /** 认证提供者。 */
+    @Bean
+    @ConditionalOnMissingBean
+    public AuthProvider authProvider() {
+        return new JwtAuthProvider(new JwksKeyProvider());
+    }
+
+    /** 限流引擎。 */
+    @Bean
+    @ConditionalOnMissingBean
+    public RateLimiterEngine rateLimiterEngine() {
+        return new LocalTokenBucketRateLimiter();
+    }
+
+    /** 真实 IP 解析插件。 */
+    @Bean
+    public RealIpPlugin realIpPlugin(ClientIpResolver clientIpResolver) {
+        return new RealIpPlugin(clientIpResolver);
+    }
+
+    /** IP 访问控制插件。 */
+    @Bean
+    public IpAccessPlugin ipAccessPlugin(CidrMatcher cidrMatcher) {
+        return new IpAccessPlugin(cidrMatcher);
+    }
+
+    /** IP 限流插件。 */
+    @Bean
+    public IpRateLimitPlugin ipRateLimitPlugin(RateLimiterEngine rateLimiterEngine) {
+        return new IpRateLimitPlugin(rateLimiterEngine);
+    }
+
+    /** 认证插件。 */
+    @Bean
+    public AuthPlugin authPlugin(AuthProvider authProvider) {
+        return new AuthPlugin(authProvider);
+    }
+
+    /** 用户限流插件。 */
+    @Bean
+    public UserRateLimitPlugin userRateLimitPlugin(RateLimiterEngine rateLimiterEngine) {
+        return new UserRateLimitPlugin(rateLimiterEngine);
+    }
+
     /** RoutingHandler 聚合依赖。 */
     @Bean
     public RoutingContext routingContext(RouteResolver routeResolver,
@@ -84,15 +185,13 @@ public class GatewayAutoConfiguration {
             MetricsCollector metricsCollector,
             AccessLogWriter accessLogWriter,
             ObservabilityProperties observabilityProperties,
-            SecurityProperties securityProperties,
+            GatewayPluginProcessor pluginProcessor,
             InFlightRequestTracker inFlightRequestTracker,
             DrainHandler drainHandler,
             HealthProperties healthProperties) {
-        GatewaySecurityProcessor securityProcessor =
-                new GatewaySecurityProcessor(securityProperties, metricsCollector);
         return new RoutingContext(routeResolver, requestLimitProperties,
                 connectionPool, metricsCollector, accessLogWriter,
-                observabilityProperties, securityProcessor,
+                observabilityProperties, pluginProcessor,
                 inFlightRequestTracker, drainHandler, healthProperties);
     }
 

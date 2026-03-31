@@ -10,7 +10,6 @@ import com.lei.gateway.core.config.ObservabilityProperties;
 import com.lei.gateway.core.config.RequestLimitProperties;
 import com.lei.gateway.core.config.Route;
 import com.lei.gateway.core.config.RouteResolver;
-import com.lei.gateway.core.config.SecurityProperties;
 import com.lei.gateway.core.config.ShutdownProperties;
 import com.lei.gateway.core.observability.AccessLogWriter;
 import com.lei.gateway.core.observability.MetricsCollector;
@@ -21,7 +20,10 @@ import com.lei.gateway.core.proxy.RoutingContext;
 import com.lei.gateway.core.proxy.ShutdownCoordinator;
 import com.lei.gateway.core.proxy.UpstreamConnectionPool;
 import com.lei.gateway.core.proxy.WarmupRunner;
-import com.lei.gateway.core.security.GatewaySecurityProcessor;
+import com.lei.gateway.core.plugin.GatewayPluginProcessor;
+import com.lei.gateway.core.plugin.PluginChain;
+import com.lei.gateway.core.plugin.PluginConfigResolver;
+import com.lei.gateway.core.plugin.PluginRegistry;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.netty.buffer.ByteBuf;
@@ -115,7 +117,6 @@ class GracefulShutdownIntegrationTest {
         obsProps.setAccessLogEnabled(true);
         obsProps.setTracingEnabled(false);
 
-        SecurityProperties securityProps = new SecurityProperties();
 
         ShutdownProperties shutdownProps = new ShutdownProperties();
         shutdownProps.setShutdownTimeoutSeconds(10);
@@ -140,14 +141,17 @@ class GracefulShutdownIntegrationTest {
         inFlightTracker = new InFlightRequestTracker();
         drainHandler = new DrainHandler();
 
-        GatewaySecurityProcessor securityProcessor =
-                new GatewaySecurityProcessor(securityProps, metricsCollector);
+        GatewayPluginProcessor pluginProcessor = new GatewayPluginProcessor(
+                new PluginRegistry(),
+                new PluginConfigResolver(new PluginRegistry()),
+                new PluginChain(metricsCollector),
+                java.util.List.of());
         RouteResolver routeResolver = new RouteResolver(gatewayProps);
 
         RoutingContext routingCtx = new RoutingContext(
                 routeResolver, requestLimitProps, connectionPool,
                 metricsCollector, accessLogWriter, obsProps,
-                securityProcessor, inFlightTracker, drainHandler,
+                pluginProcessor, inFlightTracker, drainHandler,
                 healthProps);
 
         // 4. 使用 MockApplicationContext 创建 NettyServerBootstrap
