@@ -73,4 +73,87 @@ public class GatewayPluginProcessor {
 
         return new PluginExecutionResult(result, pluginContext);
     }
+
+    /**
+     * 执行 RESPONSE 阶段插件链。
+     *
+     * @param ctx              Netty channel 上下文
+     * @param request          当前 HTTP 请求
+     * @param route            匹配的路由
+     * @param traceId          追踪 ID
+     * @param upstreamResponse 上游响应
+     * @return 插件执行结果
+     */
+    public PluginExecutionResult executeResponsePhase(
+            ChannelHandlerContext ctx, HttpRequest request,
+            Route route, String traceId,
+            io.netty.handler.codec.http.HttpResponse upstreamResponse) {
+        return executePhase(PluginPhase.RESPONSE, ctx, request, route,
+                traceId, upstreamResponse, null, 0);
+    }
+
+    /**
+     * 执行 ERROR 阶段插件链。
+     *
+     * @param ctx        Netty channel 上下文
+     * @param request    当前 HTTP 请求
+     * @param route      匹配的路由
+     * @param traceId    追踪 ID
+     * @param cause      错误原因
+     * @param statusCode 错误状态码
+     * @return 插件执行结果
+     */
+    public PluginExecutionResult executeErrorPhase(
+            ChannelHandlerContext ctx, HttpRequest request,
+            Route route, String traceId,
+            Throwable cause, int statusCode) {
+        return executePhase(PluginPhase.ERROR, ctx, request, route,
+                traceId, null, cause, statusCode);
+    }
+
+    private PluginExecutionResult executePhase(PluginPhase phase,
+            ChannelHandlerContext ctx, HttpRequest request,
+            Route route, String traceId,
+            io.netty.handler.codec.http.HttpResponse upstreamResponse,
+            Throwable errorCause, int statusCode) {
+        Map<PluginPhase, List<PluginConfig>> phaseConfigs =
+                configResolver.resolve(globalPluginConfigs, route);
+
+        List<PluginConfig> configs = phaseConfigs.getOrDefault(
+                phase, Collections.emptyList());
+
+        List<Plugin> plugins = new ArrayList<>();
+        Map<String, PluginConfig> configMap = new HashMap<>();
+        for (PluginConfig pc : configs) {
+            Optional<Plugin> pluginOpt = pluginRegistry.find(
+                    pc.getPluginName());
+            if (pluginOpt.isEmpty()) {
+                log.warn("插件未注册: {}", pc.getPluginName());
+                continue;
+            }
+            plugins.add(pluginOpt.get());
+            configMap.put(pc.getPluginName(), pc);
+        }
+
+        if (plugins.isEmpty()) {
+            return new PluginExecutionResult(PluginResult.doContinue(),
+                    new PluginContext(ctx, request, route, traceId));
+        }
+
+        PluginContext pluginContext = new PluginContext(ctx, request,
+                route, traceId);
+        if (upstreamResponse != null) {
+            pluginContext.setUpstreamResponse(upstreamResponse);
+        }
+        if (errorCause != null) {
+            pluginContext.setErrorCause(errorCause);
+        }
+        if (statusCode > 0) {
+            pluginContext.setResponseStatusCode(statusCode);
+        }
+
+        PluginResult result = pluginChain.execute(plugins, configMap,
+                pluginContext, route.getId());
+        return new PluginExecutionResult(result, pluginContext);
+    }
 }

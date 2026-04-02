@@ -9,10 +9,12 @@ import com.lei.gateway.observability.AccessLogEntry;
 import com.lei.gateway.observability.AccessLogWriter;
 import com.lei.gateway.observability.MetricsCollector;
 import com.lei.gateway.observability.TraceContextHandler;
+import com.lei.gateway.plugin.CorsPlugin;
 import com.lei.gateway.plugin.GatewayPluginProcessor;
 import com.lei.gateway.plugin.PluginContext;
 import com.lei.gateway.plugin.PluginExecutionResult;
 import com.lei.gateway.plugin.PluginResult;
+import com.lei.gateway.plugin.RewritePathPlugin;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
@@ -34,6 +36,7 @@ import io.netty.util.CharsetUtil;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
@@ -68,6 +71,14 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
             AttributeKey.valueOf("securityFilter");
     static final AttributeKey<String> SECURITY_REASON_KEY =
             AttributeKey.valueOf("securityReason");
+    /** Channel Attribute：RewritePathPlugin 写入的重写后 URI。 */
+    static final AttributeKey<String> REWRITTEN_URI_KEY =
+            AttributeKey.valueOf("rewrittenUri");
+    /** Channel Attribute：CorsPlugin 写入的 CORS 响应头。 */
+    @SuppressWarnings("unchecked")
+    static final AttributeKey<Map<String, String>> CORS_HEADERS_KEY =
+            (AttributeKey<Map<String, String>>) (AttributeKey<?>)
+                    AttributeKey.valueOf("corsResponseHeaders");
 
     private static final String HEALTH_PATH = "/health";
     private static final String HEALTH_LIVE_PATH = "/health/live";
@@ -186,6 +197,19 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
         if (pluginCtx.getClientIp() != null) {
             ctx.channel().attr(CLIENT_IP_KEY).set(pluginCtx.getClientIp());
         }
+        String rewrittenUri = pluginCtx.getAttribute(
+                RewritePathPlugin.REWRITTEN_URI_KEY,
+                String.class);
+        if (rewrittenUri != null) {
+            ctx.channel().attr(REWRITTEN_URI_KEY).set(rewrittenUri);
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, String> corsHeaders = pluginCtx.getAttribute(
+                CorsPlugin.CORS_HEADERS_KEY,
+                Map.class);
+        if (corsHeaders != null) {
+            ctx.channel().attr(CORS_HEADERS_KEY).set(corsHeaders);
+        }
         if (observabilityProperties.isTracingEnabled()) {
             ctx.channel().attr(TraceContextHandler.TRACE_SECURITY_TAGS_KEY).set(
                     pluginCtx.getTraceTags());
@@ -198,7 +222,7 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
 
         ProxyContext proxyCtx = new ProxyContext(requestLimitProperties,
                 connectionPool, metricsCollector, accessLogWriter,
-                observabilityProperties, inFlightTracker);
+                observabilityProperties, inFlightTracker, pluginProcessor);
         ProxyHandler proxyHandler = new ProxyHandler(route, proxyCtx);
         ctx.pipeline().addAfter("routing", PROXY_HANDLER_NAME, proxyHandler);
         inFlightTracker.increment();
@@ -280,6 +304,13 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
     private static void sendResponse(ChannelHandlerContext ctx,
             HttpRequest request, HttpResponseStatus status,
             String body, String contentType, Integer retryAfterSeconds) {
+        sendResponse(ctx, request, status, body, contentType, retryAfterSeconds, null);
+    }
+
+    private static void sendResponse(ChannelHandlerContext ctx,
+            HttpRequest request, HttpResponseStatus status,
+            String body, String contentType, Integer retryAfterSeconds,
+            Map<String, String> extraHeaders) {
         ByteBuf content = Unpooled.copiedBuffer(body, CharsetUtil.UTF_8);
         FullHttpResponse response = new DefaultFullHttpResponse(
                 HttpVersion.HTTP_1_1, status, content);
@@ -288,6 +319,9 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
                 content.readableBytes());
         if (retryAfterSeconds != null) {
             response.headers().set("Retry-After", retryAfterSeconds);
+        }
+        if (extraHeaders != null) {
+            extraHeaders.forEach((key, value) -> response.headers().set(key, value));
         }
 
         boolean keepAlive = HttpUtil.isKeepAlive(request);
@@ -304,13 +338,22 @@ public class RoutingHandler extends ChannelInboundHandlerAdapter {
 
     private static void sendPluginResponse(ChannelHandlerContext ctx,
             HttpRequest request, PluginResult result) {
-        String message = "Rejected by " + result.getPluginName()
-                + ": " + result.getReason();
-        String json = "{\"status\":" + result.getStatus().code()
-                + ",\"error\":\"" + result.getStatus().reasonPhrase()
-                + "\",\"message\":\"" + escapeJson(message) + "\"}";
-        sendResponse(ctx, request, result.getStatus(), json, CONTENT_TYPE_JSON,
-                result.getRetryAfterSeconds());
+        String contentType = result.getContentType();
+        String body;
+        if (contentType != null) {
+            // 插件指定了 Content-Type，直接使用 body
+            body = result.getBody() != null ? result.getBody() : "";
+        } else {
+            // 默认 JSON 格式
+            contentType = CONTENT_TYPE_JSON;
+            String message = "Rejected by " + result.getPluginName()
+                    + ": " + result.getReason();
+            body = "{\"status\":" + result.getStatus().code()
+                    + ",\"error\":\"" + result.getStatus().reasonPhrase()
+                    + "\",\"message\":\"" + escapeJson(message) + "\"}";
+        }
+        sendResponse(ctx, request, result.getStatus(), body, contentType,
+                result.getRetryAfterSeconds(), result.getResponseHeaders());
     }
 
     private static String escapeJson(String value) {

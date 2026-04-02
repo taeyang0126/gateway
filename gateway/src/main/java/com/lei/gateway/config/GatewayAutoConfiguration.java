@@ -3,7 +3,11 @@ package com.lei.gateway.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lei.gateway.observability.AccessLogWriter;
 import com.lei.gateway.observability.MetricsCollector;
+import com.lei.gateway.plugin.AddRequestHeaderPlugin;
+import com.lei.gateway.plugin.AddResponseHeaderPlugin;
 import com.lei.gateway.plugin.AuthPlugin;
+import com.lei.gateway.plugin.CorsPlugin;
+import com.lei.gateway.plugin.CustomErrorResponsePlugin;
 import com.lei.gateway.plugin.GatewayPluginProcessor;
 import com.lei.gateway.plugin.IpAccessPlugin;
 import com.lei.gateway.plugin.IpRateLimitPlugin;
@@ -13,6 +17,9 @@ import com.lei.gateway.plugin.PluginConfigResolver;
 import com.lei.gateway.plugin.PluginConfigValidator;
 import com.lei.gateway.plugin.PluginRegistry;
 import com.lei.gateway.plugin.RealIpPlugin;
+import com.lei.gateway.plugin.RemoveRequestHeaderPlugin;
+import com.lei.gateway.plugin.RemoveResponseHeaderPlugin;
+import com.lei.gateway.plugin.RewritePathPlugin;
 import com.lei.gateway.plugin.UserRateLimitPlugin;
 import com.lei.gateway.proxy.DrainHandler;
 import com.lei.gateway.proxy.InFlightRequestTracker;
@@ -193,6 +200,48 @@ public class GatewayAutoConfiguration {
         return new UserRateLimitPlugin(rateLimiterEngine);
     }
 
+    /** CORS 插件。 */
+    @Bean
+    public CorsPlugin corsPlugin() {
+        return new CorsPlugin();
+    }
+
+    /** 添加请求头插件。 */
+    @Bean
+    public AddRequestHeaderPlugin addRequestHeaderPlugin() {
+        return new AddRequestHeaderPlugin();
+    }
+
+    /** 删除请求头插件。 */
+    @Bean
+    public RemoveRequestHeaderPlugin removeRequestHeaderPlugin() {
+        return new RemoveRequestHeaderPlugin();
+    }
+
+    /** 路径重写插件。 */
+    @Bean
+    public RewritePathPlugin rewritePathPlugin() {
+        return new RewritePathPlugin();
+    }
+
+    /** 添加响应头插件。 */
+    @Bean
+    public AddResponseHeaderPlugin addResponseHeaderPlugin() {
+        return new AddResponseHeaderPlugin();
+    }
+
+    /** 删除响应头插件。 */
+    @Bean
+    public RemoveResponseHeaderPlugin removeResponseHeaderPlugin() {
+        return new RemoveResponseHeaderPlugin();
+    }
+
+    /** 自定义错误响应插件。 */
+    @Bean
+    public CustomErrorResponsePlugin customErrorResponsePlugin() {
+        return new CustomErrorResponsePlugin();
+    }
+
     /** RoutingHandler 聚合依赖。 */
     @Bean
     public RoutingContext routingContext(RouteResolver routeResolver,
@@ -218,10 +267,11 @@ public class GatewayAutoConfiguration {
             MetricsCollector metricsCollector,
             AccessLogWriter accessLogWriter,
             ObservabilityProperties observabilityProperties,
-            InFlightRequestTracker inFlightRequestTracker) {
+            InFlightRequestTracker inFlightRequestTracker,
+            GatewayPluginProcessor gatewayPluginProcessor) {
         return new ProxyContext(requestLimitProperties, connectionPool,
                 metricsCollector, accessLogWriter, observabilityProperties,
-                inFlightRequestTracker);
+                inFlightRequestTracker, gatewayPluginProcessor);
     }
 
     /** 启动预热执行器。 */

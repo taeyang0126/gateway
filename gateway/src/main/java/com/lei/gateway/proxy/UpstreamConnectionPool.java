@@ -8,6 +8,7 @@ import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
@@ -74,9 +75,9 @@ public class UpstreamConnectionPool {
                     metricsCollector.recordUpstreamConnect(key, durationNanos,
                             false, properties.getSlowConnectThresholdMillis());
                     metricsCollector.recordPoolBorrowFailure(key);
-                    throw e instanceof java.util.concurrent.CompletionException
-                            ? (java.util.concurrent.CompletionException) e
-                            : new java.util.concurrent.CompletionException(e);
+                    throw e instanceof CompletionException
+                            ? (CompletionException) e
+                            : new CompletionException(e);
                 });
     }
 

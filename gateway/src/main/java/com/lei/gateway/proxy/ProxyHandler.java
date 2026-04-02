@@ -7,6 +7,9 @@ import com.lei.gateway.observability.AccessLogEntry;
 import com.lei.gateway.observability.AccessLogWriter;
 import com.lei.gateway.observability.MetricsCollector;
 import com.lei.gateway.observability.TraceContextHandler;
+import com.lei.gateway.plugin.GatewayPluginProcessor;
+import com.lei.gateway.plugin.PluginExecutionResult;
+import com.lei.gateway.plugin.PluginResult;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
@@ -16,6 +19,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.EventLoop;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpRequest;
+import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -37,9 +41,13 @@ import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.CharsetUtil;
 import io.netty.util.ReferenceCountUtil;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.net.URI;
 import java.util.ArrayDeque;
+import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,6 +78,9 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     private final ObservabilityProperties observabilityConfig;
     private final InFlightRequestTracker inFlightTracker;
 
+    // 插件处理器
+    private final GatewayPluginProcessor pluginProcessor;
+
     // 请求级状态
     private long startTimeNanos;
     private String traceId;
@@ -95,6 +106,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     private H2ResponseDemuxHandler demuxHandler;
     private ChannelHandlerContext clientCtx;
     private int acquireRetryCount;
+    private HttpRequest originalRequest;
 
     private boolean connectingToUpstream;
     private boolean headersEndStream;
@@ -110,6 +122,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         this.accessLogWriter = ctx.getAccessLogWriter();
         this.observabilityConfig = ctx.getObservabilityProperties();
         this.inFlightTracker = ctx.getInFlightTracker();
+        this.pluginProcessor = ctx.getPluginProcessor();
     }
 
     @Override
@@ -127,11 +140,12 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     private void handleHttpRequest(ChannelHandlerContext ctx,
             HttpRequest request) {
         startTimeNanos = System.nanoTime();
+        this.originalRequest = request;
         traceId = ctx.channel().attr(TraceContextHandler.TRACE_ID_KEY).get();
 
         method = request.method().name();
         path = request.uri();
-        java.net.SocketAddress remoteAddr = ctx.channel().remoteAddress();
+        SocketAddress remoteAddr = ctx.channel().remoteAddress();
         remoteClientIp = resolveRemoteClientIp(remoteAddr);
         String resolvedClientIp = ctx.channel().attr(RoutingHandler.CLIENT_IP_KEY).get();
         if (resolvedClientIp != null && !resolvedClientIp.isBlank()) {
@@ -196,7 +210,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         }
 
         DefaultHttpRequest upstreamRequest = new DefaultHttpRequest(
-                HttpVersion.HTTP_1_1, request.method(), rewriteUri(request.uri()),
+                HttpVersion.HTTP_1_1, request.method(), rewriteUri(ctx, request.uri()),
                 request.headers());
 
         log.debug("traceId={} acquire upstream {}:{}", traceId,
@@ -224,7 +238,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         }
 
         if (ex != null) {
-            Throwable cause = ex instanceof java.util.concurrent.CompletionException
+            Throwable cause = ex instanceof CompletionException
                     ? ex.getCause() : ex;
             if (cause instanceof IllegalStateException) {
                 log.error("连接池已满，无法获取 upstream 连接: {}",
@@ -362,7 +376,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                     }
                 });
             });
-        } catch (java.util.concurrent.RejectedExecutionException re) {
+        } catch (RejectedExecutionException re) {
             // H2 channel 的 event loop 已关闭，回退预占的 stream 槽位
             demux.decrementActiveStream();
             streamReserved = false;
@@ -471,6 +485,26 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
      */
     void onH2Response(HttpResponse response) {
         responseStatusCode = response.status().code();
+
+        // 执行 RESPONSE 阶段插件链
+        if (pluginProcessor != null && clientCtx != null
+                && originalRequest != null) {
+            PluginExecutionResult respExec =
+                    pluginProcessor.executeResponsePhase(
+                            clientCtx, originalRequest, route, traceId,
+                            response);
+            // RESPONSE 插件不做短路处理，仅用于修改响应头
+        }
+
+        // 注入 CORS 响应头（CorsPlugin 在 REQUEST 阶段存入 Channel Attribute）
+        Map<String, String> corsHeaders = clientCtx != null
+                ? clientCtx.channel().attr(RoutingHandler.CORS_HEADERS_KEY).get()
+                : null;
+        if (corsHeaders != null) {
+            corsHeaders.forEach((key, value) ->
+                    response.headers().set(key, value));
+        }
+
         if (isNoBodyResponse(response)) {
             // no-body 响应直接写 FullHttpResponse 并完成请求。
             // H2ResponseDemuxHandler.handleHeaders() 在 END_STREAM 时仍会调用
@@ -482,7 +516,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             FullHttpResponse fullResponse = new DefaultFullHttpResponse(
                     response.protocolVersion(), response.status(),
                     Unpooled.EMPTY_BUFFER, response.headers(),
-                    io.netty.handler.codec.http.EmptyHttpHeaders.INSTANCE);
+                    EmptyHttpHeaders.INSTANCE);
             writeToClient(() -> {
                 if (!clientCtx.channel().isActive()) {
                     ReferenceCountUtil.release(fullResponse);
@@ -581,6 +615,23 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
      */
     void onH2Error(Throwable cause) {
         log.error("traceId={} H2 stream 错误, streamId={}", traceId, streamId, cause);
+        // 执行 ERROR 阶段插件链
+        if (pluginProcessor != null && clientCtx != null
+                && originalRequest != null) {
+            PluginExecutionResult errExec =
+                    pluginProcessor.executeErrorPhase(
+                            clientCtx, originalRequest, route, traceId,
+                            cause, HttpResponseStatus.BAD_GATEWAY.code());
+            if (!errExec.isContinue()) {
+                // ERROR 插件返回了自定义响应
+                PluginResult errResult =
+                        errExec.getResult();
+                cleanupOnError();
+                sendCustomErrorResponse(clientCtx, errResult);
+                RoutingHandler.onProxyComplete(clientCtx);
+                return;
+            }
+        }
         if (clientCtx != null && clientCtx.channel().isActive()) {
             sendErrorAndCleanup(clientCtx, HttpResponseStatus.BAD_GATEWAY,
                     "Upstream H2 error");
@@ -720,13 +771,46 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     }
 
     /**
-     * 根据路由的 rewritePath/rewriteReplacement 配置对请求 URI 做路径重写。
+     * 发送 ERROR 阶段插件自定义的错误响应。
+     */
+    private void sendCustomErrorResponse(ChannelHandlerContext ctx,
+            PluginResult result) {
+        responseStatusCode = result.getStatus().code();
+        String body = result.getBody() != null ? result.getBody() : "";
+        String contentType = result.getContentType() != null
+                ? result.getContentType() : "application/json";
+        ByteBuf content = Unpooled.copiedBuffer(body, CharsetUtil.UTF_8);
+        FullHttpResponse response = new DefaultFullHttpResponse(
+                HttpVersion.HTTP_1_1, result.getStatus(), content);
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, contentType);
+        response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
+                content.readableBytes());
+        result.getResponseHeaders().forEach((key, value) ->
+                response.headers().set(key, value));
+        response.headers().set(HttpHeaderNames.CONNECTION,
+                HttpHeaderValues.CLOSE);
+        ctx.writeAndFlush(response)
+                .addListener(ChannelFutureListener.CLOSE);
+    }
+
+    /**
+     * 根据插件重写结果或路由配置对请求 URI 做路径重写。
      *
+     * <p>优先使用 RewritePathPlugin 写入 Channel Attribute 的重写结果，
+     * 回退到路由的 rewritePath/rewriteReplacement 配置。
+     *
+     * @param ctx 客户端 ChannelHandlerContext
      * @param uri 原始请求 URI（含 query string）
      * @return 重写后的 URI
      */
-    private String rewriteUri(String uri) {
-        return PathRewriter.rewrite(uri, route.getRewritePath(), route.getRewriteReplacement());
+    private String rewriteUri(ChannelHandlerContext ctx, String uri) {
+        String pluginRewritten = ctx.channel()
+                .attr(RoutingHandler.REWRITTEN_URI_KEY).get();
+        if (pluginRewritten != null) {
+            return pluginRewritten;
+        }
+        return PathRewriter.rewrite(uri, route.getRewritePath(),
+                route.getRewriteReplacement());
     }
 
     private static String escapeJson(String value) {
@@ -740,7 +824,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                 .replace("\t", "\\t");
     }
 
-    private static String resolveRemoteClientIp(java.net.SocketAddress remoteAddr) {
+    private static String resolveRemoteClientIp(SocketAddress remoteAddr) {
         if (remoteAddr instanceof InetSocketAddress inetAddr) {
             return inetAddr.getAddress().getHostAddress();
         }

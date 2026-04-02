@@ -5,6 +5,7 @@ import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jose.crypto.ECDSAVerifier;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
+import com.nimbusds.jose.jwk.Curve;
 import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKSet;
@@ -99,7 +100,7 @@ public class JwksKeyProvider {
         }
         if (publicKey instanceof ECPublicKey ecPublicKey) {
             return new ECKey.Builder(
-                    com.nimbusds.jose.jwk.Curve.forECParameterSpec(
+                    Curve.forECParameterSpec(
                             ecPublicKey.getParams()),
                     ecPublicKey).build();
         }

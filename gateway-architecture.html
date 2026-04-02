@@ -1,0 +1,2142 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gateway 当前架构全景</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&display=swap");
+
+    :root {
+      --bg: #f7f9ff;
+      --bg-soft: #edf2ff;
+      --card: rgba(255, 255, 255, 0.8);
+      --line: rgba(104, 124, 242, 0.28);
+      --text: #1d2850;
+      --text-soft: #5a6d9b;
+      --accent: #0ea5e9;
+      --accent-2: #db2777;
+      --accent-3: #059669;
+      --ok: #059669;
+      --warn: #c77a2e;
+      --danger: #cf3b67;
+      --shadow: 0 18px 48px rgba(64, 78, 165, 0.2);
+      --radius: 16px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: radial-gradient(1300px 820px at -10% -20%, rgba(255, 92, 200, 0.2), transparent 62%),
+                  radial-gradient(1200px 780px at 110% -15%, rgba(93, 226, 255, 0.26), transparent 60%),
+                  radial-gradient(1200px 920px at 52% 118%, rgba(125, 255, 177, 0.2), transparent 66%),
+                  linear-gradient(150deg, #fbfcff 0%, #f4f7ff 48%, #f7fffb 100%);
+      color: var(--text);
+      font-family: "Noto Sans SC", "Space Grotesk", sans-serif;
+      line-height: 1.6;
+      min-height: 100%;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(to right, rgba(126, 145, 235, 0.1) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(126, 145, 235, 0.1) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(circle at center, black 52%, transparent 100%);
+      z-index: 0;
+    }
+
+    main {
+      position: relative;
+      z-index: 1;
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 36px 20px 60px;
+    }
+
+    .theme-toggle {
+      position: sticky;
+      top: 12px;
+      float: right;
+      z-index: 20;
+      margin-bottom: 8px;
+      border: 1px solid rgba(116, 136, 232, 0.36);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #23376b;
+      padding: 7px 14px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.82rem;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(94, 112, 186, 0.24);
+      transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+    }
+
+    .theme-toggle:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 28px rgba(94, 112, 186, 0.32);
+      border-color: rgba(74, 107, 236, 0.55);
+    }
+
+    .hero {
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: linear-gradient(140deg, rgba(255, 255, 255, 0.88), rgba(243, 246, 255, 0.92));
+      padding: 28px 26px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 420px;
+      height: 420px;
+      right: -140px;
+      top: -180px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(255, 92, 200, 0.2), transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      width: 420px;
+      height: 420px;
+      left: -180px;
+      bottom: -220px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(93, 226, 255, 0.24), transparent 70%);
+      pointer-events: none;
+    }
+
+    .title {
+      margin: 0;
+      font-family: "Space Grotesk", "Noto Sans SC", sans-serif;
+      font-size: clamp(1.8rem, 3.6vw, 2.8rem);
+      letter-spacing: 0.02em;
+      line-height: 1.15;
+    }
+
+    .subtitle {
+      margin: 14px 0 18px;
+      color: var(--text-soft);
+      max-width: 900px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(116, 136, 232, 0.36);
+      color: #2b3b68;
+      background: rgba(255, 255, 255, 0.9);
+      font-size: 0.86rem;
+      white-space: nowrap;
+    }
+
+    section {
+      margin-top: 20px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--card);
+      box-shadow: var(--shadow);
+      padding: 20px;
+      backdrop-filter: blur(8px);
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-family: "Space Grotesk", "Noto Sans SC", sans-serif;
+      font-size: 1.3rem;
+      letter-spacing: 0.02em;
+    }
+
+    h3 {
+      margin: 0 0 10px;
+      font-size: 1.03rem;
+    }
+
+    p {
+      margin: 0 0 10px;
+      color: #293860;
+    }
+
+    .text-soft {
+      color: var(--text-soft);
+      font-size: 0.93rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .panel {
+      border: 1px solid rgba(112, 132, 232, 0.24);
+      border-radius: 12px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.78);
+    }
+
+    .stack {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .layer {
+      border: 1px solid rgba(114, 134, 232, 0.27);
+      border-radius: 12px;
+      padding: 11px 14px;
+      background: linear-gradient(130deg, rgba(255, 255, 255, 0.85), rgba(244, 248, 255, 0.84));
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .layer b {
+      font-family: "Space Grotesk", "Noto Sans SC", sans-serif;
+    }
+
+    .layer span {
+      color: var(--text-soft);
+      font-size: 0.9rem;
+    }
+
+    .flow {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 86px 1fr;
+      gap: 10px;
+      border: 1px solid rgba(114, 133, 231, 0.25);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.78);
+    }
+
+    .step .idx {
+      font-family: "JetBrains Mono", monospace;
+      color: var(--accent);
+      font-size: 0.9rem;
+      align-self: start;
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 2px;
+      color: #20305c;
+    }
+
+    .pipeline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .pipe-item {
+      border: 1px solid rgba(113, 133, 232, 0.4);
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 0.86rem;
+      font-family: "JetBrains Mono", monospace;
+    }
+
+    .pipe-arrow {
+      color: #5f74c8;
+      font-family: "JetBrains Mono", monospace;
+      align-self: center;
+      font-size: 0.9rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+
+    th, td {
+      border-bottom: 1px solid rgba(128, 171, 255, 0.22);
+      padding: 9px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: #324378;
+      font-family: "Space Grotesk", "Noto Sans SC", sans-serif;
+      font-weight: 600;
+      background: rgba(236, 241, 255, 0.86);
+    }
+
+    code {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.86rem;
+      color: #213a6c;
+      background: rgba(241, 246, 255, 0.9);
+      border: 1px solid rgba(128, 146, 228, 0.24);
+      border-radius: 6px;
+      padding: 1px 6px;
+      word-break: break-word;
+    }
+
+    pre {
+      margin: 8px 0 0;
+      padding: 12px;
+      border: 1px solid rgba(122, 140, 227, 0.3);
+      border-radius: 10px;
+      background: rgba(247, 250, 255, 0.92);
+      overflow: auto;
+    }
+
+    pre code {
+      border: none;
+      background: transparent;
+      padding: 0;
+      color: #29406e;
+      font-size: 0.83rem;
+      line-height: 1.55;
+    }
+
+    .list {
+      margin: 0;
+      padding-left: 18px;
+      color: #2a3962;
+    }
+
+    .list li {
+      margin: 6px 0;
+    }
+
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 0.75rem;
+      border: 1px solid rgba(124, 140, 222, 0.38);
+      margin-right: 6px;
+      margin-bottom: 6px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #2e3d69;
+    }
+
+    .ok {
+      color: var(--ok);
+    }
+
+    .warn {
+      color: var(--warn);
+    }
+
+    .danger {
+      color: var(--danger);
+    }
+
+    .diagram-card {
+      margin-top: 14px;
+      border: 1px solid rgba(114, 140, 255, 0.28);
+      border-radius: 14px;
+      padding: 12px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(246, 249, 255, 0.9));
+    }
+
+    .edge-card {
+      position: relative;
+      margin-top: 14px;
+      border: 1px solid rgba(106, 126, 228, 0.32);
+      border-radius: 16px;
+      padding: 12px;
+      background: linear-gradient(138deg, rgba(255, 255, 255, 0.95), rgba(241, 247, 255, 0.95) 55%, rgba(242, 255, 247, 0.94));
+      box-shadow: 0 18px 42px rgba(96, 114, 196, 0.24);
+      overflow: hidden;
+    }
+
+    .edge-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0.0) 0px,
+        rgba(255, 255, 255, 0.0) 5px,
+        rgba(70, 184, 255, 0.08) 6px,
+        rgba(70, 184, 255, 0.0) 8px
+      );
+      pointer-events: none;
+    }
+
+    .edge-card::after {
+      content: "";
+      position: absolute;
+      width: 420px;
+      height: 420px;
+      right: -160px;
+      top: -220px;
+      background: radial-gradient(circle, rgba(255, 88, 190, 0.18), transparent 70%);
+      pointer-events: none;
+    }
+
+    .edge-card > * {
+      position: relative;
+      z-index: 2;
+    }
+
+    .edge-card h3 {
+      color: #2a3d72;
+    }
+
+    .edge-title {
+      margin: 0 0 10px;
+      color: #2a3d72;
+      font-family: "Space Grotesk", "Noto Sans SC", sans-serif;
+      font-size: 1rem;
+    }
+
+    .edge-scroll {
+      overflow-x: auto;
+    }
+
+    .edge-scroll svg {
+      min-width: 980px;
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 12px;
+      background: radial-gradient(860px 260px at center 0%, rgba(93, 226, 255, 0.22), transparent 65%),
+                  radial-gradient(760px 260px at 88% 12%, rgba(255, 92, 200, 0.16), transparent 70%),
+                  linear-gradient(145deg, #f7fbff 0%, #eef4ff 55%, #f2fff7 100%);
+      border: 1px solid rgba(140, 166, 240, 0.44);
+    }
+
+    .edge-icon-ring {
+      fill: rgba(255, 255, 255, 0.56);
+      stroke: rgba(24, 173, 116, 0.72);
+      stroke-width: 1.8;
+      filter: drop-shadow(0 0 8px rgba(42, 184, 130, 0.32));
+    }
+
+    .edge-icon-text {
+      fill: #24538f;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .edge-node {
+      fill: rgba(255, 255, 255, 0.68);
+      stroke: rgba(129, 157, 238, 0.88);
+      stroke-width: 1.6;
+      filter: drop-shadow(0 0 8px rgba(108, 176, 255, 0.34));
+      transition: transform 220ms ease, filter 220ms ease, stroke 220ms ease;
+    }
+
+    .edge-scroll svg .edge-node:hover,
+    .edge-scroll svg .edge-diagram-node:hover,
+    .edge-scroll svg .edge-diagram-node-ok:hover,
+    .edge-scroll svg .edge-diagram-node-warn:hover,
+    .edge-scroll svg .edge-diagram-node-danger:hover {
+      stroke: rgba(30, 194, 130, 0.92);
+      filter: drop-shadow(0 0 12px rgba(30, 194, 130, 0.42));
+      transform-box: fill-box;
+      transform-origin: center;
+      transform: scale(1.04);
+      cursor: pointer;
+    }
+
+    .edge-text-main {
+      fill: #243b6f;
+      font-family: "Space Grotesk", "Noto Sans SC", sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .edge-text-sub {
+      fill: #50659a;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 13px;
+    }
+
+    .edge-link {
+      fill: none;
+      stroke: #28b7e8;
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-dasharray: 10 8;
+      animation: edge-flow 2.4s linear infinite;
+      filter: drop-shadow(0 0 5px rgba(40, 183, 232, 0.46));
+    }
+
+    .edge-dot {
+      fill: #3f79e2;
+      animation: edge-pulse 1.8s ease-in-out infinite;
+    }
+
+    .edge-diagram-frame {
+      fill: rgba(255, 255, 255, 0.48);
+      stroke: rgba(156, 182, 248, 0.55);
+    }
+
+    .edge-diagram-lane-allow {
+      fill: rgba(65, 178, 139, 0.16);
+      stroke: rgba(83, 194, 155, 0.62);
+    }
+
+    .edge-diagram-lane-deny {
+      fill: rgba(224, 113, 113, 0.15);
+      stroke: rgba(230, 110, 110, 0.54);
+    }
+
+    .edge-diagram-node {
+      fill: rgba(255, 255, 255, 0.66);
+      stroke: rgba(131, 160, 240, 0.78);
+      stroke-width: 1.5;
+      filter: drop-shadow(0 0 8px rgba(99, 176, 255, 0.3));
+    }
+
+    .edge-diagram-node-ok {
+      fill: rgba(74, 196, 154, 0.24);
+      stroke: rgba(49, 173, 131, 0.76);
+    }
+
+    .edge-diagram-node-warn {
+      fill: rgba(255, 193, 99, 0.28);
+      stroke: rgba(223, 141, 41, 0.78);
+    }
+
+    .edge-diagram-node-danger {
+      fill: rgba(255, 140, 140, 0.24);
+      stroke: rgba(216, 82, 96, 0.74);
+    }
+
+    .edge-diagram-title {
+      fill: #243a6b;
+      font-family: "Space Grotesk", "Noto Sans SC", sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .edge-diagram-label {
+      fill: #4e6298;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+    }
+
+    .edge-diagram-arrow-main {
+      fill: none;
+      stroke: #5de2ff;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-dasharray: 10 8;
+      animation: edge-flow 2.4s linear infinite, neon-main 2.8s ease-in-out infinite;
+      filter: drop-shadow(0 0 6px rgba(93, 226, 255, 0.58));
+    }
+
+    .edge-diagram-arrow-ok {
+      fill: none;
+      stroke: #7df0bf;
+      stroke-width: 2.4;
+      stroke-linecap: round;
+      stroke-dasharray: 10 8;
+      animation: edge-flow 2.5s linear infinite, neon-ok 2.5s ease-in-out infinite;
+      filter: drop-shadow(0 0 6px rgba(125, 240, 191, 0.56));
+    }
+
+    .edge-diagram-arrow-deny {
+      fill: none;
+      stroke: #ff9a9a;
+      stroke-width: 2.3;
+      stroke-linecap: round;
+      stroke-dasharray: 7 6;
+      animation: edge-flow 2.8s linear infinite, neon-deny 2.8s ease-in-out infinite;
+      filter: drop-shadow(0 0 6px rgba(255, 154, 154, 0.52));
+    }
+
+    .edge-diagram-vline {
+      stroke: rgba(124, 149, 225, 0.48);
+      stroke-dasharray: 6 6;
+    }
+
+    .plain-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .plain-card {
+      border: 1px solid rgba(112, 133, 230, 0.27);
+      border-radius: 12px;
+      padding: 12px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(244, 249, 255, 0.9));
+    }
+
+    .plain-card h3 {
+      margin: 0 0 8px;
+      color: #203464;
+    }
+
+    .plain-note {
+      margin-top: 10px;
+      border-left: 4px solid rgba(52, 211, 153, 0.72);
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(236, 255, 246, 0.86);
+      color: #2a4f44;
+      font-size: 0.9rem;
+    }
+
+    .term-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .term-item {
+      border: 1px solid rgba(115, 145, 236, 0.28);
+      border-radius: 10px;
+      padding: 8px 9px;
+      background: rgba(255, 255, 255, 0.84);
+      font-size: 0.88rem;
+      color: #33497f;
+    }
+
+    .term-item b {
+      display: block;
+      color: #203767;
+      margin-bottom: 2px;
+    }
+
+    body.theme-dark {
+      background: radial-gradient(1300px 820px at -10% -20%, rgba(255, 92, 200, 0.18), transparent 62%),
+                  radial-gradient(1200px 780px at 110% -15%, rgba(93, 226, 255, 0.2), transparent 60%),
+                  radial-gradient(1200px 920px at 52% 118%, rgba(125, 255, 177, 0.12), transparent 66%),
+                  linear-gradient(150deg, #0f1735 0%, #141f44 50%, #13293c 100%);
+      color: #deebff;
+    }
+
+    body.theme-dark::before {
+      background-image:
+        linear-gradient(to right, rgba(114, 138, 236, 0.15) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(114, 138, 236, 0.15) 1px, transparent 1px);
+    }
+
+    body.theme-dark .theme-toggle {
+      border: 1px solid rgba(152, 178, 255, 0.36);
+      background: rgba(20, 34, 72, 0.84);
+      color: #d8e8ff;
+      box-shadow: 0 10px 24px rgba(7, 13, 34, 0.46);
+    }
+
+    body.theme-dark .hero {
+      border: 1px solid rgba(101, 125, 233, 0.42);
+      background: linear-gradient(140deg, rgba(20, 32, 70, 0.86), rgba(27, 43, 86, 0.9));
+      box-shadow: 0 18px 48px rgba(7, 13, 34, 0.42);
+    }
+
+    body.theme-dark .title {
+      color: #e6efff;
+    }
+
+    body.theme-dark .subtitle,
+    body.theme-dark .text-soft {
+      color: #a8c0ec;
+    }
+
+    body.theme-dark .chip {
+      border: 1px solid rgba(134, 160, 249, 0.36);
+      color: #c9dcff;
+      background: rgba(28, 45, 92, 0.82);
+    }
+
+    body.theme-dark section {
+      border: 1px solid rgba(97, 122, 228, 0.42);
+      background: rgba(19, 30, 64, 0.78);
+      box-shadow: 0 18px 48px rgba(8, 14, 34, 0.38);
+    }
+
+    body.theme-dark h2,
+    body.theme-dark h3 {
+      color: #deebff;
+    }
+
+    body.theme-dark p {
+      color: #c0d3f7;
+    }
+
+    body.theme-dark .panel {
+      border: 1px solid rgba(112, 136, 236, 0.34);
+      background: rgba(25, 40, 85, 0.76);
+    }
+
+    body.theme-dark .layer {
+      border: 1px solid rgba(118, 140, 241, 0.35);
+      background: linear-gradient(130deg, rgba(27, 42, 84, 0.86), rgba(32, 52, 97, 0.84));
+    }
+
+    body.theme-dark .layer span {
+      color: #aac0eb;
+    }
+
+    body.theme-dark .step {
+      border: 1px solid rgba(117, 141, 241, 0.34);
+      background: rgba(27, 43, 88, 0.76);
+    }
+
+    body.theme-dark .step strong {
+      color: #e0ecff;
+    }
+
+    body.theme-dark .pipe-item {
+      border: 1px solid rgba(126, 150, 243, 0.54);
+      background: rgba(27, 45, 93, 0.88);
+      color: #d6e5ff;
+    }
+
+    body.theme-dark .pipe-arrow {
+      color: #9db3e6;
+    }
+
+    body.theme-dark th,
+    body.theme-dark td {
+      border-bottom: 1px solid rgba(131, 171, 255, 0.24);
+      color: #cfe0ff;
+    }
+
+    body.theme-dark th {
+      color: #d8e8ff;
+      background: rgba(31, 50, 101, 0.86);
+    }
+
+    body.theme-dark code {
+      color: #d8e8ff;
+      background: rgba(28, 46, 94, 0.9);
+      border: 1px solid rgba(122, 150, 238, 0.3);
+    }
+
+    body.theme-dark pre {
+      border: 1px solid rgba(121, 146, 239, 0.32);
+      background: rgba(25, 41, 86, 0.9);
+    }
+
+    body.theme-dark pre code {
+      color: #d1e2ff;
+      background: transparent;
+      border: none;
+    }
+
+    body.theme-dark .list {
+      color: #cbddff;
+    }
+
+    body.theme-dark .tag {
+      border: 1px solid rgba(132, 154, 241, 0.5);
+      background: rgba(28, 45, 93, 0.88);
+      color: #cfe0ff;
+    }
+
+    body.theme-dark .plain-card {
+      border: 1px solid rgba(114, 139, 237, 0.36);
+      background: linear-gradient(135deg, rgba(24, 39, 84, 0.88), rgba(31, 49, 98, 0.88));
+    }
+
+    body.theme-dark .plain-card h3 {
+      color: #dceaff;
+    }
+
+    body.theme-dark .term-item {
+      border: 1px solid rgba(120, 146, 243, 0.36);
+      background: rgba(28, 46, 94, 0.84);
+      color: #c6d8ff;
+    }
+
+    body.theme-dark .term-item b {
+      color: #deebff;
+    }
+
+    body.theme-dark .plain-note {
+      border-left: 4px solid rgba(96, 233, 182, 0.72);
+      background: rgba(30, 73, 70, 0.4);
+      color: #c7f9e9;
+    }
+
+    body.theme-dark footer {
+      color: #9ab0e3;
+    }
+
+    body.theme-dark .edge-card {
+      border: 1px solid rgba(92, 114, 226, 0.36);
+      background: linear-gradient(135deg, rgba(38, 54, 121, 0.9), rgba(76, 46, 144, 0.9));
+      box-shadow: 0 20px 46px rgba(8, 14, 36, 0.44);
+    }
+
+    body.theme-dark .edge-card h3,
+    body.theme-dark .edge-title {
+      color: #dde7ff;
+    }
+
+    body.theme-dark .edge-card::before {
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0.0) 0px,
+        rgba(255, 255, 255, 0.0) 5px,
+        rgba(93, 226, 255, 0.07) 6px,
+        rgba(93, 226, 255, 0.0) 8px
+      );
+    }
+
+    body.theme-dark .edge-card::after {
+      background: radial-gradient(circle, rgba(255, 92, 200, 0.2), transparent 70%);
+    }
+
+    body.theme-dark .edge-scroll svg {
+      background: radial-gradient(1000px 300px at center 0%, rgba(93, 226, 255, 0.22), transparent 65%),
+                  linear-gradient(145deg, #2b3f8f 0%, #4e3498 55%, #2a357c 100%);
+      border: 1px solid rgba(165, 190, 255, 0.4);
+    }
+
+    body.theme-dark .edge-icon-ring {
+      fill: rgba(255, 255, 255, 0.08);
+      stroke: rgba(125, 255, 177, 0.85);
+      filter: drop-shadow(0 0 8px rgba(125, 255, 177, 0.45));
+    }
+
+    body.theme-dark .edge-icon-text {
+      fill: #e8fff6;
+    }
+
+    body.theme-dark .edge-node {
+      fill: rgba(255, 255, 255, 0.08);
+      stroke: rgba(181, 203, 255, 0.82);
+      filter: drop-shadow(0 0 9px rgba(126, 201, 255, 0.42));
+    }
+
+    body.theme-dark .edge-text-main {
+      fill: #e9f2ff;
+    }
+
+    body.theme-dark .edge-text-sub {
+      fill: #bcd0ff;
+    }
+
+    body.theme-dark .edge-link {
+      stroke: #5de2ff;
+      filter: drop-shadow(0 0 6px rgba(93, 226, 255, 0.65));
+    }
+
+    body.theme-dark .edge-dot {
+      fill: #7d8dff;
+    }
+
+    body.theme-dark .edge-diagram-frame {
+      fill: rgba(255, 255, 255, 0.03);
+      stroke: rgba(187, 206, 255, 0.42);
+    }
+
+    body.theme-dark .edge-diagram-lane-allow {
+      fill: rgba(45, 143, 111, 0.14);
+      stroke: rgba(115, 220, 183, 0.55);
+    }
+
+    body.theme-dark .edge-diagram-lane-deny {
+      fill: rgba(196, 76, 76, 0.14);
+      stroke: rgba(255, 154, 154, 0.48);
+    }
+
+    body.theme-dark .edge-diagram-node {
+      fill: rgba(255, 255, 255, 0.08);
+      stroke: rgba(186, 205, 255, 0.76);
+      filter: drop-shadow(0 0 9px rgba(124, 196, 255, 0.4));
+    }
+
+    body.theme-dark .edge-diagram-node-ok {
+      fill: rgba(45, 143, 111, 0.22);
+      stroke: rgba(122, 236, 194, 0.75);
+    }
+
+    body.theme-dark .edge-diagram-node-warn {
+      fill: rgba(196, 122, 63, 0.22);
+      stroke: rgba(255, 202, 132, 0.72);
+    }
+
+    body.theme-dark .edge-diagram-node-danger {
+      fill: rgba(196, 76, 76, 0.22);
+      stroke: rgba(255, 158, 158, 0.72);
+    }
+
+    body.theme-dark .edge-diagram-title {
+      fill: #e9f2ff;
+    }
+
+    body.theme-dark .edge-diagram-label {
+      fill: #bcd0ff;
+    }
+
+    body.theme-dark .edge-diagram-vline {
+      stroke: rgba(163, 186, 255, 0.42);
+    }
+
+    @keyframes edge-flow {
+      to {
+        stroke-dashoffset: -36;
+      }
+    }
+
+    @keyframes neon-main {
+      0%, 100% { stroke: #5de2ff; }
+      50% { stroke: #8ea4ff; }
+    }
+
+    @keyframes neon-ok {
+      0%, 100% { stroke: #7df0bf; }
+      50% { stroke: #59ffc6; }
+    }
+
+    @keyframes neon-deny {
+      0%, 100% { stroke: #ff9a9a; }
+      50% { stroke: #ff6f96; }
+    }
+
+    @keyframes edge-pulse {
+      0%, 100% {
+        r: 6;
+        opacity: 0.9;
+      }
+      50% {
+        r: 9;
+        opacity: 0.55;
+      }
+    }
+
+    .diagram-scroll {
+      overflow-x: auto;
+    }
+
+    .diagram-scroll svg {
+      min-width: 820px;
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(250, 252, 255, 0.9), rgba(243, 247, 255, 0.94));
+      border: 1px solid rgba(120, 136, 224, 0.24);
+    }
+
+    .diagram-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+      fill: #2d3e71;
+    }
+
+    .diagram-title {
+      font-family: "Space Grotesk", "Noto Sans SC", sans-serif;
+      font-size: 14px;
+      fill: #203261;
+      font-weight: 700;
+    }
+
+    footer {
+      margin-top: 18px;
+      color: #5f719f;
+      font-size: 0.84rem;
+      text-align: right;
+    }
+
+    @media (max-width: 980px) {
+      .theme-toggle {
+        float: none;
+        position: static;
+        margin-bottom: 12px;
+      }
+      .grid-2, .grid-3 {
+        grid-template-columns: 1fr;
+      }
+      .plain-grid, .term-grid {
+        grid-template-columns: 1fr;
+      }
+      .step {
+        grid-template-columns: 1fr;
+      }
+      .diagram-scroll svg {
+        min-width: 680px;
+      }
+      .edge-scroll svg {
+        min-width: 780px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="切换亮暗主题">
+      切换暗黑
+    </button>
+    <header class="hero">
+      <h1 class="title">Gateway 当前架构全景</h1>
+      <p class="subtitle">
+        本页基于当前代码实现整理，覆盖网关数据平面链路、插件机制、安全体系、
+        连接池与 H2 复用、可观测性、启动预热和优雅停机策略。可直接作为
+        架构评审材料和新成员 onboarding 入口。
+      </p>
+      <div class="meta">
+        <span class="chip">更新时间: 2026-04-01</span>
+        <span class="chip">Runtime: Java 21 + Netty 4.2.x + Spring Boot 3.4.x</span>
+        <span class="chip">核心模式: Plugin Chain + Async Pool + H2 Multiplexing</span>
+      </div>
+    </header>
+
+    <section>
+      <h2>0. 边缘流量入口链路</h2>
+      <p class="text-soft">
+        按你指定的业界入口路径，核心请求主干为
+        <code>CDN域名解析 -> ALB -> Gateway -> Upstream</code>。
+      </p>
+      <div class="edge-card">
+        <h3 class="edge-title">Edge Traffic Topology</h3>
+        <div class="edge-scroll">
+          <svg viewBox="0 0 1320 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CDN 到 Gateway 到 Upstream 流量链路图">
+            <defs>
+              <marker id="edgeArrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" fill="#5de2ff"/>
+              </marker>
+            </defs>
+
+            <rect x="36" y="66" width="240" height="124" rx="20" class="edge-node"/>
+            <circle cx="58" cy="88" r="13" class="edge-icon-ring"/>
+            <text x="52" y="93" class="edge-icon-text">D</text>
+            <text x="74" y="117" class="edge-text-main">CDN / DNS</text>
+            <text x="74" y="143" class="edge-text-sub">全球域名解析 + 边缘缓存</text>
+
+            <rect x="356" y="66" width="240" height="124" rx="20" class="edge-node"/>
+            <circle cx="378" cy="88" r="13" class="edge-icon-ring"/>
+            <text x="372" y="93" class="edge-icon-text">A</text>
+            <text x="420" y="117" class="edge-text-main">ALB</text>
+            <text x="394" y="143" class="edge-text-sub">L7 负载均衡 / TLS 终止</text>
+
+            <rect x="676" y="66" width="240" height="124" rx="20" class="edge-node"/>
+            <circle cx="698" cy="88" r="13" class="edge-icon-ring"/>
+            <text x="692" y="93" class="edge-icon-text">G</text>
+            <text x="734" y="117" class="edge-text-main">Gateway</text>
+            <text x="709" y="143" class="edge-text-sub">路由 + 安全插件 + 限流</text>
+
+            <rect x="996" y="66" width="260" height="124" rx="20" class="edge-node"/>
+            <circle cx="1018" cy="88" r="13" class="edge-icon-ring"/>
+            <text x="1012" y="93" class="edge-icon-text">U</text>
+            <text x="1062" y="117" class="edge-text-main">Upstream</text>
+            <text x="1030" y="143" class="edge-text-sub">业务服务集群 / API 服务</text>
+
+            <path d="M276 128 C316 128, 320 128, 356 128" class="edge-link" marker-end="url(#edgeArrow)"/>
+            <path d="M596 128 C636 128, 640 128, 676 128" class="edge-link" marker-end="url(#edgeArrow)"/>
+            <path d="M916 128 C956 128, 960 128, 996 128" class="edge-link" marker-end="url(#edgeArrow)"/>
+
+            <circle cx="316" cy="128" class="edge-dot"/>
+            <circle cx="636" cy="128" class="edge-dot"/>
+            <circle cx="956" cy="128" class="edge-dot"/>
+
+            <text x="294" y="220" class="edge-text-sub">域名命中 / 智能解析</text>
+            <text x="618" y="220" class="edge-text-sub">跨 AZ 分发</text>
+            <text x="930" y="220" class="edge-text-sub">策略校验后转发</text>
+          </svg>
+        </div>
+      </div>
+      <div class="grid-2" style="margin-top: 12px;">
+        <div class="panel">
+          <h3>为什么要先走 CDN（白话版）</h3>
+          <ul class="list">
+            <li>用户先命中离自己更近的 CDN 节点，首包更快，页面/接口体感延迟更低。</li>
+            <li>静态资源（JS/CSS/图片）直接在边缘返回，不用每次都打到源站。</li>
+            <li>热点流量先在 CDN 被“削峰”，ALB 和 Gateway 压力会小很多。</li>
+            <li>很多攻击流量会先在边缘被清洗，源站暴露面更小、更安全。</li>
+            <li>TLS 握手可以在边缘终止一部分，减少源站连接开销。</li>
+          </ul>
+          <div class="plain-note">
+            一句话：CDN 做“就近加速 + 缓存抗压 + 第一层防护”，不替代 Gateway 的业务治理能力。
+          </div>
+        </div>
+        <div class="panel">
+          <h3>CDN / ALB / Gateway 分工</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>层</th>
+                <th>主要职责</th>
+                <th>不负责什么</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>CDN + DNS</td>
+                <td>就近接入、静态缓存、边缘防护、回源调度。</td>
+                <td>不做业务鉴权和细粒度路由策略。</td>
+              </tr>
+              <tr>
+                <td>ALB</td>
+                <td>L7 负载均衡、跨可用区分发、健康检查。</td>
+                <td>不承担插件链和业务级限流逻辑。</td>
+              </tr>
+              <tr>
+                <td>Gateway</td>
+                <td>鉴权、ACL、限流、路由、观测、上游代理。</td>
+                <td>不追求全球边缘缓存能力。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel" style="margin-top: 12px;">
+        <h3>域名指向 CDN 的好处和坏处（评审可直接引用）</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>维度</th>
+              <th>好处</th>
+              <th>坏处 / 成本</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>性能</td>
+              <td>边缘就近接入，静态资源可直接命中缓存，首包与加载速度更快。</td>
+              <td>动态接口如果几乎不缓存，收益有限，链路反而多一跳。</td>
+            </tr>
+            <tr>
+              <td>稳定性</td>
+              <td>热点流量在边缘被削峰，源站高峰更稳。</td>
+              <td>缓存策略配置不当会出现旧数据或缓存穿透问题。</td>
+            </tr>
+            <tr>
+              <td>安全</td>
+              <td>边缘可先做 WAF/抗 DDoS/基础风控，减少源站暴露面。</td>
+              <td>需要正确透传真实客户端 IP，否则会影响鉴权、限流和审计准确性。</td>
+            </tr>
+            <tr>
+              <td>成本</td>
+              <td>源站带宽和连接压力下降，能降低源站扩容压力。</td>
+              <td>新增 CDN 请求费、流量费、回源费，整体成本模型更复杂。</td>
+            </tr>
+            <tr>
+              <td>运维复杂度</td>
+              <td>边缘规则统一后，多地域发布更灵活。</td>
+              <td>排障链路从“源站”变成“DNS + CDN + ALB + Gateway + Upstream”。</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="text-soft" style="margin-top: 8px;">
+          实践建议：静态资源域名默认指向 CDN；动态 API 按路径拆分缓存策略（可缓存与不可缓存分开），并固定透传
+          <code>X-Forwarded-For</code>、<code>X-Forwarded-Proto</code> 等关键头。
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>1. 总体定位与模块视图</h2>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>网关目标</h3>
+          <ul class="list">
+            <li>作为反向代理入口，提供高性能路由转发与多租户安全控制。</li>
+            <li>在请求进入上游前，执行可配置的插件链与安全链，支持短路拒绝。</li>
+            <li>以指标、访问日志、Trace 标签实现可观测闭环，便于生产排障。</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>仓库模块</h3>
+          <ul class="list">
+            <li><code>gateway</code>: 网关主模块（监听 8080）。</li>
+            <li><code>gateway-pool</code>: 通用异步并发资源池（灵感来自 HikariCP）。</li>
+            <li><code>example-upstream</code>: 上游 Mock 服务（8082）。</li>
+            <li><code>example-auth</code>: JWT 签发/校验示例（8091）。</li>
+            <li><code>gateway-perf</code>: 压测和回归基线。</li>
+          </ul>
+        </div>
+      </div>
+      <p class="text-soft">
+        业界对齐点: 该设计属于典型 Data Plane（请求处理）+ 简化 Control Plane（静态配置）
+        架构，风格接近 Envoy/Kong 的过滤链模型。
+      </p>
+    </section>
+
+    <section>
+      <h2>2. 运行时分层架构</h2>
+      <div class="stack">
+        <div class="layer">
+          <b>Client / Ingress</b>
+          <span>HTTP/1.1 客户端流量进入 Netty NIO Server</span>
+        </div>
+        <div class="layer">
+          <b>Connection Pipeline</b>
+          <span><code>HttpServerCodec -> IdleStateHandler -> TraceContextHandler -> DrainHandler -> RoutingHandler</code></span>
+        </div>
+        <div class="layer">
+          <b>Routing &amp; Policy Layer</b>
+          <span>AntPath 路由匹配、插件链执行、健康端点与指标端点处理</span>
+        </div>
+        <div class="layer">
+          <b>Proxy Layer</b>
+          <span><code>ProxyHandler</code> + <code>UpstreamConnectionPool</code>，HTTP 转发到上游</span>
+        </div>
+        <div class="layer">
+          <b>Observability Layer</b>
+          <span>Micrometer 指标、JSON Access Log、Trace Context 透传与标签</span>
+        </div>
+      </div>
+      <div class="edge-card">
+        <h3 class="edge-title">运行时架构图</h3>
+        <div class="edge-scroll">
+          <svg viewBox="0 0 1320 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="网关运行时架构图（霓虹风格）">
+            <defs>
+              <marker id="runtimeArrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" fill="#5de2ff"/>
+              </marker>
+            </defs>
+
+            <rect x="24" y="24" width="1272" height="512" rx="20" class="edge-diagram-frame"/>
+            <text x="52" y="58" class="edge-diagram-label">Data Plane Mainline</text>
+
+            <rect x="120" y="84" width="840" height="72" rx="14" class="edge-diagram-node"/>
+            <circle cx="140" cy="104" r="10" class="edge-icon-ring"/>
+            <text x="136" y="108" class="edge-icon-text" style="font-size:11px;">I</text>
+            <text x="152" y="114" class="edge-diagram-title">Client / Ingress</text>
+            <text x="152" y="136" class="edge-diagram-label">HTTP/1.1 请求进入网关监听端口</text>
+
+            <rect x="120" y="180" width="840" height="76" rx="14" class="edge-diagram-node"/>
+            <circle cx="140" cy="202" r="10" class="edge-icon-ring"/>
+            <text x="136" y="206" class="edge-icon-text" style="font-size:11px;">P</text>
+            <text x="152" y="212" class="edge-diagram-title">Connection Pipeline</text>
+            <text x="152" y="234" class="edge-diagram-label">HttpServerCodec -> IdleState -> TraceContext -> Drain -> Routing</text>
+
+            <rect x="120" y="282" width="840" height="84" rx="14" class="edge-diagram-node"/>
+            <circle cx="140" cy="305" r="10" class="edge-icon-ring"/>
+            <text x="136" y="309" class="edge-icon-text" style="font-size:11px;">S</text>
+            <text x="152" y="316" class="edge-diagram-title">Routing + Plugin/Security Layer</text>
+            <text x="152" y="339" class="edge-diagram-label">RouteResolver + GatewayPluginProcessor + 短路决策</text>
+
+            <rect x="120" y="392" width="840" height="84" rx="14" class="edge-diagram-node"/>
+            <circle cx="140" cy="415" r="10" class="edge-icon-ring"/>
+            <text x="136" y="419" class="edge-icon-text" style="font-size:11px;">X</text>
+            <text x="152" y="426" class="edge-diagram-title">Proxy Layer</text>
+            <text x="152" y="449" class="edge-diagram-label">ProxyHandler + UpstreamConnectionPool + H2ResponseDemux</text>
+
+            <rect x="998" y="194" width="246" height="128" rx="14" class="edge-diagram-node-ok"/>
+            <text x="1028" y="230" class="edge-diagram-title">Observability</text>
+            <text x="1028" y="253" class="edge-diagram-label">Metrics / Access Log / Trace Tags</text>
+            <text x="1028" y="275" class="edge-diagram-label">统一记录过滤阶段和性能指标</text>
+
+            <rect x="998" y="346" width="246" height="130" rx="14" class="edge-diagram-node-warn"/>
+            <text x="1028" y="382" class="edge-diagram-title">Upstream</text>
+            <text x="1028" y="405" class="edge-diagram-label">example-upstream / 业务服务集群</text>
+            <text x="1028" y="427" class="edge-diagram-label">按路由目标转发与回包</text>
+
+            <line x1="540" y1="156" x2="540" y2="180" class="edge-diagram-arrow-main" marker-end="url(#runtimeArrow)"/>
+            <line x1="540" y1="256" x2="540" y2="282" class="edge-diagram-arrow-main" marker-end="url(#runtimeArrow)"/>
+            <line x1="540" y1="366" x2="540" y2="392" class="edge-diagram-arrow-main" marker-end="url(#runtimeArrow)"/>
+            <line x1="960" y1="330" x2="998" y2="410" class="edge-diagram-arrow-main" marker-end="url(#runtimeArrow)"/>
+            <line x1="960" y1="322" x2="998" y2="258" class="edge-diagram-arrow-main" marker-end="url(#runtimeArrow)"/>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. 请求生命周期（核心链路）</h2>
+      <div class="pipeline">
+        <span class="pipe-item">traceContext</span><span class="pipe-arrow">-></span>
+        <span class="pipe-item">drain</span><span class="pipe-arrow">-></span>
+        <span class="pipe-item">routing</span><span class="pipe-arrow">-></span>
+        <span class="pipe-item">plugin.request</span><span class="pipe-arrow">-></span>
+        <span class="pipe-item">proxy</span><span class="pipe-arrow">-></span>
+        <span class="pipe-item">plugin.response/error</span><span class="pipe-arrow">-></span>
+        <span class="pipe-item">client</span>
+      </div>
+      <p class="text-soft">
+        阅读建议：先看时序图把握全局，再看 Step 01-10 了解实现细节，最后看 H2 生命周期图和白话卡片做上下对照。
+      </p>
+      <div class="edge-card">
+        <h3 class="edge-title">请求流程时序图</h3>
+        <div class="edge-scroll">
+          <svg viewBox="0 0 1320 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="网关请求流程时序图（霓虹风格）">
+            <defs>
+              <marker id="seqArrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" fill="#5de2ff"/>
+              </marker>
+            </defs>
+
+            <rect x="24" y="24" width="1272" height="372" rx="20" class="edge-diagram-frame"/>
+
+            <text x="90" y="64" class="edge-diagram-title">Client</text>
+            <text x="430" y="64" class="edge-diagram-title">Gateway</text>
+            <text x="760" y="64" class="edge-diagram-title">Plugin Chain</text>
+            <text x="1060" y="64" class="edge-diagram-title">Upstream</text>
+            <circle cx="68" cy="58" r="9" class="edge-icon-ring"/><text x="64" y="62" class="edge-icon-text" style="font-size:10px;">C</text>
+            <circle cx="408" cy="58" r="9" class="edge-icon-ring"/><text x="404" y="62" class="edge-icon-text" style="font-size:10px;">G</text>
+            <circle cx="736" cy="58" r="9" class="edge-icon-ring"/><text x="732" y="62" class="edge-icon-text" style="font-size:10px;">P</text>
+            <circle cx="1036" cy="58" r="9" class="edge-icon-ring"/><text x="1032" y="62" class="edge-icon-text" style="font-size:10px;">U</text>
+
+            <line x1="90" y1="80" x2="90" y2="350" class="edge-diagram-vline"/>
+            <line x1="430" y1="80" x2="430" y2="350" class="edge-diagram-vline"/>
+            <line x1="760" y1="80" x2="760" y2="350" class="edge-diagram-vline"/>
+            <line x1="1060" y1="80" x2="1060" y2="350" class="edge-diagram-vline"/>
+
+            <line x1="90" y1="110" x2="430" y2="110" class="edge-diagram-arrow-main" marker-end="url(#seqArrow)"/>
+            <text x="170" y="100" class="edge-diagram-label">1) HTTP Request 入站</text>
+
+            <line x1="430" y1="148" x2="760" y2="148" class="edge-diagram-arrow-main" marker-end="url(#seqArrow)"/>
+            <text x="495" y="138" class="edge-diagram-label">2) REQUEST 插件链执行</text>
+
+            <line x1="760" y1="186" x2="430" y2="186" class="edge-diagram-arrow-main" marker-end="url(#seqArrow)"/>
+            <text x="500" y="176" class="edge-diagram-label">3) ALLOW / DENY 决策回传</text>
+
+            <line x1="430" y1="224" x2="1060" y2="224" class="edge-diagram-arrow-main" marker-end="url(#seqArrow)"/>
+            <text x="620" y="214" class="edge-diagram-label">4) 允许后代理转发</text>
+
+            <line x1="1060" y1="262" x2="430" y2="262" class="edge-diagram-arrow-main" marker-end="url(#seqArrow)"/>
+            <text x="650" y="252" class="edge-diagram-label">5) 上游响应 / 错误返回</text>
+
+            <line x1="430" y1="300" x2="760" y2="300" class="edge-diagram-arrow-main" marker-end="url(#seqArrow)"/>
+            <text x="500" y="290" class="edge-diagram-label">6) RESPONSE / ERROR 插件处理</text>
+
+            <line x1="430" y1="336" x2="90" y2="336" class="edge-diagram-arrow-main" marker-end="url(#seqArrow)"/>
+            <text x="140" y="326" class="edge-diagram-label">7) 响应回写客户端 + 日志指标落地</text>
+          </svg>
+        </div>
+      </div>
+      <div class="flow" style="margin-top: 12px;">
+        <div class="step">
+          <div class="idx">Step 01</div>
+          <div>
+            <strong>Trace 建链</strong>
+            <code>TraceContextHandler</code> 解析/生成 <code>traceparent</code> 与
+            <code>tracestate</code>，保存 <code>traceId</code> 到 Channel Attribute，
+            后续转发时可透传给 upstream。
+          </div>
+        </div>
+        <div class="step">
+          <div class="idx">Step 02</div>
+          <div>
+            <strong>连接级预处理 + 排空拦截</strong>
+            <code>RoutingHandler</code> 先记录 keep-alive/close 语义；
+            若处于 draining，<code>DrainHandler</code> 对非健康检查请求直接返回
+            <code>503</code> 并关闭连接。
+          </div>
+        </div>
+        <div class="step">
+          <div class="idx">Step 03</div>
+          <div>
+            <strong>路由与系统端点</strong>
+            优先处理 <code>/health</code>、<code>/health/live</code>、<code>/health/ready</code>、<code>/metrics</code>；
+            其他路径走 <code>RouteResolver</code>，规则为 <code>priority ASC + pathPrefix 长度 DESC</code>。
+          </div>
+        </div>
+        <div class="step">
+          <div class="idx">Step 04</div>
+          <div>
+            <strong>REQUEST 插件链执行</strong>
+            全局/路由配置按插件名合并，路由同名覆盖全局；按 priority 升序执行并记录
+            插件耗时与决策指标。任一插件返回 short-circuit 时立即响应，不进入上游转发。
+          </div>
+        </div>
+        <div class="step">
+          <div class="idx">Step 05</div>
+          <div>
+            <strong>Proxy 前置校验</strong>
+            <code>ProxyHandler</code> 固化请求级上下文（clientIp、auth 结果、安全决策）；
+            计算路由级/全局请求体上限，先做 <code>Content-Length</code> 快速校验，
+            超限直接 <code>413</code>；补充 <code>x-forwarded-*</code> 与 trace 头。
+          </div>
+        </div>
+        <div class="step">
+          <div class="idx">Step 06</div>
+          <div>
+            <strong>异步获取 upstream 连接（池化）</strong>
+            通过 <code>UpstreamConnectionPool.acquire(host, port)</code> 进入
+            <code>ConcurrentPool.borrowAsync</code>，超时阈值来自
+            <code>connect-timeout-millis</code>。池满/借用失败会触发
+            <code>503</code> 或 <code>502</code> 分支。
+          </div>
+        </div>
+        <div class="step">
+          <div class="idx">Step 07</div>
+          <div>
+            <strong>H2 stream 槽位预占与重试</strong>
+            在拿到连接后先 <code>tryReserveStream()</code>；若连接并发流已满，释放连接并重试，
+            最多 <code>MAX_ACQUIRE_RETRIES=3</code>，超限返回 <code>503</code>。
+            <code>nextStreamId()</code> 溢出时会退役该连接（retire）并重试。
+          </div>
+        </div>
+        <div class="step">
+          <div class="idx">Step 08</div>
+          <div>
+            <strong>H2 HEADERS / DATA 全流式转发</strong>
+            创建 <code>Http2FrameStream</code>，在 upstream EventLoop 写 HEADERS；
+            若请求体尚未到齐，先缓存在 <code>pendingContent</code>，stream 建立后再持续写 DATA。
+            请求体累计大小实时校验，超限返回 <code>413</code>。
+          </div>
+        </div>
+        <div class="step">
+          <div class="idx">Step 09</div>
+          <div>
+            <strong>响应 demux 与插件后处理</strong>
+            <code>H2ResponseDemuxHandler</code> 按 streamId 回调响应头/响应体；
+            先执行 RESPONSE 阶段插件（响应头加工），再注入 CORS 头并回写客户端；
+            上游错误进入 ERROR 插件链，可输出自定义错误体。
+          </div>
+        </div>
+        <div class="step">
+          <div class="idx">Step 10</div>
+          <div>
+            <strong>完成收口与资源回收</strong>
+            请求完成时统一写 metrics + access log（含 security 字段），
+            并 <code>inFlight--</code>。异常/断连/超时时执行清理：移除 demux 映射、
+            回收预占 stream 槽位、释放 pending 内容块，防止泄漏。
+          </div>
+        </div>
+      </div>
+      <div class="plain-grid">
+        <div class="plain-card">
+          <h3>白话版：一次请求到底做了什么</h3>
+          <ul class="list">
+            <li>先给请求打上 <code>traceId</code>，后续每个环节都能串起来排障。</li>
+            <li>如果服务在下线排空（draining），新请求会快速返回 <code>503</code>。</li>
+            <li>按路由规则找到目标上游，再执行安全与治理插件做“入场安检”。</li>
+            <li>安检通过才会进入代理层，去连接池借 upstream 连接。</li>
+            <li>H2 下不是“一连接一请求”，而是一连接跑多个 stream 并发。</li>
+            <li>请求体会被流式转发，不需要等整包收完，延迟更低。</li>
+            <li>响应回来后还会过 RESPONSE/ERROR 插件，再返回客户端。</li>
+            <li>最后统一写指标和日志，并回收槽位/缓存，防止资源泄漏。</li>
+          </ul>
+        </div>
+        <div class="plain-card">
+          <h3>术语速记（非网关同学）</h3>
+          <div class="term-grid">
+            <div class="term-item">
+              <b>H2 Connection</b>
+              一条 TCP 长连接，可复用。
+            </div>
+            <div class="term-item">
+              <b>H2 Stream</b>
+              连接内的并发“子通道”，一次请求占一个 stream。
+            </div>
+            <div class="term-item">
+              <b>Demux</b>
+              按 streamId 把响应分发回对应请求处理器。
+            </div>
+            <div class="term-item">
+              <b>Retire</b>
+              连接不再接新请求，但允许在途流自然结束。
+            </div>
+            <div class="term-item">
+              <b>Short-circuit</b>
+              插件提前拒绝，直接返回，不再访问上游。
+            </div>
+            <div class="term-item">
+              <b>Drain</b>
+              优雅停机阶段，只清在途，不接新流量。
+            </div>
+          </div>
+          <div class="plain-note">
+            记忆口诀：先安检、再借连接、占 stream、发数据、收响应、做清理。
+          </div>
+        </div>
+      </div>
+      <div class="edge-card" style="margin-top: 14px;">
+        <h3 class="edge-title">H2 Stream 生命周期专图（含异常分支）</h3>
+        <div class="edge-scroll">
+          <svg viewBox="0 0 1720 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="H2 stream 生命周期与异常分支">
+            <defs>
+              <marker id="h2MainArrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" fill="#7df0bf"/>
+              </marker>
+              <marker id="h2ErrArrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" fill="#ff9a9a"/>
+              </marker>
+              <marker id="h2InfoArrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" fill="#9db8ff"/>
+              </marker>
+            </defs>
+
+            <rect x="20" y="20" width="1680" height="520" rx="20" class="edge-diagram-frame"/>
+            <rect x="38" y="84" width="1644" height="202" rx="14" class="edge-diagram-lane-allow"/>
+            <rect x="38" y="304" width="1644" height="216" rx="14" class="edge-diagram-lane-deny"/>
+            <text x="56" y="112" class="edge-diagram-title">MAIN PATH（流式转发主干）</text>
+            <text x="56" y="330" class="edge-diagram-title">ERROR PATH（失败与回收分支）</text>
+
+            <!-- main flow -->
+            <rect x="70" y="140" width="160" height="70" rx="12" class="edge-diagram-node"/>
+            <text x="90" y="167" class="edge-diagram-title">acquire()</text>
+            <text x="90" y="190" class="edge-diagram-label">host:port 分池</text>
+
+            <rect x="260" y="140" width="180" height="70" rx="12" class="edge-diagram-node"/>
+            <text x="280" y="167" class="edge-diagram-title">borrowAsync()</text>
+            <text x="280" y="190" class="edge-diagram-label">连接借用成功</text>
+
+            <rect x="470" y="140" width="190" height="70" rx="12" class="edge-diagram-node"/>
+            <text x="490" y="167" class="edge-diagram-title">tryReserveStream()</text>
+            <text x="490" y="190" class="edge-diagram-label">预占 stream 槽位</text>
+
+            <rect x="690" y="140" width="180" height="70" rx="12" class="edge-diagram-node"/>
+            <text x="710" y="167" class="edge-diagram-title">nextStreamId()</text>
+            <text x="710" y="190" class="edge-diagram-label">分配并检测溢出</text>
+
+            <rect x="900" y="140" width="200" height="70" rx="12" class="edge-diagram-node"/>
+            <text x="920" y="167" class="edge-diagram-title">write HEADERS</text>
+            <text x="920" y="190" class="edge-diagram-label">register(streamId)</text>
+
+            <rect x="1130" y="140" width="180" height="70" rx="12" class="edge-diagram-node"/>
+            <text x="1150" y="167" class="edge-diagram-title">release(channel)</text>
+            <text x="1150" y="190" class="edge-diagram-label">回池复用连接</text>
+
+            <rect x="1340" y="140" width="170" height="70" rx="12" class="edge-diagram-node"/>
+            <text x="1360" y="167" class="edge-diagram-title">write DATA</text>
+            <text x="1360" y="190" class="edge-diagram-label">pendingContent drain</text>
+
+            <rect x="1540" y="140" width="140" height="70" rx="12" class="edge-diagram-node-ok"/>
+            <text x="1560" y="167" class="edge-diagram-title">demux</text>
+            <text x="1560" y="190" class="edge-diagram-label">onH2Response/Content</text>
+
+            <rect x="1460" y="232" width="220" height="44" rx="10" class="edge-diagram-node-ok"/>
+            <text x="1480" y="260" class="edge-diagram-label">completeRequest() -> metrics + accessLog + cleanup</text>
+
+            <!-- main arrows -->
+            <line x1="230" y1="175" x2="260" y2="175" class="edge-diagram-arrow-ok" marker-end="url(#h2MainArrow)"/>
+            <line x1="440" y1="175" x2="470" y2="175" class="edge-diagram-arrow-ok" marker-end="url(#h2MainArrow)"/>
+            <line x1="660" y1="175" x2="690" y2="175" class="edge-diagram-arrow-ok" marker-end="url(#h2MainArrow)"/>
+            <line x1="870" y1="175" x2="900" y2="175" class="edge-diagram-arrow-ok" marker-end="url(#h2MainArrow)"/>
+            <line x1="1100" y1="175" x2="1130" y2="175" class="edge-diagram-arrow-ok" marker-end="url(#h2MainArrow)"/>
+            <line x1="1310" y1="175" x2="1340" y2="175" class="edge-diagram-arrow-ok" marker-end="url(#h2MainArrow)"/>
+            <line x1="1510" y1="175" x2="1540" y2="175" class="edge-diagram-arrow-ok" marker-end="url(#h2MainArrow)"/>
+            <line x1="1610" y1="210" x2="1570" y2="232" class="edge-diagram-arrow-ok" marker-end="url(#h2MainArrow)"/>
+
+            <!-- error nodes -->
+            <rect x="120" y="372" width="220" height="74" rx="12" class="edge-diagram-node-danger"/>
+            <text x="140" y="399" class="edge-diagram-title">Pool Acquire Fail</text>
+            <text x="140" y="423" class="edge-diagram-label">连接失败/池满 -> 502/503</text>
+
+            <rect x="390" y="372" width="240" height="74" rx="12" class="edge-diagram-node-warn"/>
+            <text x="410" y="399" class="edge-diagram-title">Stream Full Retry</text>
+            <text x="410" y="423" class="edge-diagram-label">重试至 MAX_ACQUIRE_RETRIES=3</text>
+
+            <rect x="680" y="372" width="220" height="74" rx="12" class="edge-diagram-node-warn"/>
+            <text x="700" y="399" class="edge-diagram-title">streamId Overflow</text>
+            <text x="700" y="423" class="edge-diagram-label">retire(channel) + reacquire</text>
+
+            <rect x="950" y="372" width="220" height="74" rx="12" class="edge-diagram-node-danger"/>
+            <text x="970" y="399" class="edge-diagram-title">HEADERS Write Fail</text>
+            <text x="970" y="423" class="edge-diagram-label">demux remove + 502</text>
+
+            <rect x="1220" y="372" width="220" height="74" rx="12" class="edge-diagram-node-danger"/>
+            <text x="1240" y="399" class="edge-diagram-title">RST/GOAWAY/H2 Error</text>
+            <text x="1240" y="423" class="edge-diagram-label">ERROR 插件链 -> custom response</text>
+
+            <rect x="1490" y="372" width="190" height="74" rx="12" class="edge-diagram-node-danger"/>
+            <text x="1510" y="399" class="edge-diagram-title">Cleanup On Error</text>
+            <text x="1510" y="423" class="edge-diagram-label">remove map/slot/content</text>
+
+            <!-- branch lines -->
+            <line x1="350" y1="210" x2="230" y2="372" class="edge-diagram-arrow-deny" marker-end="url(#h2ErrArrow)"/>
+            <line x1="560" y1="210" x2="510" y2="372" class="edge-diagram-arrow-deny" marker-end="url(#h2ErrArrow)"/>
+            <line x1="780" y1="210" x2="790" y2="372" class="edge-diagram-arrow-deny" marker-end="url(#h2ErrArrow)"/>
+            <line x1="1000" y1="210" x2="1060" y2="372" class="edge-diagram-arrow-deny" marker-end="url(#h2ErrArrow)"/>
+            <line x1="1580" y1="210" x2="1330" y2="372" class="edge-diagram-arrow-deny" marker-end="url(#h2ErrArrow)"/>
+            <line x1="1440" y1="446" x2="1490" y2="409" class="edge-diagram-arrow-main" marker-end="url(#h2InfoArrow)"/>
+
+            <text x="86" y="54" class="edge-diagram-label">核心语义：先占槽位再分配 streamId，HEADERS 建链后立即归还连接，demux 负责 stream 粒度回调</text>
+            <text x="86" y="73" class="edge-diagram-label">异常语义：任一路径失败都必须回收 slot/map/pendingContent，防止 activeStreamCount 与内存泄漏</text>
+          </svg>
+        </div>
+      </div>
+      <div class="edge-card" style="margin-top: 14px;">
+        <h3 class="edge-title">H2 连接池与流复用关键路径</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>阶段</th>
+              <th>实现细节</th>
+              <th>失败处理</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>连接借用</td>
+              <td><code>acquire(host,port)</code> -> <code>borrowAsync(timeout)</code>，按 host:port 分池。</td>
+              <td>借用失败记录 <code>gateway.pool.borrow.failures</code>；返回 502/503。</td>
+            </tr>
+            <tr>
+              <td>流槽位预占</td>
+              <td><code>demux.tryReserveStream()</code> 原子预占，防止并发 check-then-act 竞态。</td>
+              <td>流满时释放连接并重试，超过 3 次返回 503。</td>
+            </tr>
+            <tr>
+              <td>streamId 分配</td>
+              <td><code>nextStreamId()</code> 与 codec 自增同步，用于溢出检测。</td>
+              <td>溢出时 <code>retire(channel)</code>，避免继续被新请求复用。</td>
+            </tr>
+            <tr>
+              <td>连接归还策略</td>
+              <td>HEADERS 发送路径建立后立即 <code>release(channel)</code>，提升连接复用率。</td>
+              <td>中间态异常使用 <code>remove(channel)</code> 强制摘除并关闭。</td>
+            </tr>
+            <tr>
+              <td>响应分发</td>
+              <td><code>demux.register(streamId, proxyHandler)</code>，按 stream 回调头/体/错误。</td>
+              <td>RST_STREAM/GOAWAY/断连触发 ERROR 链并清理映射。</td>
+            </tr>
+            <tr>
+              <td>停机协同</td>
+              <td>停机阶段通过 <code>hasActiveH2Streams()</code> 轮询活跃流，等待清零。</td>
+              <td>超时则告警并进入后续停机阶段。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid-3" style="margin-top: 12px;">
+        <div class="panel">
+          <h3>状态码触发矩阵</h3>
+          <ul class="list">
+            <li><code>413</code>: 请求体超过路由或全局限制。</li>
+            <li><code>429</code>: IP/用户限流插件拒绝。</li>
+            <li><code>401</code>: JWT 认证失败。</li>
+            <li><code>403</code>: IP 黑白名单拒绝。</li>
+            <li><code>503</code>: draining 或 H2 流控饱和重试失败。</li>
+            <li><code>502</code>: upstream 连接失败或 H2 stream 错误。</li>
+            <li><code>504</code>: IdleState 超时触发网关超时。</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>请求体流式细节</h3>
+          <ul class="list">
+            <li>连接未就绪时，<code>HttpContent</code> 进入 <code>pendingContent</code> 队列。</li>
+            <li>stream 建立后分批转换为 H2 DATA 帧写入。</li>
+            <li>END_STREAM 场景自动忽略后续空块，避免重复写。</li>
+            <li>跨 EventLoop 写入统一切换到目标 loop 执行，减少竞态。</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>收尾与观测字段</h3>
+          <ul class="list">
+            <li>请求完成统一写 <code>gateway.requests.*</code> 指标。</li>
+            <li>访问日志落地 method/path/status/duration/bodySize。</li>
+            <li>同时记录 <code>authRequired/authPassed/security*</code> 字段。</li>
+            <li>traceId 与安全决策标签用于关联排障。</li>
+          </ul>
+        </div>
+      </div>
+      <div class="panel" style="margin-top: 12px;">
+        <h3>故障定位速查（技术动作 -> 你会看到什么）</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>场景</th>
+              <th>典型信号</th>
+              <th>第一排查动作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>borrowAsync 超时</td>
+              <td><code>503</code> 增长，<code>gateway.pool.borrow.failures</code> 上升。</td>
+              <td>看目标 upstream 的连接上限、RT、实例健康和 ALB 后端状态。</td>
+            </tr>
+            <tr>
+              <td>stream 槽位长期打满</td>
+              <td><code>503</code> + 重试次数升高，活跃流接近上限。</td>
+              <td>检查每连接最大并发流配置，评估是否扩容 upstream 或提升池大小。</td>
+            </tr>
+            <tr>
+              <td>HEADERS 写失败</td>
+              <td><code>502</code> 抖动，错误链路触发率上升。</td>
+              <td>排查 upstream GOAWAY/RST、网络抖动、连接被动关闭原因。</td>
+            </tr>
+            <tr>
+              <td>请求体超限</td>
+              <td><code>413</code> 升高，集中在特定路由。</td>
+              <td>核对路由级请求体上限配置与客户端发送体积。</td>
+            </tr>
+            <tr>
+              <td>插件短路激增</td>
+              <td><code>401/403/429</code> 提升，<code>gateway.plugin.decisions</code> 偏拒绝。</td>
+              <td>按插件名维度看拒绝原因，核查 ACL、JWT、公网出口 IP 变化。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>4. 插件体系与安全链（REQUEST 阶段）</h2>
+      <p class="text-soft">
+        设计模式: 可插拔策略 + 统一 <code>PluginContext</code> + 短路控制。
+        指标维度由 <code>MetricsCollector</code> 统一记录（耗时和决策）。
+      </p>
+      <div class="edge-card">
+        <h3 class="edge-title">安全插件顺序图（含拒绝分支）</h3>
+        <div class="edge-scroll">
+          <svg viewBox="0 0 1720 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="安全插件顺序与拒绝分支图（霓虹风格）">
+            <defs>
+              <marker id="secArrowMain" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" fill="#7df0bf"/>
+              </marker>
+              <marker id="secArrowDeny" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" fill="#ff9a9a"/>
+              </marker>
+              <marker id="secArrowInfo" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" fill="#9db8ff"/>
+              </marker>
+            </defs>
+
+            <rect x="20" y="20" width="1680" height="480" rx="20" class="edge-diagram-frame"/>
+            <rect x="38" y="90" width="1644" height="170" rx="14" class="edge-diagram-lane-allow"/>
+            <rect x="38" y="278" width="1644" height="198" rx="14" class="edge-diagram-lane-deny"/>
+            <text x="56" y="115" class="edge-diagram-title">ALLOW PATH（主干）</text>
+            <text x="56" y="302" class="edge-diagram-title">SHORT-CIRCUIT PATH（拒绝分支）</text>
+
+            <rect x="70" y="140" width="145" height="66" rx="12" class="edge-diagram-node"/>
+            <text x="90" y="166" class="edge-diagram-title">request</text>
+            <text x="90" y="188" class="edge-diagram-label">入口请求</text>
+
+            <rect x="250" y="140" width="145" height="66" rx="12" class="edge-diagram-node"/>
+            <text x="270" y="166" class="edge-diagram-title">cors (500)</text>
+            <text x="270" y="188" class="edge-diagram-label">预检判定</text>
+
+            <rect x="430" y="140" width="145" height="66" rx="12" class="edge-diagram-node"/>
+            <text x="450" y="166" class="edge-diagram-title">real-ip (1000)</text>
+            <text x="450" y="188" class="edge-diagram-label">解析真实 IP</text>
+
+            <rect x="610" y="140" width="145" height="66" rx="12" class="edge-diagram-node"/>
+            <text x="630" y="166" class="edge-diagram-title">ip-access (2000)</text>
+            <text x="630" y="188" class="edge-diagram-label">ACL 黑白名单</text>
+
+            <rect x="790" y="140" width="145" height="66" rx="12" class="edge-diagram-node"/>
+            <text x="810" y="166" class="edge-diagram-title">ip-rate (3000)</text>
+            <text x="810" y="188" class="edge-diagram-label">IP 限流</text>
+
+            <rect x="970" y="140" width="145" height="66" rx="12" class="edge-diagram-node"/>
+            <text x="990" y="166" class="edge-diagram-title">auth (4000)</text>
+            <text x="990" y="188" class="edge-diagram-label">JWT 认证</text>
+
+            <rect x="1150" y="140" width="145" height="66" rx="12" class="edge-diagram-node"/>
+            <text x="1170" y="166" class="edge-diagram-title">user-rate (5000)</text>
+            <text x="1170" y="188" class="edge-diagram-label">用户限流</text>
+
+            <rect x="1330" y="140" width="145" height="66" rx="12" class="edge-diagram-node"/>
+            <text x="1350" y="166" class="edge-diagram-title">rewrite/header</text>
+            <text x="1350" y="188" class="edge-diagram-label">请求改写</text>
+
+            <rect x="1510" y="140" width="150" height="66" rx="12" class="edge-diagram-node-ok"/>
+            <text x="1555" y="166" class="edge-diagram-title">ALLOW</text>
+            <text x="1543" y="188" class="edge-diagram-label">进入 Proxy</text>
+            <circle cx="1530" cy="160" r="9" class="edge-icon-ring"/><text x="1527" y="164" class="edge-icon-text" style="font-size:10px;">+</text>
+
+            <rect x="230" y="344" width="170" height="74" rx="12" class="edge-diagram-node"/>
+            <text x="292" y="372" class="edge-diagram-title">204</text>
+            <text x="252" y="395" class="edge-diagram-label">Preflight Return</text>
+
+            <rect x="590" y="344" width="170" height="74" rx="12" class="edge-diagram-node-danger"/>
+            <text x="652" y="372" class="edge-diagram-title">403</text>
+            <text x="624" y="395" class="edge-diagram-label">ACL Forbidden</text>
+            <circle cx="612" cy="364" r="8" class="edge-icon-ring"/><text x="609" y="368" class="edge-icon-text" style="font-size:9px;">!</text>
+
+            <rect x="770" y="344" width="170" height="74" rx="12" class="edge-diagram-node-warn"/>
+            <text x="832" y="372" class="edge-diagram-title">429</text>
+            <text x="792" y="395" class="edge-diagram-label">IP Rate Limited</text>
+
+            <rect x="950" y="344" width="170" height="74" rx="12" class="edge-diagram-node-danger"/>
+            <text x="1012" y="372" class="edge-diagram-title">401</text>
+            <text x="978" y="395" class="edge-diagram-label">Unauthorized</text>
+            <circle cx="972" cy="364" r="8" class="edge-icon-ring"/><text x="969" y="368" class="edge-icon-text" style="font-size:9px;">!</text>
+
+            <rect x="1130" y="344" width="170" height="74" rx="12" class="edge-diagram-node-warn"/>
+            <text x="1192" y="372" class="edge-diagram-title">429</text>
+            <text x="1150" y="395" class="edge-diagram-label">User Rate Limited</text>
+
+            <line x1="215" y1="173" x2="250" y2="173" class="edge-diagram-arrow-ok" marker-end="url(#secArrowMain)"/>
+            <line x1="395" y1="173" x2="430" y2="173" class="edge-diagram-arrow-ok" marker-end="url(#secArrowMain)"/>
+            <line x1="575" y1="173" x2="610" y2="173" class="edge-diagram-arrow-ok" marker-end="url(#secArrowMain)"/>
+            <line x1="755" y1="173" x2="790" y2="173" class="edge-diagram-arrow-ok" marker-end="url(#secArrowMain)"/>
+            <line x1="935" y1="173" x2="970" y2="173" class="edge-diagram-arrow-ok" marker-end="url(#secArrowMain)"/>
+            <line x1="1115" y1="173" x2="1150" y2="173" class="edge-diagram-arrow-ok" marker-end="url(#secArrowMain)"/>
+            <line x1="1295" y1="173" x2="1330" y2="173" class="edge-diagram-arrow-ok" marker-end="url(#secArrowMain)"/>
+            <line x1="1475" y1="173" x2="1510" y2="173" class="edge-diagram-arrow-ok" marker-end="url(#secArrowMain)"/>
+
+            <line x1="322" y1="206" x2="315" y2="344" class="edge-diagram-arrow-main" marker-end="url(#secArrowInfo)"/>
+            <line x1="682" y1="206" x2="675" y2="344" class="edge-diagram-arrow-deny" marker-end="url(#secArrowDeny)"/>
+            <line x1="862" y1="206" x2="855" y2="344" class="edge-diagram-arrow-deny" marker-end="url(#secArrowDeny)"/>
+            <line x1="1042" y1="206" x2="1035" y2="344" class="edge-diagram-arrow-deny" marker-end="url(#secArrowDeny)"/>
+            <line x1="1222" y1="206" x2="1215" y2="344" class="edge-diagram-arrow-deny" marker-end="url(#secArrowDeny)"/>
+
+            <text x="336" y="280" class="edge-diagram-label">Preflight</text>
+            <text x="697" y="280" class="edge-diagram-label">ACL Deny</text>
+            <text x="878" y="280" class="edge-diagram-label">IP Over Limit</text>
+            <text x="1058" y="280" class="edge-diagram-label">JWT Fail</text>
+            <text x="1238" y="280" class="edge-diagram-label">User Over Limit</text>
+
+            <text x="52" y="54" class="edge-diagram-label">业界实践：Authenticate Early + Layered Rate Limit + Fail Fast</text>
+            <text x="52" y="72" class="edge-diagram-label">执行顺序：real-ip -> ip-access -> ip-rate-limit -> auth -> user-rate-limit</text>
+          </svg>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>默认优先级</th>
+            <th>插件</th>
+            <th>职责</th>
+            <th>拒绝/结果</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>500</td>
+            <td><code>cors</code></td>
+            <td>处理 CORS，预检请求可直接返回</td>
+            <td><span class="ok">可短路 204</span></td>
+          </tr>
+          <tr>
+            <td>1000</td>
+            <td><code>real-ip</code></td>
+            <td>按 trusted-proxies / trusted-proxy-hops 解析真实客户端 IP</td>
+            <td>透传</td>
+          </tr>
+          <tr>
+            <td>2000</td>
+            <td><code>ip-access</code></td>
+            <td>黑白名单 CIDR 校验（黑名单优先）</td>
+            <td><span class="danger">403 短路</span></td>
+          </tr>
+          <tr>
+            <td>3000</td>
+            <td><code>ip-rate-limit</code></td>
+            <td>按 client IP 限流</td>
+            <td><span class="danger">429 + Retry-After</span></td>
+          </tr>
+          <tr>
+            <td>4000</td>
+            <td><code>auth</code></td>
+            <td>JWT 认证并写入 <code>x-userId</code></td>
+            <td><span class="danger">401 短路</span></td>
+          </tr>
+          <tr>
+            <td>5000</td>
+            <td><code>user-rate-limit</code></td>
+            <td>按 userId 限流（未认证用户可跳过）</td>
+            <td><span class="danger">429 + Retry-After</span></td>
+          </tr>
+          <tr>
+            <td>6000/6100/6200</td>
+            <td><code>add/remove-request-header</code> + <code>rewrite-path</code></td>
+            <td>请求头改写与路径正则重写</td>
+            <td>透传</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        安全链符合固定顺序要求: <code>real-ip -> ip-access -> ip-rate-limit -> auth -> user-rate-limit</code>。
+        若中间任意阶段拒绝，则立即终止并返回。
+      </p>
+      <p class="text-soft">
+        失败策略: 认证与访问控制默认 <code>fail-closed</code>；支持 <code>shadow</code> 模式只记录不阻断。
+      </p>
+    </section>
+
+    <section>
+      <h2>5. RESPONSE / ERROR 阶段能力</h2>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>RESPONSE 插件</h3>
+          <span class="tag">1000 add-response-header</span>
+          <span class="tag">1100 remove-response-header</span>
+          <p class="text-soft">
+            在返回客户端前统一调整上游响应头，便于隐藏内部信息和注入标准头。
+          </p>
+        </div>
+        <div class="panel">
+          <h3>ERROR 插件</h3>
+          <span class="tag">1000 custom-error-response</span>
+          <p class="text-soft">
+            在上游异常场景统一错误结构，支持按状态码映射 message，
+            默认模板包含 <code>status/message/traceId</code>。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>6. 路由与配置模型</h2>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>路由字段</h3>
+          <ul class="list">
+            <li><code>id</code>, <code>path-prefix</code>, <code>upstream</code>。</li>
+            <li><code>priority</code> 小值优先，支持同级按 path 长度最精确匹配。</li>
+            <li><code>timeout-seconds</code>, <code>max-request-size</code>。</li>
+            <li><code>rewrite-path</code> + <code>rewrite-replacement</code>。</li>
+            <li><code>plugins</code> 路由级插件覆盖全局同名插件。</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>全局关键默认值</h3>
+          <ul class="list">
+            <li><code>gateway.port = 8080</code></li>
+            <li><code>request-limit.max-request-size = 50MB</code></li>
+            <li><code>request-limit.timeout-seconds = 60</code></li>
+            <li><code>connection-pool.max-connections-per-host = 5</code></li>
+            <li><code>observability.metrics/access-log/tracing = true</code></li>
+          </ul>
+        </div>
+      </div>
+      <pre><code>gateway:
+  routes:
+    - id: example-service-jwt
+      path-prefix: /api/example/private/**
+      upstream: http://localhost:8082
+      plugins:
+        - name: auth
+          config:
+            type: JWT
+            providers:
+              jwt:
+                issuer: example-issuer
+                audience: example-audience
+                public-key: |-
+                  -----BEGIN PUBLIC KEY-----
+                  ...
+                  -----END PUBLIC KEY-----</code></pre>
+    </section>
+
+    <section>
+      <h2>7. 高性能转发与连接池设计</h2>
+      <div class="grid-3">
+        <div class="panel">
+          <h3>H2 多路复用</h3>
+          <ul class="list">
+            <li>连接获取后先尝试 <code>tryReserveStream()</code>。</li>
+            <li>执行 streamId 溢出检查，不可用连接退役。</li>
+            <li>通过 <code>H2ResponseDemuxHandler</code> 做响应分发回调。</li>
+            <li>流控满载时有限重试，超限返回 <code>503</code>。</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>连接池获取策略</h3>
+          <ul class="list">
+            <li>ThreadLocal 快路径。</li>
+            <li>共享列表 CAS 扫描。</li>
+            <li>池未满则异步创建连接。</li>
+            <li>池满则进入 PendingBorrow 队列并计时超时。</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>资源安全策略</h3>
+          <ul class="list">
+            <li><code>remove</code>: 从池中摘除并关闭（不可复用）。</li>
+            <li><code>retire</code>: 只摘除不立即关闭（保留飞行流）。</li>
+            <li>定时空闲淘汰，避免长期空闲连接占用资源。</li>
+            <li>连接池指标按 <code>host:port</code> 注册 Gauge。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>8. 可观测性与运行保障</h2>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Metrics 重点</h3>
+          <ul class="list">
+            <li><code>gateway.requests.total/duration/errors</code></li>
+            <li><code>gateway.plugin.duration/decisions</code></li>
+            <li><code>gateway.security.filter.*</code>, <code>auth.failures</code>, <code>rate_limit.hits</code></li>
+            <li><code>gateway.pool.active/idle/total</code></li>
+            <li><code>gateway.connections.active</code></li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Access Log 字段</h3>
+          <ul class="list">
+            <li><code>method/path/statusCode/durationMs/clientIp/upstream</code></li>
+            <li><code>traceId</code> 以及 <code>authRequired/authPassed</code></li>
+            <li><code>securityDecision/securityFilter/securityReason</code></li>
+            <li>JSON 输出风格对齐 Envoy 结构化日志范式。</li>
+          </ul>
+        </div>
+      </div>
+      <p class="text-soft">
+        追踪上下文遵循 W3C Trace Context，支持透传 <code>traceparent</code> / <code>tracestate</code>，
+        并在追踪标签中写入安全链阶段决策。
+      </p>
+    </section>
+
+    <section>
+      <h2>9. 启动预热与优雅停机</h2>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>启动预热（WarmupRunner）</h3>
+          <ul class="list">
+            <li>阶段 1: 内部热路径预热（路由匹配 + JSON 编解码）。</li>
+            <li>阶段 2: 上游预热（按 host:port 去重后主动 acquire/release）。</li>
+            <li>全局预算由 <code>warmup-timeout-seconds</code> 控制，超时不阻塞启动。</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>优雅停机（ShutdownCoordinator）</h3>
+          <ul class="list">
+            <li>阶段 1: 关闭 serverChannel 与 bossGroup，停止接收新连接。</li>
+            <li>阶段 2: 激活 draining，新请求快速返回 503。</li>
+            <li>阶段 3: 等待在途请求和 H2 活跃流清零（可配置超时）。</li>
+            <li>阶段 4: 先关连接池，再关 workerGroup，避免事件丢失。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>10. 业界对标与下一步演进建议</h2>
+      <div class="panel" style="margin-bottom: 12px;">
+        <h3>业界能力映射（当前实现 vs Envoy / Kong / Nginx）</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>当前网关能力</th>
+              <th>业界同类概念</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>REQUEST/RESPONSE/ERROR 插件链</td>
+              <td>Envoy HTTP Filter / Kong Plugin / Nginx phase handlers</td>
+              <td>都是“可编排过滤器链 + 短路机制”，核心差异在插件生态与控制面成熟度。</td>
+            </tr>
+            <tr>
+              <td>RouteResolver（priority + prefix）</td>
+              <td>Envoy RouteConfiguration / Kong Route / Nginx location</td>
+              <td>本质都是先匹配路由再绑定上游与策略，目标是确定性命中和低开销查找。</td>
+            </tr>
+            <tr>
+              <td>UpstreamConnectionPool + H2 多路复用</td>
+              <td>Envoy Cluster Connection Pool / Kong upstream keepalive</td>
+              <td>关注点一致：连接复用、并发流控制、异常连接摘除和退役。</td>
+            </tr>
+            <tr>
+              <td>ACL + JWT + 限流组合安全链</td>
+              <td>Envoy ext_authz/jwt_authn/ratelimit / Kong ACL+JWT+RateLimit</td>
+              <td>业界通常采用“先身份、后配额、再转发”的 fail-fast 模式。</td>
+            </tr>
+            <tr>
+              <td>Metrics + AccessLog + TraceContext</td>
+              <td>Envoy stats + access log + tracing</td>
+              <td>可观测三件套一致，关键在字段标准化和跨系统关联能力。</td>
+            </tr>
+            <tr>
+              <td>Warmup + Draining + 分阶段 Shutdown</td>
+              <td>Envoy Drain Manager / Nginx graceful shutdown</td>
+              <td>共同目标是上线冷启动可控、下线无损，避免连接和在途请求被硬切。</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="text-soft" style="margin-top: 8px;">
+          说明：上表是能力模型映射，不代表实现细节完全一致；重点用于架构评审时的“同类能力对照”。
+        </p>
+      </div>
+      <div class="grid-3">
+        <div class="panel">
+          <h3>已对齐业界实践</h3>
+          <ul class="list">
+            <li>过滤器链短路机制（类似 Envoy HTTP Filter）。</li>
+            <li>结构化日志 + 指标 + Trace 三位一体。</li>
+            <li>连接池复用与多路复用并行优化。</li>
+            <li>优雅停机分阶段编排。</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>当前边界</h3>
+          <ul class="list">
+            <li>配置源以静态配置为主，尚未形成动态控制面。</li>
+            <li>限流引擎默认本地模式，跨实例一致性有限。</li>
+            <li>熔断/重试/主动健康探测能力仍可加强。</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>建议演进路线</h3>
+          <ul class="list">
+            <li>引入配置热更新与灰度发布能力（Control Plane 化）。</li>
+            <li>补充分布式限流后端和失败降级可观测看板。</li>
+            <li>按 upstream 增加熔断、被动探测与故障隔离。</li>
+            <li>将插件治理扩展到版本化和兼容契约测试。</li>
+          </ul>
+        </div>
+      </div>
+      <p>
+        结论: 当前网关已具备生产可用的核心基础能力，重点可沿
+        <span class="ok">动态配置</span>、
+        <span class="warn">分布式治理</span>、
+        <span class="danger">故障自治</span>
+        三条线继续升级。
+      </p>
+    </section>
+
+    <footer>
+      Source Snapshot: README + gateway / gateway-pool 主干代码（截至 2026-04-01）
+    </footer>
+  </main>
+  <script>
+    (function () {
+      var THEME_KEY = "gateway-theme";
+      var toggle = document.getElementById("themeToggle");
+      if (!toggle) return;
+
+      function applyTheme(theme) {
+        var dark = theme === "dark";
+        document.body.classList.toggle("theme-dark", dark);
+        toggle.textContent = dark ? "切换亮色" : "切换暗黑";
+        toggle.setAttribute("aria-label", dark ? "切换到亮色主题" : "切换到暗黑主题");
+      }
+
+      var savedTheme = localStorage.getItem(THEME_KEY);
+      var initialTheme = savedTheme;
+      if (!initialTheme) {
+        initialTheme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
+      }
+      applyTheme(initialTheme);
+
+      toggle.addEventListener("click", function () {
+        var nextTheme = document.body.classList.contains("theme-dark") ? "light" : "dark";
+        localStorage.setItem(THEME_KEY, nextTheme);
+        applyTheme(nextTheme);
+      });
+    })();
+  </script>
+</body>
+</html>

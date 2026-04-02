@@ -19,6 +19,11 @@ public class PluginContext {
     private String clientIp;
     private String userId;
 
+    // RESPONSE/ERROR 阶段字段
+    private io.netty.handler.codec.http.HttpResponse upstreamResponse;
+    private Throwable errorCause;
+    private int responseStatusCode;
+
     private final Map<String, Object> attributes = new HashMap<>();
     private final Map<String, String> traceTags = new HashMap<>();
 
@@ -94,5 +99,48 @@ public class PluginContext {
      */
     public Map<String, String> getTraceTags() {
         return new HashMap<>(traceTags);
+    }
+
+    /**
+     * 设置上游响应（RESPONSE 阶段使用）。
+     */
+    public void setUpstreamResponse(
+            io.netty.handler.codec.http.HttpResponse upstreamResponse) {
+        this.upstreamResponse = upstreamResponse;
+    }
+
+    /**
+     * 获取上游响应。
+     */
+    public io.netty.handler.codec.http.HttpResponse getUpstreamResponse() {
+        return upstreamResponse;
+    }
+
+    /**
+     * 设置错误原因（ERROR 阶段使用）。
+     */
+    public void setErrorCause(Throwable errorCause) {
+        this.errorCause = errorCause;
+    }
+
+    /**
+     * 获取错误原因。
+     */
+    public Throwable getErrorCause() {
+        return errorCause;
+    }
+
+    /**
+     * 设置响应状态码。
+     */
+    public void setResponseStatusCode(int responseStatusCode) {
+        this.responseStatusCode = responseStatusCode;
+    }
+
+    /**
+     * 获取响应状态码。
+     */
+    public int getResponseStatusCode() {
+        return responseStatusCode;
     }
 }

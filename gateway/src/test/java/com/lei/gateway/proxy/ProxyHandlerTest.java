@@ -79,7 +79,7 @@ class ProxyHandlerTest {
         InFlightRequestTracker inFlightTracker = new InFlightRequestTracker();
         ProxyContext proxyCtx = new ProxyContext(limitConfig, connectionPool,
                 metricsCollector, accessLogWriter, observabilityConfig,
-                inFlightTracker);
+                inFlightTracker, null);
         return new ProxyHandler(route, proxyCtx);
     }
 
@@ -565,7 +565,7 @@ class ProxyHandlerTest {
         InFlightRequestTracker inFlightTracker = new InFlightRequestTracker();
         ProxyContext proxyCtx = new ProxyContext(limitConfig, connectionPool,
                 metricsCollector, accessLogWriter, tracingConfig,
-                inFlightTracker);
+                inFlightTracker, null);
         ProxyHandler handler = new ProxyHandler(route, proxyCtx);
         EmbeddedChannel clientChannel = new EmbeddedChannel(handler);
 

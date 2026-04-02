@@ -8,6 +8,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http2.DefaultHttp2Headers;
 import io.netty.handler.codec.http2.Http2Headers;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -56,7 +57,7 @@ public final class H2HeaderConverter {
 
         HttpHeaders h1Headers = request.headers();
         for (var entry : h1Headers) {
-            String name = entry.getKey().toLowerCase(java.util.Locale.ROOT);
+            String name = entry.getKey().toLowerCase(Locale.ROOT);
             if (name.equals("host")) {
                 // host 已映射到 :authority
                 continue;
