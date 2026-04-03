@@ -12,6 +12,7 @@ gateway:
     max-idle-time-seconds: 60
     slow-connect-threshold-millis: 50
     connect-timeout-millis: 500
+    acquire-timeout-millis: 500
   observability:
     metrics-enabled: true
     access-log-enabled: true

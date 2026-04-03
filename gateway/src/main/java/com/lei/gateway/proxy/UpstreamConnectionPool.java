@@ -63,7 +63,7 @@ public class UpstreamConnectionPool {
 
         long startNanos = System.nanoTime();
         return pool.borrowAsync(
-                properties.getConnectTimeoutMillis(), TimeUnit.MILLISECONDS)
+                properties.getAcquireTimeoutMillis(), TimeUnit.MILLISECONDS)
                 .thenApply(entry -> {
                     long durationNanos = System.nanoTime() - startNanos;
                     metricsCollector.recordUpstreamConnect(key, durationNanos,

@@ -27,14 +27,16 @@ public class PrivateExampleController {
     public ResponseEntity<Map<String, Object>> profile(
             @RequestHeader(value = "x-userId", required = false) String userId,
             HttpServletRequest request) {
-        StringBuilder sb = new StringBuilder("{");
-        Collections.list(request.getHeaderNames()).forEach(name ->
-                sb.append(name).append("=").append(request.getHeader(name)).append(", "));
-        if (sb.length() > 1) {
-            sb.setLength(sb.length() - 2);
+        if (log.isInfoEnabled()) {
+            StringBuilder sb = new StringBuilder("{");
+            Collections.list(request.getHeaderNames()).forEach(name ->
+                    sb.append(name).append("=").append(request.getHeader(name)).append(", "));
+            if (sb.length() > 1) {
+                sb.setLength(sb.length() - 2);
+            }
+            sb.append("}");
+            log.info("GET /profile headers={}", sb);
         }
-        sb.append("}");
-        log.info("GET /profile headers={}", sb);
         return ResponseEntity.ok(Map.of(
                 "status", "ok",
                 "resource", "private-profile",

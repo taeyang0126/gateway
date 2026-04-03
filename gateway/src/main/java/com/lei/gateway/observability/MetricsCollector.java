@@ -15,6 +15,7 @@ import io.netty.buffer.ByteBufAllocatorMetric;
 import io.netty.buffer.ByteBufAllocatorMetricProvider;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.SingleThreadEventLoop;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.stereotype.Component;
@@ -214,6 +215,40 @@ public class MetricsCollector {
     }
 
     /**
+     * 记录代理链路失败事件。
+     *
+     * @param stage 失败阶段（如 acquire/h2_error/request）
+     * @param reason 失败原因（如 max_streams_exhausted/connect_timeout）
+     */
+    public void recordProxyFailure(String stage, String reason) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+        Counter.builder("gateway.proxy.failures")
+                .tag("stage", normalizeTag(stage))
+                .tag("reason", normalizeTag(reason))
+                .register(meterRegistry)
+                .increment();
+    }
+
+    /**
+     * 记录代理错误响应及连接处理策略（keep-alive/close）。
+     *
+     * @param statusCode HTTP 状态码
+     * @param connectionPolicy 连接策略：keep_alive 或 close
+     */
+    public void recordProxyErrorResponse(int statusCode, String connectionPolicy) {
+        if (!config.isMetricsEnabled()) {
+            return;
+        }
+        Counter.builder("gateway.proxy.error.responses")
+                .tag("status", String.valueOf(statusCode))
+                .tag("connection_policy", normalizeTag(connectionPolicy))
+                .register(meterRegistry)
+                .increment();
+    }
+
+    /**
      * 记录安全组件降级/回退事件。
      */
     public void recordSecurityFallback(String component, String reason) {
@@ -315,5 +350,12 @@ public class MetricsCollector {
         }
         return "# Prometheus scrape not supported for current MeterRegistry: "
                 + meterRegistry.getClass().getSimpleName();
+    }
+
+    private static String normalizeTag(String value) {
+        if (value == null || value.isBlank()) {
+            return "unknown";
+        }
+        return value.toLowerCase(Locale.ROOT).replace(' ', '_');
     }
 }

@@ -3,6 +3,8 @@
 
   <springProperty name="LOG_DIR" source="logging.file.path" defaultValue="example-upstream/logs"/>
 
+  <!-- ===== 基础 Appenders ===== -->
+
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
       <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %highlight(%5level) [%magenta(%thread)] %cyan(%logger{36}) [%X{traceId}] : %msg%n</pattern>
@@ -37,10 +39,52 @@
     </encoder>
   </appender>
 
-  <root level="INFO">
+  <!-- ===== 异步 Appenders（所有 profile 共用） ===== -->
+
+  <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+    <queueSize>2048</queueSize>
+    <discardingThreshold>0</discardingThreshold>
+    <neverBlock>true</neverBlock>
     <appender-ref ref="CONSOLE"/>
+  </appender>
+
+  <appender name="ASYNC_WARN_FILE" class="ch.qos.logback.classic.AsyncAppender">
+    <queueSize>2048</queueSize>
+    <discardingThreshold>0</discardingThreshold>
+    <neverBlock>true</neverBlock>
     <appender-ref ref="WARN_FILE"/>
+  </appender>
+
+  <appender name="ASYNC_ERROR_FILE" class="ch.qos.logback.classic.AsyncAppender">
+    <queueSize>2048</queueSize>
+    <discardingThreshold>0</discardingThreshold>
+    <neverBlock>true</neverBlock>
     <appender-ref ref="ERROR_FILE"/>
-  </root>
+  </appender>
+
+  <!-- ===== dev profile：异步控制台 + 异步文件 ===== -->
+  <springProfile name="dev">
+    <root level="INFO">
+      <appender-ref ref="ASYNC_CONSOLE"/>
+      <appender-ref ref="ASYNC_WARN_FILE"/>
+      <appender-ref ref="ASYNC_ERROR_FILE"/>
+    </root>
+  </springProfile>
+
+  <!-- ===== 默认 profile（非 dev 且非 perf）：仅异步文件 ===== -->
+  <springProfile name="!dev &amp; !perf">
+    <root level="INFO">
+      <appender-ref ref="ASYNC_WARN_FILE"/>
+      <appender-ref ref="ASYNC_ERROR_FILE"/>
+    </root>
+  </springProfile>
+
+  <!-- ===== perf profile：仅异步文件，无控制台 ===== -->
+  <springProfile name="perf">
+    <root level="WARN">
+      <appender-ref ref="ASYNC_WARN_FILE"/>
+      <appender-ref ref="ASYNC_ERROR_FILE"/>
+    </root>
+  </springProfile>
 
 </configuration>

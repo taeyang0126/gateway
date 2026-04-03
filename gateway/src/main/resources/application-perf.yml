@@ -2,6 +2,7 @@ gateway:
   # 需求 10：覆盖连接池，生产配置 max-connections-per-host=1 不足以触发 borrow/requite 竞争
   connection-pool:
     max-connections-per-host: 20
+    acquire-timeout-millis: 600
 
   # perf 配置下路由规模大，预热预算与连接预热强度需要显式放宽
   health:

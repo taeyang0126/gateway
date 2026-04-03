@@ -44,6 +44,7 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.URI;
 import java.util.ArrayDeque;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.CompletionException;
@@ -112,6 +113,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     private boolean headersEndStream;
     private Queue<HttpContent> pendingContent;
     private final AtomicBoolean requestCompleted = new AtomicBoolean(false);
+    private volatile boolean responseCommittedToClient;
 
     /** 创建 ProxyHandler。 */
     public ProxyHandler(Route route, ProxyContext ctx) {
@@ -241,12 +243,24 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             Throwable cause = ex instanceof CompletionException
                     ? ex.getCause() : ex;
             if (cause instanceof IllegalStateException) {
-                log.error("连接池已满，无法获取 upstream 连接: {}",
-                        route.getUpstream(), cause);
-                sendErrorAndCleanup(ctx, HttpResponseStatus.SERVICE_UNAVAILABLE,
-                        "Connection pool exhausted for upstream: "
-                        + route.getUpstream());
+                String acquireReason = classifyAcquireFailureReason(cause);
+                metricsCollector.recordProxyFailure("acquire", acquireReason);
+                if ("acquire_timeout".equals(acquireReason)) {
+                    log.error("获取 upstream 连接等待超时: {}",
+                            route.getUpstream(), cause);
+                    sendErrorAndCleanup(ctx, HttpResponseStatus.SERVICE_UNAVAILABLE,
+                            "Acquire timeout waiting for upstream connection: "
+                            + route.getUpstream());
+                } else {
+                    log.error("连接池已满，无法获取 upstream 连接: {}",
+                            route.getUpstream(), cause);
+                    sendErrorAndCleanup(ctx, HttpResponseStatus.SERVICE_UNAVAILABLE,
+                            "Connection pool exhausted for upstream: "
+                            + route.getUpstream());
+                }
             } else {
+                metricsCollector.recordProxyFailure("acquire",
+                        classifyFailureReason(cause));
                 log.error("获取 upstream 连接失败: {}",
                         route.getUpstream(), cause);
                 sendErrorAndCleanup(ctx, HttpResponseStatus.BAD_GATEWAY,
@@ -263,6 +277,8 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
         if (!demux.tryReserveStream()) {
             connectionPool.release(channel);
             if (++acquireRetryCount > MAX_ACQUIRE_RETRIES) {
+                metricsCollector.recordProxyFailure("acquire",
+                        "max_streams_exhausted");
                 log.warn("traceId={} 所有连接 MAX_CONCURRENT_STREAMS 已满，重试 {} 次后放弃",
                         traceId, MAX_ACQUIRE_RETRIES);
                 sendErrorAndCleanup(ctx, HttpResponseStatus.SERVICE_UNAVAILABLE,
@@ -518,6 +534,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                     Unpooled.EMPTY_BUFFER, response.headers(),
                     EmptyHttpHeaders.INSTANCE);
             writeToClient(() -> {
+                responseCommittedToClient = true;
                 if (!clientCtx.channel().isActive()) {
                     ReferenceCountUtil.release(fullResponse);
                     log.debug("traceId={} 客户端已断开，跳过写出 no-body 响应", traceId);
@@ -544,6 +561,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                     .set(Boolean.TRUE);
         }
         writeToClient(() -> {
+            responseCommittedToClient = true;
             if (!clientCtx.channel().isActive()) {
                 ReferenceCountUtil.release(response);
                 log.debug("traceId={} 客户端已断开，跳过写出响应头", traceId);
@@ -614,6 +632,19 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
      * @param cause 错误原因
      */
     void onH2Error(Throwable cause) {
+        if (responseCommittedToClient) {
+            metricsCollector.recordProxyFailure("h2_error",
+                    "after_response_commit");
+            // 响应已开始下发后，不再覆盖写 502，避免把已提交的成功响应污染成错误响应。
+            cleanupOnError();
+            if (clientCtx != null) {
+                RoutingHandler.onProxyComplete(clientCtx);
+            }
+            return;
+        } else {
+            metricsCollector.recordProxyFailure("h2_error",
+                    classifyFailureReason(cause));
+        }
         log.error("traceId={} H2 stream 错误, streamId={}", traceId, streamId, cause);
         // 执行 ERROR 阶段插件链
         if (pluginProcessor != null && clientCtx != null
@@ -697,6 +728,7 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt)
             throws Exception {
         if (evt instanceof IdleStateEvent) {
+            metricsCollector.recordProxyFailure("request", "idle_timeout");
             sendErrorAndCleanup(ctx, HttpResponseStatus.GATEWAY_TIMEOUT,
                     "Request timeout");
             return;
@@ -706,6 +738,8 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+        metricsCollector.recordProxyFailure("proxy_handler",
+                classifyFailureReason(cause));
         log.error("ProxyHandler 异常", cause);
         cleanupOnError();
         if (ctx.channel().isActive()) {
@@ -764,10 +798,21 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
                 "application/json");
         response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
                 content.readableBytes());
-        response.headers().set(HttpHeaderNames.CONNECTION,
-                HttpHeaderValues.CLOSE);
-        ctx.writeAndFlush(response)
-                .addListener(ChannelFutureListener.CLOSE);
+
+        boolean keepAlive = shouldKeepAliveOnError(ctx, status);
+        if (keepAlive) {
+            response.headers().set(HttpHeaderNames.CONNECTION,
+                    HttpHeaderValues.KEEP_ALIVE);
+            ctx.writeAndFlush(response);
+            metricsCollector.recordProxyErrorResponse(status.code(),
+                    "keep_alive");
+        } else {
+            response.headers().set(HttpHeaderNames.CONNECTION,
+                    HttpHeaderValues.CLOSE);
+            ctx.writeAndFlush(response)
+                    .addListener(ChannelFutureListener.CLOSE);
+            metricsCollector.recordProxyErrorResponse(status.code(), "close");
+        }
     }
 
     /**
@@ -842,5 +887,50 @@ public class ProxyHandler extends ChannelInboundHandlerAdapter {
             return false;
         }
         return HttpUtil.getContentLength(response, -1L) == 0L;
+    }
+
+    private boolean shouldKeepAliveOnError(ChannelHandlerContext ctx,
+            HttpResponseStatus status) {
+        // 仅对上游瞬时错误保持连接，避免一刀切 close 放大 reset/premature close。
+        boolean transientUpstreamError = status.equals(HttpResponseStatus.BAD_GATEWAY)
+                || status.equals(HttpResponseStatus.SERVICE_UNAVAILABLE)
+                || status.equals(HttpResponseStatus.GATEWAY_TIMEOUT);
+        if (!transientUpstreamError) {
+            return false;
+        }
+        if (originalRequest == null) {
+            return false;
+        }
+        boolean requestKeepAlive = HttpUtil.isKeepAlive(originalRequest);
+        Boolean forceClose = ctx.channel().attr(RoutingHandler.CONNECTION_CLOSE_KEY).get();
+        return requestKeepAlive && !Boolean.TRUE.equals(forceClose);
+    }
+
+    private String classifyAcquireFailureReason(Throwable cause) {
+        if (cause instanceof IllegalStateException && cause.getMessage() != null
+                && cause.getMessage().contains("Timeout waiting for available pool entry")) {
+            return "acquire_timeout";
+        }
+        return "pool_exhausted";
+    }
+
+    private String classifyFailureReason(Throwable cause) {
+        if (cause == null) {
+            return "unknown";
+        }
+        if (cause instanceof H2ResponseDemuxHandler.H2StreamResetException) {
+            return "h2_stream_reset";
+        }
+        if (cause instanceof H2ResponseDemuxHandler.H2GoAwayException) {
+            return "h2_goaway";
+        }
+        if (cause instanceof H2ResponseDemuxHandler.H2ChannelClosedException) {
+            return "h2_channel_closed";
+        }
+        String simpleName = cause.getClass().getSimpleName();
+        if (simpleName == null || simpleName.isBlank()) {
+            return "unknown";
+        }
+        return simpleName.toLowerCase(Locale.ROOT);
     }
 }

@@ -34,6 +34,7 @@ gateway:
     max-idle-time-seconds: 15
     slow-connect-threshold-millis: 10
     connect-timeout-millis: 100
+    acquire-timeout-millis: 600
     thread-local-cache-size: 32
   observability:
     metrics-enabled: true

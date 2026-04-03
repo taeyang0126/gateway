@@ -4,11 +4,11 @@
   "p99Ms" : 0,
   "errorRate" : 0.0,
   "mockRps" : 0.0,
-  "kneeRps" : 500,
+  "kneeRps" : 2060,
   "env" : {
     "cpuCores" : 8,
     "jvmVersion" : "21.0.4",
     "availableMemoryMb" : 4096
   },
-  "timestamp" : "2026-04-02T01:10:30.685136Z"
+  "timestamp" : "2026-04-03T02:29:45.242791Z"
 }

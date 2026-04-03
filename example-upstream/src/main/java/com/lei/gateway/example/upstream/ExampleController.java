@@ -48,7 +48,9 @@ public class ExampleController {
      */
     @GetMapping("/hello")
     public ResponseEntity<String> hello(HttpServletRequest request) {
-        log.info("GET /hello headers={}", headersOf(request));
+        if (log.isInfoEnabled()) {
+            log.info("GET /hello headers={}", headersOf(request));
+        }
         return ResponseEntity.ok("Hello from upstream!");
     }
 
@@ -57,7 +59,9 @@ public class ExampleController {
      */
     @PostMapping("/echo")
     public ResponseEntity<String> echo(@RequestBody String body, HttpServletRequest request) {
-        log.info("POST /echo body.length={} headers={}", body.length(), headersOf(request));
+        if (log.isInfoEnabled()) {
+            log.info("POST /echo body.length={} headers={}", body.length(), headersOf(request));
+        }
         return ResponseEntity.ok(body);
     }
 
@@ -69,10 +73,14 @@ public class ExampleController {
             HttpServletRequest request)
             throws IOException {
         String filename = file.getOriginalFilename();
-        log.info("POST /upload filename={} size={} headers={}", filename, file.getSize(),
-                headersOf(request));
+        if (log.isInfoEnabled()) {
+            log.info("POST /upload filename={} size={} headers={}", filename, file.getSize(),
+                    headersOf(request));
+        }
         Path saved = saveFile(file);
-        log.info("POST /upload saved to {}", saved.toAbsolutePath());
+        if (log.isInfoEnabled()) {
+            log.info("POST /upload saved to {}", saved.toAbsolutePath());
+        }
         return ResponseEntity.ok("Uploaded: " + filename + ", size: " + file.getSize());
     }
 
@@ -83,12 +91,16 @@ public class ExampleController {
     public ResponseEntity<String> uploadMulti(@RequestParam("files") List<MultipartFile> files,
             HttpServletRequest request)
             throws IOException {
-        log.info("POST /upload/multi count={} headers={}", files.size(), headersOf(request));
+        if (log.isInfoEnabled()) {
+            log.info("POST /upload/multi count={} headers={}", files.size(), headersOf(request));
+        }
         StringBuilder sb = new StringBuilder();
         for (MultipartFile file : files) {
             Path saved = saveFile(file);
-            log.info("POST /upload/multi saved {} -> {}", file.getOriginalFilename(),
-                    saved.toAbsolutePath());
+            if (log.isInfoEnabled()) {
+                log.info("POST /upload/multi saved {} -> {}", file.getOriginalFilename(),
+                        saved.toAbsolutePath());
+            }
             if (sb.length() > 0) {
                 sb.append(", ");
             }
@@ -107,10 +119,14 @@ public class ExampleController {
             @RequestParam("name") String name,
             @RequestParam("description") String description,
             HttpServletRequest request) throws IOException {
-        log.info("POST /upload/with-fields filename={} size={} name={} description={} headers={}",
-                file.getOriginalFilename(), file.getSize(), name, description, headersOf(request));
+        if (log.isInfoEnabled()) {
+            log.info("POST /upload/with-fields filename={} size={} name={} description={} headers={}",
+                    file.getOriginalFilename(), file.getSize(), name, description, headersOf(request));
+        }
         Path saved = saveFile(file);
-        log.info("POST /upload/with-fields saved to {}", saved.toAbsolutePath());
+        if (log.isInfoEnabled()) {
+            log.info("POST /upload/with-fields saved to {}", saved.toAbsolutePath());
+        }
         return ResponseEntity.ok("Uploaded: " + file.getOriginalFilename()
                 + ", size: " + file.getSize()
                 + ", name: " + name
@@ -122,20 +138,28 @@ public class ExampleController {
      */
     @GetMapping("/download")
     public ResponseEntity<Resource> download(HttpServletRequest request) throws IOException {
-        log.info("GET /download headers={}", headersOf(request));
+        if (log.isInfoEnabled()) {
+            log.info("GET /download headers={}", headersOf(request));
+        }
         Path filePath = UPLOAD_DIR.resolve(DOWNLOAD_FILE);
         if (!Files.exists(filePath)) {
-            log.info("GET /download testfile.bin not found, generating...");
+            if (log.isInfoEnabled()) {
+                log.info("GET /download testfile.bin not found, generating...");
+            }
             Files.createDirectories(UPLOAD_DIR);
             byte[] data = new byte[10 * 1024 * 1024];
             for (int i = 0; i < data.length; i++) {
                 data[i] = (byte) (i % 256);
             }
             Files.write(filePath, data);
-            log.info("GET /download generated testfile.bin at {}", filePath.toAbsolutePath());
+            if (log.isInfoEnabled()) {
+                log.info("GET /download generated testfile.bin at {}", filePath.toAbsolutePath());
+            }
         }
         long fileSize = Files.size(filePath);
-        log.info("GET /download serving {} bytes from {}", fileSize, filePath.toAbsolutePath());
+        if (log.isInfoEnabled()) {
+            log.info("GET /download serving {} bytes from {}", fileSize, filePath.toAbsolutePath());
+        }
         Resource resource = new PathResource(filePath);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
